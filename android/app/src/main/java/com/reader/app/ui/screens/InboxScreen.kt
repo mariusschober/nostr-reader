@@ -1,13 +1,10 @@
 package com.reader.app.ui.screens
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -23,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -224,14 +222,43 @@ private fun SwipeRow(
   onOpen: () -> Unit,
   onSwiped: (target: String) -> Unit,
 ) {
-  // Hand-rolled swipe: the Material3 dismiss container eats taps on this
-  // version, while drag-gestures + clickable coexist cleanly.
+  // Tap-vs-swipe arbitration, textbook pattern: stock clickable owns
+  // taps (it completes press→up only when no drag consumed the stream);
+  // detectHorizontalDragGestures owns horizontal swipes and sets a guard
+  // so the up that ends a swipe can't double-fire onClick.
+  // NOTE (bug #1 post-mortem, 2026-09-04): row taps were never a gesture
+  // problem — every detector variant fired fine. Navigation itself was
+  // broken: MainActivity pushed routes + bumped a `tick` state nobody read,
+  // so no recomposition ever rendered the new route. Fixed by keying the
+  // route lookup on tick. (Also: Log.d is invisible on the TCL — verify
+  // via screenshots/DB only.)
   val offset = remember { Animatable(0f) }
   val scope = rememberCoroutineScope()
+  var gestureDrag by remember { mutableStateOf(false) }
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val density = LocalDensity.current
     val widthPx = with(density) { maxWidth.toPx() }
     val thresholdPx = widthPx * 0.35f
+    fun settle() {
+      scope.launch {
+        val end = offset.value
+        val hit = if (kotlin.math.abs(end) > thresholdPx) {
+          Triage.swipeTarget(
+            list,
+            if (end > 0) Triage.Swipe.RIGHT else Triage.Swipe.LEFT,
+          )
+        } else {
+          null
+        }
+        if (hit != null) {
+          onSwiped(hit)
+          offset.snapTo(0f)
+        } else {
+          offset.animateTo(0f)
+        }
+        gestureDrag = false
+      }
+    }
     val target = if (offset.value > 1f) {
       Triage.swipeTarget(list, Triage.Swipe.RIGHT)
     } else if (offset.value < -1f) {
@@ -251,43 +278,24 @@ private fun SwipeRow(
         )
       }
     }
-    val drag = rememberDraggableState { delta ->
-      val w = widthPx
-      val next = (offset.value + delta).coerceIn(-w, w)
-      scope.launch { offset.snapTo(next) }
-    }
     Box(
       Modifier
         .offset { IntOffset(offset.value.roundToInt(), 0) }
-        .draggable(
-          orientation = Orientation.Horizontal,
-          state = drag,
-          onDragStopped = { velocity ->
-            scope.launch {
-              val settled = offset.value
-              val hit = if (kotlin.math.abs(settled) > thresholdPx) {
-                Triage.swipeTarget(
-                  list,
-                  if (settled > 0) Triage.Swipe.RIGHT else Triage.Swipe.LEFT,
-                )
-              } else {
-                null
-              }
-              if (hit != null) {
-                onSwiped(hit)
-                offset.snapTo(0f)
-              } else {
-                offset.animateTo(0f)
-              }
-            }
-          },
-        )
         .clickable(
           indication = null,
           interactionSource = remember { MutableInteractionSource() },
-        ) {
-          android.util.Log.d("RowTap", "tap " + doc.documentId.take(8))
-          onOpen()
+          onClick = { if (!gestureDrag) onOpen() },
+        )
+        .pointerInput(list, widthPx) {
+          detectHorizontalDragGestures(
+            onDragStart = { gestureDrag = true },
+            onDragCancel = { settle() },
+            onDragEnd = { settle() },
+            onHorizontalDrag = { change, dx ->
+              scope.launch { offset.snapTo((offset.value + dx).coerceIn(-widthPx, widthPx)) }
+              change.consume()
+            },
+          )
         },
     ) {
       ArticleRow(doc, colors, onOpen = onOpen, onMenu = null)
@@ -304,7 +312,10 @@ fun ArticleRow(
 ) {
   val complete = d.progressFraction >= 0.999f
   Column(
-    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+    Modifier.fillMaxWidth().clickable(
+      indication = null,
+      interactionSource = remember { MutableInteractionSource() },
+    ) { onOpen() }.padding(vertical = 12.dp),
   ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Text(
@@ -315,6 +326,14 @@ fun ArticleRow(
       if (complete) {
         Spacer(Modifier.width(8.dp))
         Icon(Icons.Default.Check, contentDescription = "Read", tint = c.secondary)
+      }
+      // Archive rows (the only callers passing onMenu) previously had no
+      // affordance at all: onMenu was never invoked — the overflow dialog
+      // was unreachable. Tap opens; ⋮ opens the menu.
+      if (onMenu != null) {
+        IconButton(onClick = onMenu) {
+          Icon(Icons.Default.MoreVert, contentDescription = "Article options", tint = c.secondary)
+        }
       }
     }
     Spacer(Modifier.height(2.dp))

@@ -69,7 +69,11 @@ class MainActivity : ComponentActivity() {
       var tick by remember { mutableIntStateOf(0) }
       fun go(r: Route) { stack.push(r); tick++ }
       fun backToInbox() { stack.reset(); tick++ }
-      val route = stack.current()
+      // NB: tick MUST be read here (via remember key). RouteStack is a plain
+      // mutable list, not observable state: pushing without reading tick
+      // schedules no recomposition, so navigation silently never renders
+      // (row taps, settings, back all "did nothing" — bug #1, 2026-09-04).
+      val route = remember(tick) { stack.current() }
       var settings by remember { mutableStateOf(ReaderSettings()) }
       var lists by remember { mutableStateOf(mapOf<String, List<com.reader.app.data.DocumentEntity>>()) }
       var channels by remember { mutableStateOf(listOf<com.reader.app.data.ChannelEntity>()) }

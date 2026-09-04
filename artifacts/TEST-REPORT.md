@@ -1,102 +1,148 @@
-# Reader TEST-REPORT v1 — 2026-09-04
+# Reader TEST-REPORT v2 — 2026-09-04 (triage build, physical TCL)
 
 ## Environment
 
-- macOS arm64, Xcode 26.6, Swift (Package Manager), Temurin JDK 17.0.19
-- Node v22.16.0, npm 10.9.2, TypeScript 5.5.4, Vite 5.4.8, Vitest 2.1.3
-- Gradle 8.7, Android Gradle Plugin 8.5.2, Kotlin 2.0.20, compileSdk/targetSdk 34, minSdk 26
-- Android SDK platforms 34/35/36, build-tools 34/35/36
-- Emulator: `sprich_review_api26` (API 26, arm64) — matches minSdk
+- macOS arm64, Temurin JDK 17.0.19, Node v22.16.0, npm 10.9.2,
+  TypeScript 5.5.4, Vite 5.4.8, Vitest 2.1.3
+- Gradle 8.7, Android Gradle Plugin 8.5.2, Kotlin 2.0.20,
+  compileSdk/targetSdk 34, minSdk 26
+- Device: physical TCL T807D (`adb -s ZXKRS4VKGQ8PWGEQ`), 1080x2340
 - No Rust toolchain (no cargo): `rust-core` ships as audited source; its
   algorithms are vector-gated in TS + Kotlin + Swift (see Interop).
+- NOTE: `Log.d` is invisible on this TCL (a `log -p d` marker never lands
+  in logcat; `logcat -d *:D` shows no D-level lines). All device claims
+  below are grounded in screenshots (`artifacts/qa/`) and direct Room DB
+  reads via `run-as`, never in logcat probes. Do not add `Log.d`
+  instrumentation for this device — it cannot be observed.
 
-## Build commands executed
+## Build commands executed (this session, current tree)
 
 ```text
-chrome:  npm install | npx tsc --noEmit | npx vitest run | npm run build
+chrome:  npm install --no-audit --no-fund | npx tsc --noEmit | npx vitest run
 android: gradle :app:testDebugUnitTest :app:assembleDebug | gradle :app:lintDebug
-mac:     swift test
+mac:     swift test   (after `rm -rf mac/.build`: stale ModuleCache pointed
+         at another checkout path and failed the first run with
+         "missing required module 'SwiftShims'" — environment artifact,
+         not a code failure)
 ```
 
-## Unit tests
+## Unit tests (all re-run on the current tree this session)
 
-- Chrome vitest: **17/17 pass** — golden-v1 hash + gunzip, word count, RSVP
-  policy, 10-day rolling window, NIP-59 roundtrip, untrusted-sender / tampered-
-  sig / wrong-recipient rejections, rolling-window regression, extraction
-  fixtures (generic noise + 4 providers), selection thresholds, NIP-07 proof
-  accept/mutation-reject.
-- Android: **28/28 pass** — ReaderCore (golden, canonical, counts, window,
-  RSVP, limits, escape), Nip44 (decrypts REAL nostr-tools ciphertext,
-  conversation-key symmetry, fixed-nonce byte-exact reproduction, tamper/MAC
-  and wrong-key failures, reference padding table), GiftWrap (roundtrip +
-  untrusted/tampered/wrong-recipient/bad-kind/bad-version + Schnorr
-  self-check), ArticleModel (rich doc, XSS/js-link strip, malformed input,
-  code exclusion, hard-break mapping), RSVP tokens + drift-free scheduler,
-  TTS queue/cursor/narration, pairing-QR validation.
+- Chrome vitest: **17/17 pass** (5 files) — golden-v1 hash + gunzip,
+  word count, RSVP policy, 10-day rolling window, NIP-59 roundtrip,
+  untrusted-sender / tampered-sig / wrong-recipient rejections,
+  rolling-window regression, extraction fixtures (generic noise +
+  4 providers), selection thresholds, NIP-07 proof accept/mutation-reject.
+- Android: **42/42 pass, 0 failures, 0 errors** — ReaderCore (golden,
+  canonical, counts, window, RSVP, limits, escape), Nip44 (decrypts REAL
+  nostr-tools ciphertext, conversation-key symmetry, fixed-nonce
+  byte-exact reproduction, tamper/MAC and wrong-key failures, reference
+  padding table), GiftWrap (roundtrip + untrusted/tampered/
+  wrong-recipient/bad-kind/bad-version + Schnorr self-check),
+  ArticleModel (rich doc, XSS/js-link strip, malformed input, code
+  exclusion, hard-break mapping), RSVP tokens + drift-free scheduler,
+  TTS queue/cursor/narration, pairing-QR validation, triage swipe
+  mapping + route-stack logic.
 - Swift: **3/3 pass** — golden documentId + word count, sync window, RSVP.
-- Lint (Android debug): **0 errors**, 26 warnings, 4 informational.
+- Lint (Android debug, current build): **0 errors**, 26 warnings,
+  3 informational.
 
-## Cross-language interop (release gate)
+## Cross-language interop (carried over from v1, NOT re-run)
 
-- `shared/test-vectors/golden-v1.json`: real SHA-256 + gzip bytes; TS, Kotlin,
-  and Swift all reproduce `documentId 78dad25a…ff2d8` and gunzip roundtrip.
-- `shared/test-vectors/nip44-v1.json`: real nostr-tools v2 ciphertext with
-  fixed keys + fixed nonce. Kotlin decrypts it exactly and re-encrypts to the
-  identical payload bytes (byte-exact NIP-44 incl. reference chunked padding).
-- Two real bugs caught by vectors during this build: (1) power-of-two padding
-  assumption vs the reference chunked table — fixed in Kotlin; (2) nostr-tools
-  `verifyEvent` memoizes trust on the object via symbol (spread copies it) —
-  transport now re-parses wire JSON at the verification boundary + test pins it.
+- `shared/test-vectors/golden-v1.json`: real SHA-256 + gzip bytes; TS,
+  Kotlin, and Swift all reproduce `documentId 78dad25a…ff2d8` and gunzip
+  roundtrip.
+- `shared/test-vectors/nip44-v1.json`: real nostr-tools v2 ciphertext;
+  Kotlin decrypts it exactly and re-encrypts byte-identical.
 
-## Live public-relay smoke (throwaway keys, harmless fixture, 2026-09-04)
+## Live public-relay smoke (carried over from v1, NOT re-run)
 
-- `relay.damus.io` NIP-11 live: strfry, `max_message_length 1000000`.
-- Kind-1059 gift-wrap publish: **damus OK**, **nos.lol OK** (2-relay quorum).
-- Retrieval roundtrip: NOT MEASURED (ephemeral smoke events; full
-  send→receive→ACK loop is covered by unit vectors + emulator ingest path).
+- Kind-1059 gift-wrap publish: **damus OK**, **nos.lol OK** (2-relay
+  quorum). Retrieval roundtrip NOT MEASURED.
 
-## Emulator QA (API 26, install `adb install reader-debug.apk`)
+## Physical-device QA (TCL T807D, install `adb install reader-debug.apk`)
 
-- PASS install, launch, inbox (Flexoki Paper, Inbox/Archive tabs, `1m`
-  attention budget, no counts), ACTION_SEND import (toast + live inbox
-  refresh), native article render (Newsreader, title/source/time header,
-  paragraphs, hard breaks, end mark, Finished/Archive), appearance sheet
-  (5 self-rendered fonts, size slider, 3 margins, 4 backgrounds — Flexoki
-  themed, no stock purple), RSVP play (chromeless, red anchored focal,
-  progress) + pause (Exit/±10/Play/WPM slider/Finished), TTS bar (queue ran
-  4/4 live on emulator). Screenshots in `artifacts/qa/`.
-- Visual QA fixes applied from screenshots: plain-text hard breaks, inbox live
-  refresh, hard-break node mapping, Flexoki dialog/RSVP theming, chip overflow.
-- No `com.reader.app` crashes in logcat (one unrelated OOM in another app).
-- 16 KB page-size: emulator shows the debug-build warning naming
-  `libdatastore_shared_counter.so` + `libimage_processing_util_jni.so`
-  (third-party .so alignment). No NDK code of ours; functional on 4 KB
-  devices; release track must re-verify on a 16 KB device.
+All items exercised on the build hashed below (APK `2fc214c5…`).
+Each PASS is backed by a screenshot in `artifacts/qa/` and/or a
+direct DB read. Taps use uiautomator bounds; the device serial is
+always passed explicitly (`-s ZXKRS4VKGQ8PWGEQ`).
+
+- PASS install (reinstall `-r` over prior build), cold start, empty-Inbox
+  hint, 4 tabs render.
+- **PASS bug #1 fix — row tap opens article.** Root cause was NOT
+  gestures: `MainActivity` pushed routes and bumped a `tick` state that
+  no composable read, so Compose scheduled no recomposition and every
+  navigation silently never rendered (row taps, ⋮ settings, back arrow,
+  system back all "did nothing"; only local-state UI like tab switches
+  and the + dialog ever visibly worked). Two gesture rewrites were tried
+  first (verified dead ends via screenshots); the one-line fix is
+  `val route = remember(tick) { stack.current() }`. Verified 3x:
+  Later-tab row tap → article renders (`row-tap-opens-article.png`,
+  re-verified on second entry). SwipeRow is now stock `clickable` +
+  `detectHorizontalDragGestures` with a drag-guard; debug `Log.d`
+  probes removed.
+- PASS system back Reader→Inbox list (`system-back-to-list.png`).
+- PASS Speed→RSVP (focal word + red anchor + 300 WPM controls,
+  `rsvp-speed-entry.png`) and system back RSVP→Reader, no crash
+  (`rsvp-back-to-reader.png`). Cursor persistence across the hop is
+  covered by unit tests + the `onExit` DB write path (not visually
+  asserted beyond correct restore of the same article).
+- PASS ⋮→Settings (`settings-screen.png`) and system back
+  Settings→list (uiautomator dump).
+- PASS +→Pair Chrome screen (`pairing-screen.png`) and system back
+  Pairing→list (uiautomator dump). Camera preview black (no QR in
+  view) — live scan NOT done.
+- PASS paste markdown: heading + paragraph + bullets entered in the
+  paste dialog, Save → imported and auto-opened with title/heading/
+  bullets rendered (`paste-markdown-reader.png`).
+- PASS paste plain text: two hard-break lines render as two lines
+  (`paste-plain-reader.png`).
+- PASS Later swipes: left-swipe Inbox→Later with Undo snackbar
+  (`swipe-left-later-snackbar.png`); Later tab contents verified;
+  right-swipe Later→Inbox verified (doc back in Inbox per dump).
+- PASS Archive overflow: Archive rows now expose ⋮ (previously
+  `onMenu` was never invoked — the dialog was unreachable);
+  ⋮→"Article / Unarchive returns it to the inbox" dialog
+  (`archive-overflow-dialog.png`) → Unarchive → doc back in Inbox
+  (DB-verified `list='inbox'`).
+- PASS dark (Ink) background: article (`dark-background-article.png`)
+  and list (`dark-background-list.png`) render light-on-dark with
+  status bar and gesture pill following the background.
+
+## OBSERVED (not fixed — cosmetic, out of scope)
+
+- Stale snackbar queue: when a swipe moves a doc, its row leaves
+  composition while `showSnackbar` is still suspended, so the current
+  snackbar can linger until the next snackbar event (saw "Saved for
+  later" persist across a later move; queue advanced correctly on the
+  next Undo tap). Moves themselves always applied (DB-verified).
+- A dialog-button tap missed once because bounds were eyeballed from a
+  scaled screenshot — always re-dump bounds after layout changes
+  (keyboard/voice bar resize dialogs).
 
 ## NOT MEASURED / limitations (honest)
 
-- No physical device; no tablet/foldable layout proof.
-- TTS audio output not listened to (no emulator voice audit); queue, speed,
-  fallback paths, and Media3 session code are unit/instrument-tested only.
-- Pairing QR live scan not done (camera path untested); protocol validated by
-  unit tests + manual-paste path in UI.
-- Chrome extension dist validated (manifest parses, relative entry points,
-  strict CSP, no remote scripts, no eval) but NOT loaded in a real browser;
-  provider inline buttons covered by fixture tests, not live DOM.
-- `rust-core` not compiled here (no cargo); UniFFI bindings are a next step —
-  Mac/iOS consume the Swift-verified mirror + vectors until then.
-- Amber / nos2x live signers not installed; NIP-07 bridge + NIP-55 boundary
-  tested with mocks/seams only.
-- No Playwright/Chromium extension E2E; no screenshot-golden RSVP anchor test
-  (anchor verified visually on-device instead).
+- No tablet/foldable layout proof.
+- TTS audio output not listened to (queue/speed/fallback unit-tested
+  only); TTS bar play path not exercised on the TCL this session.
+- Pairing QR live scan not done; Amber/nos2x live signers not
+  installed; Chrome extension not loaded in a real browser (dist
+  unchanged); no Playwright extension E2E.
+- `rust-core` not compiled (no cargo); UniFFI bindings still ahead.
+- 16 KB page-size: debug APK still carries the third-party
+  `.so`-alignment warning (`libdatastore_shared_counter.so` +
+  `libimage_processing_util_jni.so`); release track must re-verify on
+  a 16 KB-page device.
+- Interop vectors + live-relay smoke carried over from v1 (not
+  re-executed against this tree).
 
-## Artifact hashes (SHA-256)
+## Artifact hashes (SHA-256, current)
 
 ```text
-a0b08ea5cc4a4bd787fa690c97f7d16e164d640a7660427ff14d2f8ee042cebc  reader-debug.apk
+2fc214c5338c593de88504e92be037007753b0c3e7204639d7f7394a0ae64566  reader-debug.apk
 9a33867a6e64bc74795c92e3132e79fe9826a77b9fdb523c1d49c59611622974  reader-chrome-extension.zip
 ```
 
-NOTE: hashes are current as of the final build (RSVP scheduler wiring). After any rebuild, re-run
-`shasum -a 256 artifacts/*` after any rebuild. APK is debug-signed QA, not a
-store release. The emulator test DB holds only fixture imports.
+APK is debug-signed QA, not a store release. The on-device test DB
+holds fixture/paste imports (Inbox: 2 pastes + 1 unarchived share;
+Priority: 1 share; Later: empty; Archive: 5 shares).

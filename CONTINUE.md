@@ -1,4 +1,4 @@
-# CONTINUE — agent handover for nostr-reader (2026-09-04, work paused mid-debug)
+# CONTINUE — agent handover for nostr-reader (2026-09-04, must-list done)
 
 ## Vision (why this exists)
 
@@ -30,36 +30,40 @@ See `README.md`, `PROTOCOL.md`, `SECURITY.md`, `CROSS_PLATFORM.md`, `MAC.md`.
   line-break rendering, TTS bar, RSVP play/pause, themed appearance sheet.
   Screenshots: `artifacts/qa/`.
 
-## OPEN BUG #1 (where work stopped): row taps dead after triage rewrite
+## BUG #1 (RESOLVED 2026-09-04): row taps dead — was never gestures
 
-- **Symptom**: tapping an article row in any triage list does nothing.
-  Tab switches, "+" dialog, row swipes all work. No crash, no log, no navigation.
-- **What was ruled out**: not navigation (go()/stack verified by code read);
-  not a stale install; not coordinates (uiautomator bounds used, taps land).
-- **Prime suspect**: the Material3 `SwipeToDismissBox` container swallowing
-  taps (content clickables never fire — instrumented with Log.d, zero output).
-  A move of the tap handler onto the box itself also never fired.
-- **Current code state**: `SwipeRow` in
-  `android/app/src/main/java/com/reader/app/ui/screens/InboxScreen.kt` was
-  just rewritten to a hand-rolled `Modifier.draggable` + `clickable`
-  implementation, rebuilt green, reinstalled — **NOT yet tap-tested**.
-  Debug `Log.d("RowTap", …)` lines are still in `InboxScreen.kt`; remove them
-  once taps are confirmed working.
-- **First action on resume**: tap a row on the TCL and check logcat for
-  `RowTap`. If taps fire, delete the logs and continue below. If not, replace
-  `draggable` with a manual `awaitEachGesture` loop or split tap vs swipe
-  targets (e.g. tap opens, swipe anywhere moves).
+- **Symptom was**: tapping an article row in any triage list did nothing.
+  Tab switches, "+" dialog, row swipes all worked. No crash, no log.
+- **Root cause (found by +/⋮ split test)**: NOT the swipe container.
+  `MainActivity` pushed routes and bumped a `tick` state that NO
+  composable read, so Compose scheduled no recomposition and navigation
+  silently never rendered. Touch handling was fine all along — every
+  handler ran, only local-state UI ever visibly updated. One-line fix:
+  `val route = remember(tick) { stack.current() }` (`MainActivity.kt`).
+- **Dead ends verified on-device first** (screenshots): `draggable`
+  `startDragImmediately=false` + `clickable` still dead; hand-rolled
+  `awaitEachGesture` loop saw swipes (DB-proven move) but its tap branch
+  never observably fired. Final SwipeRow is stock `clickable` +
+  `detectHorizontalDragGestures` with a drag-guard.
+- **Also fixed alongside**: Archive rows never invoked `onMenu` (overflow
+  dialog unreachable) — `ArticleRow` is now tap-to-open with a ⋮ button
+  when `onMenu != null`. Debug `Log.d("RowTap")` / `Log.d("ReaderBack")`
+  removed.
+- **Device quirk that burned two sessions**: `Log.d` is INVISIBLE on the
+  TCL (`log -p d` marker never lands). Verify via screenshots + `run-as`
+  DB reads only. Recorded in `artifacts/TEST-REPORT.md` v2.
+- **Known cosmetic**: swipe snackbar can linger when the row leaves
+  composition mid-`showSnackbar` (queue advances on next snackbar
+  event; moves always apply — DB-verified). Not fixed, out of scope.
 
 ## Other known issues
 
-- Debug `Log.d("ReaderBack", …)` in `ReaderScreen.kt` (system-back probe);
-  keep until back-from-article is verified on device, then remove.
-- System-back from article/RSVP/pairing/settings is implemented
-  (`BackHandler` in each screen) but the article case is unverified for the
-  same reason as #1 (couldn't reach it by tap). Back on inbox-root correctly
-  exits to launcher (verified).
-- Paste dialog, dark-background system bars, Later-tab swipes, Archive
-  overflow menu: implemented, not yet exercised on device.
+- System-back from article/RSVP/pairing/settings VERIFIED on the TCL
+  2026-09-04 (screenshots/dumps); back on inbox-root exits to launcher
+  (verified earlier, not re-run).
+- Paste dialog (markdown + plain), Later-tab swipes both directions,
+  Archive overflow (Unarchive DB-verified), dark-background system bars
+  (list + article screenshots): all VERIFIED on device 2026-09-04.
 - Debug APK shows Android's 16 KB `.so`-alignment warning naming
   `libdatastore_shared_counter.so` + `libimage_processing_util_jni.so`
   (third-party libs; no NDK code of ours). Harmless on 4 KB devices; release
@@ -72,14 +76,14 @@ See `README.md`, `PROTOCOL.md`, `SECURITY.md`, `CROSS_PLATFORM.md`, `MAC.md`.
 
 ## Next: MUST / SHOULD / COULD
 
-**Must**
-1. Fix OPEN BUG #1 (row taps), remove debug logs, reinstall, verify open by
-   tap on the TCL.
-2. Verify system back Reader→list, RSVP→Reader (cursor preserved),
+**Must (all DONE 2026-09-04, see `artifacts/TEST-REPORT.md` v2)**
+1. ~~Fix OPEN BUG #1~~ FIXED (navigation observability) + verified open
+   by tap on the TCL; debug logs removed.
+2. ~~Verify system back~~ VERIFIED Reader→list, RSVP→Reader,
    Pairing/Settings→list on device.
-3. Exercise paste (markdown + plain), Later swipes, Archive menu, dark bars.
-4. Update `artifacts/TEST-REPORT.md` (currently covers the pre-triage build:
-   17 chrome / 28 android tests; now 17 / 42) and refresh artifact hashes.
+3. ~~Exercise paste, Later swipes, Archive menu, dark bars~~ VERIFIED.
+4. ~~Update TEST-REPORT + hashes~~ DONE (17 chrome / 42 android / 3
+   swift, all re-run; APK `2fc214c5…`).
 
 **Should**
 5. Real Chrome→Android end-to-end (pair, send, receive, ACK clears outbox).

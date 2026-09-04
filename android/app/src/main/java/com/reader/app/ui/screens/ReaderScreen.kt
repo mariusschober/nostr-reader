@@ -175,7 +175,6 @@ fun ReaderScreen(
     }
   }
   BackHandler {
-    android.util.Log.d("ReaderBack", "system back in reader")
     onBack()
   }
   if (showAppearance) {
