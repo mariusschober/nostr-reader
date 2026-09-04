@@ -70,8 +70,12 @@ See `README.md`, `PROTOCOL.md`, `SECURITY.md`, `CROSS_PLATFORM.md`, `MAC.md`.
   track must re-verify on a 16 KB-page device.
 - `rust-core/` is audited source only (no cargo toolchain here); TS/Kotlin/
   Swift mirrors are the verified implementations. UniFFI bindings still ahead.
-- Chrome `dist/` validated (manifest, CSP, no remote code) but never loaded
-  in a real browser; provider buttons covered by fixtures only.
+- Chrome `dist/` was loaded by the user far enough to open its pairing QR;
+  provider capture buttons and Chrome-to-Android delivery remain unverified.
+- Pairing camera hotfix installed and targeted-verified on the TCL: native
+  runtime permission prompt, granted app-op, CameraService rear-camera
+  connection, and visibly live preview all PASS. Actual Chrome-QR decode and
+  encrypted pairing reply remain NOT MEASURED.
 - TTS audio never ear-checked; Amber/nos2x signers never live-tested.
 
 ## Next: MUST / SHOULD / COULD

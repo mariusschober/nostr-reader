@@ -1,8 +1,24 @@
 import { defineConfig } from "vite";
+import { cp, copyFile } from "node:fs/promises";
 import { resolve } from "node:path";
+
+const copyExtensionAssets = () => ({
+  name: "copy-extension-assets",
+  async closeBundle() {
+    const output = resolve(__dirname, "dist");
+    await copyFile(resolve(__dirname, "manifest.json"), resolve(output, "manifest.json"));
+    await cp(resolve(__dirname, "icons"), resolve(output, "icons"), { recursive: true });
+  }
+});
 
 export default defineConfig({
   base: "./",
+  esbuild: {
+    // Chromium rejects Unicode noncharacters such as U+FFFF in extension
+    // scripts, even when their byte sequences are valid UTF-8.
+    charset: "ascii"
+  },
+  plugins: [copyExtensionAssets()],
   build: {
     outDir: "dist",
     emptyOutDir: true,

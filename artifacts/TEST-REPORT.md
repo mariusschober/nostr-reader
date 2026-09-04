@@ -1,5 +1,37 @@
 # Reader TEST-REPORT v2 — 2026-09-04 (triage build, physical TCL)
 
+## Chrome packaging hotfix — 2026-09-04
+
+- Fixed clean Vite builds so `dist/` always receives `manifest.json` and the
+  extension icons, and so Chromium-rejected Unicode noncharacters are escaped
+  in emitted JavaScript without changing their runtime value.
+- PASS TypeScript, **17/17 Chrome tests**, clean production build, Manifest V3
+  reference validation, ZIP integrity, and byte-identical `content.js` between
+  `dist/` and the packaged ZIP. The user loaded the extension far enough to
+  display its pairing QR.
+- Current Chrome ZIP:
+  `b8a0ca89ec311f566a65fb25446405cd4a1f693828fe98c4043b00d62227fece`.
+
+## Camera pairing hotfix — 2026-09-04 (targeted physical TCL verification)
+
+- Root cause reproduced on TCL T807D `ZXKRS4VKGQ8PWGEQ`: the app declared
+  `CAMERA` but never requested the runtime permission. App-op was `ignore` and
+  CameraService repeatedly reported `Permission hard denied` for
+  `com.reader.app` while the UI silently showed an empty preview.
+- Fixed the pairing screen to request permission before binding CameraX, show
+  denial/retry/settings recovery UI, start CameraX asynchronously, release it
+  with the Compose lifecycle, and decode padded/strided luminance planes.
+- PASS debug build + **45/45 Android unit tests** (the prior 42 plus 3 camera
+  luminance-plane tests); PASS lint with 0 errors and the same 26 warnings.
+- PASS reinstall with `-r`, cold launch, native camera permission prompt,
+  `CAMERA: allow` / foreground app-op, CameraService rear-camera connection,
+  and visibly live preview (`artifacts/qa/pairing-camera-live.png`).
+- NOT MEASURED: physical decoding of the actual Chrome QR and the subsequent
+  encrypted pairing reply. The device could not be physically aimed at the
+  desktop display during automated verification.
+- Current targeted-hotfix APK:
+  `e15199022d4d52ec2b40e4538fc89afe2f707670a300bdbf97b72b66b6c44dbb`.
+
 ## Environment
 
 - macOS arm64, Temurin JDK 17.0.19, Node v22.16.0, npm 10.9.2,
@@ -136,11 +168,13 @@ always passed explicitly (`-s ZXKRS4VKGQ8PWGEQ`).
 - Interop vectors + live-relay smoke carried over from v1 (not
   re-executed against this tree).
 
-## Artifact hashes (SHA-256, current)
+## Artifact hashes (SHA-256)
 
 ```text
-2fc214c5338c593de88504e92be037007753b0c3e7204639d7f7394a0ae64566  reader-debug.apk
-9a33867a6e64bc74795c92e3132e79fe9826a77b9fdb523c1d49c59611622974  reader-chrome-extension.zip
+e15199022d4d52ec2b40e4538fc89afe2f707670a300bdbf97b72b66b6c44dbb  reader-debug.apk (current camera hotfix)
+2fc214c5338c593de88504e92be037007753b0c3e7204639d7f7394a0ae64566  superseded v2 triage APK documented above
+b8a0ca89ec311f566a65fb25446405cd4a1f693828fe98c4043b00d62227fece  reader-chrome-extension.zip (current packaging hotfix)
+9a33867a6e64bc74795c92e3132e79fe9826a77b9fdb523c1d49c59611622974  superseded v2 Chrome ZIP
 ```
 
 APK is debug-signed QA, not a store release. The on-device test DB

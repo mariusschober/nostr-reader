@@ -1,15 +1,24 @@
 package com.reader.app.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import android.util.Base64
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -18,13 +27,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 import com.reader.app.prefs.ReaderSettings
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.colorsFor
 import kotlinx.serialization.json.*
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Pairing: QR scanner opens immediately; manual paste as fallback. */
 @Composable
@@ -40,6 +53,37 @@ fun PairingScreen(
   val lifecycle = LocalLifecycleOwner.current
   var manual by remember { mutableStateOf("") }
   var scanError by remember { mutableStateOf<String?>(null) }
+  var cameraPermissionGranted by remember {
+    mutableStateOf(
+      ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) ==
+        PackageManager.PERMISSION_GRANTED,
+    )
+  }
+  var cameraPermissionDenied by rememberSaveable { mutableStateOf(false) }
+  val cameraPermissionLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestPermission(),
+  ) { granted ->
+    cameraPermissionGranted = granted
+    cameraPermissionDenied = !granted
+    if (granted) scanError = null
+  }
+
+  LaunchedEffect(Unit) {
+    if (!cameraPermissionGranted) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+  }
+
+  DisposableEffect(lifecycle, ctx) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) {
+        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) ==
+          PackageManager.PERMISSION_GRANTED
+        cameraPermissionGranted = granted
+        if (granted) scanError = null
+      }
+    }
+    lifecycle.lifecycle.addObserver(observer)
+    onDispose { lifecycle.lifecycle.removeObserver(observer) }
+  }
 
   Scaffold(containerColor = c.background) { pad ->
     Column(Modifier.padding(pad).fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -48,40 +92,24 @@ fun PairingScreen(
       Text("Point at the code in the Reader extension", fontFamily = ReaderFonts.Ui, fontSize = 14.sp, color = c.secondary)
       Spacer(Modifier.height(12.dp))
       Box(Modifier.fillMaxWidth().weight(1f)) {
-        AndroidView(
-          factory = { context ->
-            PreviewView(context).also { pv ->
-              val provider = ProcessCameraProvider.getInstance(context).get()
-              val preview = Preview.Builder().build().also { it.setSurfaceProvider(pv.surfaceProvider) }
-              val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-              analysis.setAnalyzer(Executors.newSingleThreadExecutor()) { image ->
-                try {
-                  val buffer = image.planes[0].buffer
-                  val bytes = ByteArray(buffer.remaining())
-                  buffer.get(bytes)
-                  val source = PlanarYUVLuminanceSource(bytes, image.width, image.height, 0, 0, image.width, image.height, false)
-                  val result = MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source)))
-                  val text = result.text
-                  if (text.contains("reader-pair/1")) {
-                    image.close()
-                    onScanned(text)
-                    return@setAnalyzer
-                  }
-                } catch (e: Exception) {
-                  // no QR in frame: keep scanning
-                } finally {
-                  try {
-                    image.close()
-                  } catch (e: Exception) {
-                  }
-                }
-              }
-              provider.unbindAll()
-              provider.bindToLifecycle(lifecycle, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-            }
-          },
-          modifier = Modifier.fillMaxSize(),
-        )
+        if (cameraPermissionGranted) {
+          CameraScanner(
+            onScanned = onScanned,
+            onError = { scanError = it },
+          )
+        } else {
+          CameraPermissionPrompt(
+            denied = cameraPermissionDenied,
+            onRequest = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+            onOpenSettings = {
+              ctx.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                  data = Uri.fromParts("package", ctx.packageName, null)
+                },
+              )
+            },
+          )
+        }
       }
       (error ?: scanError)?.let {
         Text(it, fontFamily = ReaderFonts.Ui, color = c.error, fontSize = 13.sp)
@@ -102,6 +130,174 @@ fun PairingScreen(
             else scanError = "That does not look like a Reader pairing code."
           },
         ) { Text("Pair") }
+      }
+    }
+  }
+}
+
+@Composable
+private fun CameraPermissionPrompt(
+  denied: Boolean,
+  onRequest: () -> Unit,
+  onOpenSettings: () -> Unit,
+) {
+  Column(
+    modifier = Modifier.fillMaxSize().padding(24.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.Center,
+  ) {
+    Text(
+      if (denied) "Camera access is off" else "Camera access is needed",
+      fontFamily = ReaderFonts.Ui,
+      fontSize = 18.sp,
+    )
+    Spacer(Modifier.height(8.dp))
+    Text(
+      "Allow camera access to scan the pairing code. You can still paste the code below.",
+      fontFamily = ReaderFonts.Ui,
+      fontSize = 14.sp,
+    )
+    Spacer(Modifier.height(16.dp))
+    Button(onClick = onRequest) { Text("Allow camera", fontFamily = ReaderFonts.Ui) }
+    if (denied) {
+      TextButton(onClick = onOpenSettings) {
+        Text("Open app settings", fontFamily = ReaderFonts.Ui)
+      }
+    }
+  }
+}
+
+@Composable
+private fun CameraScanner(
+  onScanned: (String) -> Unit,
+  onError: (String) -> Unit,
+) {
+  val context = LocalContext.current
+  val lifecycle = LocalLifecycleOwner.current
+  val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
+  val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+  val previewView = remember(context) {
+    PreviewView(context).apply {
+      implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+      scaleType = PreviewView.ScaleType.FILL_CENTER
+    }
+  }
+  val currentOnScanned by rememberUpdatedState(onScanned)
+  val currentOnError by rememberUpdatedState(onError)
+
+  AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+
+  DisposableEffect(context, lifecycle, previewView) {
+    val active = AtomicBoolean(true)
+    val delivered = AtomicBoolean(false)
+    val analyzerFailed = AtomicBoolean(false)
+    val reader = MultiFormatReader().apply {
+      setHints(
+        mapOf(
+          DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+          DecodeHintType.TRY_HARDER to true,
+        ),
+      )
+    }
+    val analysis = ImageAnalysis.Builder()
+      .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+      .build()
+    var cameraProvider: ProcessCameraProvider? = null
+
+    analysis.setAnalyzer(analysisExecutor) { image ->
+      try {
+        val source = image.toLuminanceSource()
+        val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
+        if (result.text.contains("reader-pair/1") && delivered.compareAndSet(false, true)) {
+          mainExecutor.execute {
+            if (active.get()) currentOnScanned(result.text)
+          }
+        }
+      } catch (_: ReaderException) {
+        // No decodable QR in this frame; keep scanning.
+      } catch (e: Exception) {
+        if (analyzerFailed.compareAndSet(false, true)) {
+          mainExecutor.execute {
+            if (active.get()) currentOnError("The camera started, but frames could not be read: ${e.message ?: "unknown error"}")
+          }
+        }
+      } finally {
+        reader.reset()
+        image.close()
+      }
+    }
+
+    val providerFuture = ProcessCameraProvider.getInstance(context)
+    providerFuture.addListener(
+      {
+        if (!active.get()) return@addListener
+        try {
+          val provider = providerFuture.get()
+          cameraProvider = provider
+          require(provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+            "No rear camera is available."
+          }
+          val preview = Preview.Builder().build().also {
+            it.setSurfaceProvider(previewView.surfaceProvider)
+          }
+          provider.unbindAll()
+          provider.bindToLifecycle(
+            lifecycle,
+            CameraSelector.DEFAULT_BACK_CAMERA,
+            preview,
+            analysis,
+          )
+        } catch (e: Exception) {
+          analysis.clearAnalyzer()
+          if (active.get()) {
+            currentOnError("Camera could not start: ${(e.cause ?: e).message ?: "unknown error"}")
+          }
+        }
+      },
+      mainExecutor,
+    )
+
+    onDispose {
+      active.set(false)
+      analysis.clearAnalyzer()
+      cameraProvider?.unbindAll()
+      analysisExecutor.shutdownNow()
+    }
+  }
+}
+
+private fun ImageProxy.toLuminanceSource(): PlanarYUVLuminanceSource {
+  val plane = planes.firstOrNull() ?: error("Camera frame has no luminance plane")
+  val bytes = copyLuminancePlane(
+    buffer = plane.buffer,
+    width = width,
+    height = height,
+    rowStride = plane.rowStride,
+    pixelStride = plane.pixelStride,
+  )
+  return PlanarYUVLuminanceSource(bytes, width, height, 0, 0, width, height, false)
+}
+
+internal fun copyLuminancePlane(
+  buffer: ByteBuffer,
+  width: Int,
+  height: Int,
+  rowStride: Int,
+  pixelStride: Int,
+): ByteArray {
+  require(width > 0 && height > 0) { "Camera frame has invalid dimensions" }
+  require(rowStride > 0 && pixelStride > 0) { "Camera frame has invalid strides" }
+  val source = buffer.duplicate()
+  val start = source.position()
+  val limit = source.limit()
+  return ByteArray(width * height).also { output ->
+    var outputIndex = 0
+    for (row in 0 until height) {
+      var sourceIndex = start + row * rowStride
+      repeat(width) {
+        require(sourceIndex < limit) { "Camera luminance plane is truncated" }
+        output[outputIndex++] = source.get(sourceIndex)
+        sourceIndex += pixelStride
       }
     }
   }
