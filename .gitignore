@@ -1,0 +1,9 @@
+# Dependencies and build outputs (rebuilt locally; never commit)
+**/node_modules/
+**/build/
+**/.gradle/
+**/dist/
+mac/.build/
+android/local.properties
+*.hprof
+.DS_Store

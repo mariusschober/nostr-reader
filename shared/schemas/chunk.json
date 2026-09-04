@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DocumentChunkV1",
+  "type": "object",
+  "required": ["protocol", "type", "transferId", "documentId", "index", "count", "dataBase64"],
+  "properties": {
+    "protocol": { "const": "reader/1" },
+    "type": { "const": "chunk" },
+    "transferId": { "type": "string", "minLength": 16, "maxLength": 64 },
+    "documentId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "index": { "type": "integer", "minimum": 0, "maximum": 511 },
+    "count": { "type": "integer", "minimum": 1, "maximum": 512 },
+    "dataBase64": { "type": "string", "minLength": 1, "maxLength": 200000 }
+  }
+}

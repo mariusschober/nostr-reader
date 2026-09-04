@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DocumentManifestV1",
+  "type": "object",
+  "required": ["protocol", "type", "transferId", "documentId", "title", "sourceType", "capturedAt", "mime", "wordCount", "uncompressedBytes", "compressedBytes", "compressedSha256", "documentSha256", "chunkCount", "senderDevicePubkey", "expiresAt"],
+  "properties": {
+    "protocol": { "const": "reader/1" },
+    "type": { "const": "manifest" },
+    "transferId": { "type": "string", "minLength": 16, "maxLength": 64 },
+    "documentId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "sourceType": { "enum": ["web", "chatgpt", "claude", "gemini", "perplexity", "selection", "android-share", "android-process-text", "file", "mac-share", "mac-quick-action"] },
+    "sourceName": { "type": "string", "maxLength": 200 },
+    "sourceUrl": { "type": "string", "maxLength": 2000 },
+    "author": { "type": "string", "maxLength": 300 },
+    "publishedAt": { "type": "integer" },
+    "capturedAt": { "type": "integer" },
+    "language": { "type": "string", "maxLength": 16 },
+    "mime": { "const": "text/markdown" },
+    "wordCount": { "type": "integer", "minimum": 0 },
+    "uncompressedBytes": { "type": "integer", "minimum": 0 },
+    "compressedBytes": { "type": "integer", "minimum": 0 },
+    "compressedSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "documentSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "chunkCount": { "type": "integer", "minimum": 1, "maximum": 512 },
+    "senderDevicePubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "identityProof": { "type": "object" },
+    "expiresAt": { "type": "integer" }
+  }
+}

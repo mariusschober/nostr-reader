@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReaderPairV1",
+  "type": "object",
+  "required": ["protocol", "pairingPubkey", "chromeDevicePubkey", "nonce", "relays", "expiresAt"],
+  "properties": {
+    "protocol": { "const": "reader-pair/1" },
+    "pairingPubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "chromeDevicePubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "nonce": { "type": "string", "minLength": 32, "maxLength": 64 },
+    "relays": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 8 },
+    "expiresAt": { "type": "integer" }
+  }
+}

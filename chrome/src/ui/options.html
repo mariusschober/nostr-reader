@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{font-family:system-ui;background:#FFFCF0;color:#100F0F;max-width:640px;margin:32px auto;padding:20px}
+section{border-top:1px solid #CECDC3;padding:12px 0}
+</style></head><body>
+<h2>Reader settings</h2>
+<section><h3>Connected device</h3><div id="dev">…</div></section>
+<section><h3>AI buttons</h3>
+<label><input type="checkbox" data-p="chatgpt" checked> ChatGPT</label><br>
+<label><input type="checkbox" data-p="claude" checked> Claude</label><br>
+<label><input type="checkbox" data-p="gemini" checked> Gemini</label><br>
+<label><input type="checkbox" data-p="perplexity" checked> Perplexity</label>
+</section>
+<section><h3>Signing</h3><p>Private device key (Recommended) is default. Browser signer lives under Advanced.</p><div id="signer">…</div></section>
+<section><h3>Advanced</h3><div id="adv">Relays and pending transfers are managed automatically. Pending: <span id="pend">…</span></div></section>
+<script type="module">
+const s = await chrome.runtime.sendMessage({kind:"reader-status"});
+document.getElementById("dev").textContent = s.paired ? "Connected · " + s.relays.join(", ") : "Not paired";
+document.getElementById("pend").textContent = String(s.pending);
+</script></body></html>

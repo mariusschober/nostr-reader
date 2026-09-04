@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AckV1",
+  "type": "object",
+  "required": ["protocol", "type", "transferId", "documentId", "status", "receivedAt"],
+  "properties": {
+    "protocol": { "const": "reader/1" },
+    "type": { "const": "ack" },
+    "transferId": { "type": "string", "minLength": 16, "maxLength": 64 },
+    "documentId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "status": { "enum": ["stored", "duplicate", "rejected"] },
+    "receivedAt": { "type": "integer" },
+    "reason": { "type": "string", "maxLength": 500 }
+  }
+}

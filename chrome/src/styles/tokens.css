@@ -1,0 +1,2 @@
+:root{--paper:#FFFCF0;--base-50:#F2F0E5;--base-200:#CECDC3;--black:#100F0F;--green:#66800B;--orange:#BC5215;--red:#AF3029;--blue:#205EA6}
+@media (prefers-color-scheme:dark){:root{--paper:#100F0F;--black:#FFFCF0}}

@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{font-family:system-ui;background:#FFFCF0;color:#100F0F;max-width:560px;margin:40px auto;padding:20px;text-align:center}
+#qr canvas,#qr img{margin:16px auto}
+.ok{color:#66800B;font-size:22px}
+code{font-size:12px;word-break:break-all}
+</style></head><body>
+<h2>Scan with Reader on Android</h2>
+<div id="qr"></div>
+<div id="state">Preparing…</div>
+<p><code id="dump"></code></p>
+<script type="module">
+import QRCode from "qrcode";
+const r = await chrome.runtime.sendMessage({kind:"reader-start-pairing"});
+if (!r.ok) { document.getElementById("state").textContent = "Failed: " + r.error; }
+else {
+  const payload = JSON.stringify(r.qr);
+  document.getElementById("dump").textContent = payload;
+  const c = document.createElement("canvas");
+  document.getElementById("qr").appendChild(c);
+  await QRCode.toCanvas(c, payload, {width: 260});
+  document.getElementById("state").textContent = "Waiting for Android… (code refreshes every 5 minutes)";
+}
+</script></body></html>

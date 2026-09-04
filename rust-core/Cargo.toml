@@ -1,0 +1,16 @@
+[package]
+name = "reader-core"
+version = "0.1.0"
+edition = "2021"
+description = "Normative Reader v1 algorithms: canonicalization, hashing, packing, RSVP/TTS models, limits"
+
+[lib]
+name = "reader_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sha2 = "0.10"
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-normalization = "0.1"

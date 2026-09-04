@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{font-family:system-ui;background:#FFFCF0;color:#100F0F;min-width:260px;padding:14px}
+.ok{color:#66800B}.warn{color:#BC5215}.err{color:#AF3029}
+button{background:#100F0F;color:#FFFCF0;border:0;border-radius:6px;padding:8px 12px;cursor:pointer}
+</style></head><body>
+<h3>Reader</h3>
+<div id="status">Checking…</div>
+<p><button id="open">Setup / Pairing</button></p>
+<p><button id="retry">Retry pending</button></p>
+<script type="module">
+const s = await chrome.runtime.sendMessage({kind:"reader-status"});
+document.getElementById("status").innerHTML = s.paired
+  ? `<span class="ok">Connected</span> · ${s.relays.length} relays · ${s.pending} pending`
+  : `<span class="warn">Not paired</span> — scan with Reader on Android`;
+document.getElementById("open").onclick = () => chrome.tabs.create({url: chrome.runtime.getURL("src/ui/pairing.html")});
+document.getElementById("retry").onclick = async () => { await chrome.runtime.sendMessage({kind:"reader-retry"}); location.reload(); };
+</script></body></html>

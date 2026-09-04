@@ -1,0 +1,36 @@
+{
+  "vector": "golden-v1",
+  "description": "Cross-platform golden vector. Canonical markdown below hashes to documentSha256. Gunzip of dataBase64 must reproduce it byte-for-byte. TEST-ONLY keys, never production.",
+  "canonicalMarkdown": "Hello Reader\n\nThis is a golden-vector article. It has two paragraphs.\n\n- one\n- two\n",
+  "documentSha256": "78dad25a190e768000a895240766cbbcaab76c3d49db0129b5ba703ce5bff2d8",
+  "uncompressedBytes": 83,
+  "compressedSha256": "7e90064865ca5350ab85023c6b954dad31b6b9e6994d201f34f187a16a4db807",
+  "chunk": {
+    "protocol": "reader/1",
+    "type": "chunk",
+    "transferId": "golden-transfer-0001",
+    "documentId": "78dad25a190e768000a895240766cbbcaab76c3d49db0129b5ba703ce5bff2d8",
+    "index": 0,
+    "count": 1,
+    "dataBase64": "H4sICNuCmmoAA2dvbGRlbi5tZAANycEJwCAMRuF7pvgXqHO019IFggYVgpEY2vUrPL7LO0XVcAsXcaKn9YUdo5oWGccrOczBHj2rJFyBxgvxGSY7V+fZViI6YEO2e9APr8mN+FMAAAA="
+  },
+  "manifest": {
+    "protocol": "reader/1",
+    "type": "manifest",
+    "transferId": "golden-transfer-0001",
+    "documentId": "78dad25a190e768000a895240766cbbcaab76c3d49db0129b5ba703ce5bff2d8",
+    "title": "Hello Reader",
+    "sourceType": "web",
+    "capturedAt": 1725400000,
+    "mime": "text/markdown",
+    "wordCount": 13,
+    "uncompressedBytes": 83,
+    "compressedBytes": 104,
+    "compressedSha256": "7e90064865ca5350ab85023c6b954dad31b6b9e6994d201f34f187a16a4db807",
+    "documentSha256": "78dad25a190e768000a895240766cbbcaab76c3d49db0129b5ba703ce5bff2d8",
+    "chunkCount": 1,
+    "senderDevicePubkey": "0000000000000000000000000000000000000000000000000000000000000000",
+    "expiresAt": 1726004800
+  },
+  "testKeysNote": "senderDevicePubkey above is a placeholder shape check, not a signing key. Real crypto tests use freshly generated random keys at runtime plus fixed TEST-ONLY sec keys embedded in test code (chrome/tests, android tests), never shipped."
+}

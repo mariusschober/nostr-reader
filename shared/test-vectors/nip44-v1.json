@@ -1,0 +1,13 @@
+{
+  "vector": "nip44-v1",
+  "description": "Real nostr-tools NIP-44 v2 ciphertext with fixed TEST-ONLY keys and fixed nonce. Kotlin must decrypt to plaintext.",
+  "secA": "0000000000000000000000000000000000000000000000000000000000000001",
+  "secB": "0000000000000000000000000000000000000000000000000000000000000002",
+  "pubA": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "pubB": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "conversationKey": "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d",
+  "conversationKeySymmetric": true,
+  "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "plaintext": "Hello Reader NIP-44 interop vector. Special: äöü — — emoji.",
+  "payload": "AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fWVeaDJSo5xEwhcZ1LlYL+YsVU+YE3HJucUeKpezEOg/CXdttAYjs9jzzoqOP6hqWSAX6cRlRS3Mdky3gixvSyHQu26KtdfE+h55VGgs4x6aZZGF6JJbaMrfblwHtWB1hOJjgYXIyvqeenPmbXwHetPCDHFwGjAFJxRhz3e6sZ2iHww=="
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+  <cloud-backup>
+    <exclude domain="sharedpref" path="reader_keys.xml"/>
+    <exclude domain="sharedpref" path="reader_secure.xml"/>
+    <exclude domain="database" path="reader.db"/>
+    <exclude domain="database" path="reader.db-journal"/>
+    <exclude domain="file" path="keys/"/>
+  </cloud-backup>
+  <device-transfer>
+    <exclude domain="sharedpref" path="reader_keys.xml"/>
+    <exclude domain="database" path="reader.db"/>
+  </device-transfer>
+</data-extraction-rules>
