@@ -100,7 +100,7 @@ than claims about an immutable baseline line.
 | baseline Chrome regressions | Node/Vitest 2 | patched regression tests on baseline | demonstrate defects | 4 expected failures | `regressions-chrome-fail.log` | PASS |
 | baseline Android regressions | JVM/Gradle | patched regression tests on baseline | demonstrate defects | 6 expected failures | `regressions-android-fail.log` | PASS |
 | original physical failure | TCL | scan baseline QR | capture exact relay outcomes | one matching `OK_FALSE`, two transport failures, UI error | original TCL trace | PASS |
-| Chrome dependencies | macOS/Node 22.16 | `npm ci --offline`; unchanged-lock advisory evidence | locked local install; no known cached/prior advisory | 183 packages installed/audited; 0 vulnerabilities reported; online rerun denied egress | terminal run + lockfile + final evidence | PASS for locked install and unchanged advisory result; fresh online query NOT MEASURED |
+| Chrome dependencies | macOS/Node 22.16 | `npm ci --offline`; `npm audit --omit=dev --json`; `npm audit --json` | locked local install; current registry response has no known advisory | 183 packages installed; both dated online audits returned 0 vulnerabilities | `chrome-npm-audit-online-2026-09-05.txt` + terminal run | PASS at the recorded UTC time |
 | Chrome static | TypeScript 5.5.4 | `npm run typecheck` | no errors | no errors | terminal run | PASS |
 | Chrome unit/fault | Vitest 5.0 | `npm test` | all pass | 17 files, 101 tests pass | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
 | Chrome package | Vite 8.2.2/CFT | `npm run build` | valid MV3 package, standalone content script | verifier pass; no module/noncharacter packaging defect | build output | PASS |
@@ -108,9 +108,9 @@ than claims about an immutable baseline line.
 | Chrome secret boundary | CFT 151 | content script reads local storage keys | access denied/hidden | API namespace present in exact current isolated world, but read denied; no values visible | `chrome-content-storage-isolation-*`, `pairing-relay-state-hardening-*` | PASS |
 | Chrome persistence | paired CFT profile | reload/restart + status + device/relay binding integrity | pairing/outbox survive with exact bound state | paired, exact seven relays, device binding present/verified, relay digest present/matched, delivered 1, pending 0 | `chrome-paired-status-*`, `chrome-device-binding-hardening-*` | PASS |
 | Chrome post-pair worker recovery | paired CFT profile | terminate 20 distinct service-worker targets and request read-only status after each | every new worker revalidates the same bound channel without outbox mutation | 20/20 recovered; paired 7, pending 0, delivered 1, failed 0 | `chrome-device-binding-hardening-*` | PASS for post-pair recovery; required before-reply pairing quota NOT MEASURED |
-| Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 86 tests, 0 failures/errors | XML reports + `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
+| Android unit | JDK 17/Gradle 8.9/AGP 8.7.2 | `./gradlew testDebugUnitTest` | all pass | 86 tests, 0 failures/errors | XML reports + `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
 | Android lint/build | Android SDK 34 | `lintDebug assembleDebug assembleDebugAndroidTest` | 0 errors; APKs | success, 0 lint errors, 17 retained warnings | Gradle/lint report | PASS |
-| Android debug APK reproducibility | AGP 8.5.2 / D8 8.5.35 | four clean same-source builds, including two with `--max-workers=1` | byte-identical APKs | four distinct APK pairs; Kotlin class inventory and normalized full DEX disassembly identical; changing bytes isolated to D8 synthetic-class checksum metadata | `artifact-reproducibility-2026-09-05.txt` | FAIL for byte reproducibility; semantic comparison PASS |
+| Android debug APK reproducibility | Gradle 8.9 / AGP 8.7.2 / D8 8.7.18 | two clean same-source single-worker builds after diagnosing four failures on AGP 8.5.2 | byte-identical app and test APKs | both app APKs `4c555d6d…ea5e`; both test APKs `244c4bd0…563`; exact `cmp` PASS | `artifact-reproducibility-2026-09-05.txt` | PASS |
 | shared pairing transcript | Chrome + Android JVM + Android runtime | one fixed request/response/ACK/completion across both implementations | exact field equality and opposite-end validation | unit PASS; runtime PASS | `shared-pairing-vector-2026-09-05.txt` | PASS |
 | Android instrumentation | API-26 emulator | exact APK + test APK, ten current DB/codec/transfer/QR/pairing/recovery cases | all pass | 10/10 | generated `ARTIFACTS.json` + final evidence | PASS |
 | Android instrumentation | physical TCL T807D | byte-matched APK + test APK, ten current cases | all pass | 10/10 | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` + generated manifest | PASS |
@@ -168,21 +168,20 @@ to ignored generated files:
 - `artifacts/ARTIFACTS.json`
 - `artifacts/SHA256SUMS`
 
-On this host the wrapper's online `npm audit` step was denied network egress.
-The same clean-build steps were therefore run individually with
-`npm ci --offline` and offline Gradle, followed by the complete local test,
-lint, package, SBOM, and dependency-inventory gates. The unchanged lockfile's
-local install reported zero vulnerabilities; a fresh online advisory query is
-explicitly **NOT MEASURED** for this final rebuild.
+The clean build uses the lockfile with `npm ci --offline` and offline Gradle,
+followed by the complete local test, lint, package, SBOM, and
+dependency-inventory gates. Separate dated online `npm audit --omit=dev` and
+full `npm audit` registry queries both returned zero vulnerabilities. This is
+a time-bounded advisory result, not a permanent claim about future advisories.
 
 Chrome packaging now normalizes timestamps and file order and requires two
 independent packages of the same fresh dist to compare byte-for-byte. A third
-package after another Vite build matched as well. Android debug APK
-reproducibility is separately **FAIL** with the pinned AGP/D8 toolchain: repeat
-clean builds change D8's embedded synthetic-class checksum map even though the
-Kotlin class inventory and normalized complete DEX disassembly match. Exact
-final APK hashes therefore remain authoritative and must be installed/tested;
-semantic equivalence is not reported as byte equivalence.
+package after another Vite build matched as well. Android's prior AGP
+8.5.2/D8 8.5.35 toolchain changed debug-only synthetic-class checksum metadata
+between clean builds despite identical normalized DEX semantics. The pinned,
+officially compatible Gradle 8.9/AGP 8.7.2/D8 8.7.18 update closes that gap:
+two clean app builds and two clean test-APK builds compare byte-for-byte.
+Exact final APK hashes remain authoritative and are still installed/tested.
 
 Exact post-commit values belong in `ARTIFACTS.json`; placing a future commit
 hash inside this tracked report would create an impossible self-reference.
@@ -206,8 +205,7 @@ Only evidence-based residuals are listed in `KNOWN_LIMITATIONS.md`. Decisive
 items are the unexecuted reliability/lifecycle quotas, exact-final-artifact E2E
 transmission, the one-time v4 -> v5 historical-ledger boundary, public relay
 policy drift, no public AUTH challenge, untested live external signers, and
-Android release/16-KiB maintenance. Debug APK byte reproducibility also remains
-failed under AGP 8.5.2/D8 8.5.35 despite identical normalized DEX semantics.
+Android release/16-KiB maintenance.
 
 ## 10. Explicit declarations
 

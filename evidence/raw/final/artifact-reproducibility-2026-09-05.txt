@@ -52,10 +52,45 @@ Isolation evidence for the app APK:
     synthetic-class input checksums; method/class disassembly did not differ.
   - `--max-workers=1` did not stabilize those checksum-map values.
 
-Status: FAIL for byte-for-byte Android debug APK reproducibility with this
-toolchain. PASS for the executed same-source class inventory and normalized DEX
-semantic comparison. This does not substitute for installing and testing the
-one exact final APK hash recorded in artifacts/ARTIFACTS.json.
+Historical status: FAIL for byte-for-byte Android debug APK reproducibility
+with this toolchain. PASS for the executed same-source class inventory and
+normalized DEX semantic comparison.
+
+Supported toolchain remediation
+-------------------------------
+Candidate configuration:
+  Android Gradle Plugin 8.7.2
+  Gradle 8.9
+  Kotlin 2.0.20
+  D8 marker version 8.7.18
+  JDK 17
+
+Compatibility basis:
+  Android's AGP 8.7 release notes specify Gradle 8.9 and JDK 17, with API 35
+  as the maximum supported API. This project uses compile/target SDK 34.
+  Source: https://developer.android.com/build/releases/agp-8-7-0-release-notes
+  The Gradle 8.9 binary distribution is pinned to its official SHA-256:
+    d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab
+  The tracked wrapper JAR matches Gradle's official 8.9 SHA-256:
+    498495120a03b9a6ab5d155f5de3c8f0d986a449153702fb80fc80e134484f17
+  Source: https://gradle.org/release-checksums/
+
+Two independent clean builds used:
+  ./gradlew --offline --no-daemon --max-workers=1 clean \
+    assembleDebug assembleDebugAndroidTest
+
+  build                         app APK SHA-256                                                   androidTest APK SHA-256
+  clean build 1                 4c555d6d8e53784b3d7a5c00a7e85df671f3f5abede1923da5766573616cea5e  244c4bd0d829f17a342c78e06d6d7bb9f6aa354dd2c527564a1da0c9187aa563
+  clean build 2                 4c555d6d8e53784b3d7a5c00a7e85df671f3f5abede1923da5766573616cea5e  244c4bd0d829f17a342c78e06d6d7bb9f6aa354dd2c527564a1da0c9187aa563
+
+Exact `cmp` returned PASS for both pairs. A prior two-build trial under Gradle
+8.11.1 produced the same two hashes, but the project pins Gradle 8.9 because it
+is the version specified by the AGP 8.7 compatibility table.
+
+Final status: PASS for same-host byte-for-byte Android debug app and
+instrumentation APK reproducibility under the pinned updated toolchain. This
+does not substitute for installing and testing the exact final APK hashes
+recorded in artifacts/ARTIFACTS.json.
 
 No production signing material, public relay traffic, new pairing, or user data
 was used by these checks.

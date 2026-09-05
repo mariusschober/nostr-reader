@@ -1,0 +1,29 @@
+Chrome npm registry advisory evidence — 2026-09-05
+
+UTC validation time:
+  2026-09-05T07:51:33Z
+
+Source commit under test:
+  c45c35f57cacd04243953be8f435525c8802b6fd
+
+Configuration observed:
+  npm offline: false
+  registry: https://registry.npmjs.org/
+
+Executed with registry access:
+  npm audit --omit=dev --json
+  npm audit --json
+
+Both commands returned auditReportVersion 2, an empty vulnerabilities object,
+and zero info, low, moderate, high, critical, and total vulnerabilities.
+
+Dependency counts reported by both results:
+  production: 48
+  development: 135
+  optional: 51
+  peer: 0
+  peer optional: 0
+  total: 206
+
+Status: PASS for the npm registry advisory response at the stated UTC time.
+This is a dated result, not a permanent claim about future advisories.

@@ -45,12 +45,12 @@ unit, instrumentation, packaging, live-relay, and single-flow checks are
 reported independently in `TEST_REPORT.md`.
 
 The Chrome ZIP is now reproducible on this host: two packages of one dist and a
-third package after a fresh Vite build were byte-identical. Android debug APKs
-are not byte-reproducible under the pinned AGP 8.5.2/D8 8.5.35 toolchain. Four
-clean builds changed only D8's embedded synthetic-class checksum map; Kotlin
-class hashes and normalized full DEX disassembly matched. Treat this as a byte
-reproducibility **FAIL**, not as a runtime-code difference, and always install
-the one exact APK hash named in the generated artifact manifest.
+third package after a fresh Vite build were byte-identical. Four Android clean
+builds under AGP 8.5.2/D8 8.5.35 had changed only D8's embedded debug checksum
+map despite matching normalized DEX semantics. The narrowly upgraded,
+officially compatible Gradle 8.9/AGP 8.7.2/D8 8.7.18 toolchain closes that gap:
+two clean app builds and two clean test-APK builds were byte-identical. The
+exact APK hashes named in the generated artifact manifest remain authoritative.
 
 The paired Chrome profile also survived 20/20 distinct post-pair service-worker
 terminations with identical seven-relay and outbox status. This is useful exact
@@ -104,6 +104,8 @@ termination-before-Android-reply pairing series.
 - Chrome artifact packaging now stages a symlink-free dist, normalizes ZIP
   timestamps/order/metadata, and rejects a build unless two packages compare
   byte-for-byte.
+- Android now pins Gradle 8.9's official distribution checksum and AGP 8.7.2;
+  clean app and instrumentation APK builds must compare byte-for-byte.
 
 ## Evidence map
 

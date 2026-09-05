@@ -12,12 +12,12 @@ if (dirty) throw new Error("Refusing manifest generation: tracked worktree is di
 const definitions = [
   {
     path: join(repo, "artifacts", "reader-debug.apk"),
-    buildCommand: "cd android && ./gradlew clean test lint assembleDebug assembleDebugAndroidTest",
+    buildCommand: "cd android && two clean single-worker builds; test/lint on final build; cmp app and instrumentation APK pairs",
     installTest: process.env.READER_ANDROID_APK_RESULT ?? "NOT MEASURED: build completed; physical install result not supplied",
   },
   {
     path: join(repo, "artifacts", "reader-debug-androidTest.apk"),
-    buildCommand: "cd android && ./gradlew clean test lint assembleDebug assembleDebugAndroidTest",
+    buildCommand: "cd android && two clean single-worker builds; test/lint on final build; cmp app and instrumentation APK pairs",
     installTest: process.env.READER_ANDROID_INSTRUMENTATION_RESULT ?? "NOT MEASURED: build completed; physical instrumentation result not supplied",
   },
   {

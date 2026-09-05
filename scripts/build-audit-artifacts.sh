@@ -21,14 +21,22 @@ npm sbom --package-lock-only --sbom-format cyclonedx --sbom-type application > "
 
 cd "$repo_dir"
 reader_repro_zip=$(mktemp "${TMPDIR:-/tmp}/reader-chrome-repro.XXXXXX")
-trap 'rm -f -- "$reader_repro_zip"' EXIT HUP INT TERM
+reader_repro_apk=$(mktemp "${TMPDIR:-/tmp}/reader-android-repro.XXXXXX")
+reader_repro_test_apk=$(mktemp "${TMPDIR:-/tmp}/reader-android-test-repro.XXXXXX")
+trap 'rm -f -- "$reader_repro_zip" "$reader_repro_apk" "$reader_repro_test_apk"' EXIT HUP INT TERM
 "$repo_dir/scripts/package-chrome-extension.sh" "$repo_dir/artifacts/reader-chrome-extension.zip"
 "$repo_dir/scripts/package-chrome-extension.sh" "$reader_repro_zip"
 cmp "$repo_dir/artifacts/reader-chrome-extension.zip" "$reader_repro_zip"
 echo "Chrome extension packaging reproducibility: PASS"
 
 cd "$repo_dir/android"
-./gradlew clean test lint assembleDebug assembleDebugAndroidTest
+./gradlew --no-daemon --max-workers=1 clean assembleDebug assembleDebugAndroidTest
+cp "$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk" "$reader_repro_apk"
+cp "$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" "$reader_repro_test_apk"
+./gradlew --no-daemon --max-workers=1 clean test lint assembleDebug assembleDebugAndroidTest
+cmp "$reader_repro_apk" "$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk"
+cmp "$reader_repro_test_apk" "$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+echo "Android app and instrumentation APK reproducibility: PASS"
 ./gradlew -q app:dependencies --configuration debugRuntimeClasspath > "$repo_dir/artifacts/android-debug-runtime-dependencies.txt"
 cp "$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk" "$repo_dir/artifacts/reader-debug.apk"
 cp "$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" "$repo_dir/artifacts/reader-debug-androidTest.apk"
