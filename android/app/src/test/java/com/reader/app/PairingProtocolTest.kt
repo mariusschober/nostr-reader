@@ -14,22 +14,30 @@ class PairingProtocolTest {
   private val deviceKey = "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"
   private val channelKey = "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"
 
-  private fun request() = run {
-    val relays = listOf("wss://relay.example", "wss://second.example")
-    val json = buildJsonObject {
+  private fun requestJson(
+    relays: List<String> = listOf("wss://relay.example", "wss://second.example"),
+    createdAt: Long = now,
+    expiresAt: Long = now + 300,
+    pairingPubkey: String = pairingKey,
+    chromeDevicePubkey: String = deviceKey,
+    capabilities: List<String> = PAIRING_CAPABILITIES,
+  ) = buildJsonObject {
       put("protocol", PAIRING_PROTOCOL)
       put("sessionId", "01".repeat(16))
-      put("pairingPubkey", pairingKey)
-      put("chromeDevicePubkey", deviceKey)
+      put("pairingPubkey", pairingPubkey)
+      put("chromeDevicePubkey", chromeDevicePubkey)
       put("nonce", "02".repeat(32))
       put("relays", JsonArray(relays.map(::JsonPrimitive)))
       put("relaySetDigest", PairingProtocol.relaySetDigest(relays))
-      put("createdAt", now)
-      put("expiresAt", now + 300)
-      put("capabilities", JsonArray(PAIRING_CAPABILITIES.map(::JsonPrimitive)))
+      put("createdAt", createdAt)
+      put("expiresAt", expiresAt)
+      put("capabilities", JsonArray(capabilities.map(::JsonPrimitive)))
     }
-    PairingProtocol.validateRequest(json.toString(), now + 1)
-  }
+
+  private fun request() = PairingProtocol.validateRequest(requestJson().toString(), now + 1)
+
+  private fun withField(json: JsonObject, name: String, value: JsonElement): JsonObject =
+    JsonObject(json.toMutableMap().also { it[name] = value })
 
   @Test
   fun responseAndAckBindTheVerifiedInnerSenders() {
@@ -86,6 +94,102 @@ class PairingProtocolTest {
     assertFails {
       PairingProtocol.validateResolvedRelayAddresses(request.relays) {
         arrayOf(InetAddress.getByName("127.0.0.1"))
+      }
+    }
+  }
+
+  @Test
+  fun rejectsOversizedDuplicateKeyAndUnsafeTimeWindows() {
+    assertFails { PairingProtocol.validateRequest(" ".repeat(4097), now) }
+
+    val valid = requestJson().toString()
+    val duplicateProtocol = valid.replaceFirst(
+      "\"protocol\":\"$PAIRING_PROTOCOL\"",
+      "\"protocol\":\"$PAIRING_PROTOCOL\",\"protocol\":\"$PAIRING_PROTOCOL\"",
+    )
+    assertFails { PairingProtocol.validateRequest(duplicateProtocol, now + 1) }
+    assertFails { PairingProtocol.validateRequest(requestJson(expiresAt = now).toString(), now) }
+    assertFails {
+      PairingProtocol.validateRequest(
+        requestJson(createdAt = now + 61, expiresAt = now + 120).toString(),
+        now,
+      )
+    }
+    assertFails {
+      PairingProtocol.validateRequest(
+        requestJson(createdAt = now, expiresAt = now + 301).toString(),
+        now,
+      )
+    }
+  }
+
+  @Test
+  fun rejectsUnsafeAmbiguousAndExcessRelaySets() {
+    val unsafe = listOf(
+      "ws://relay.example",
+      "wss://user:password@relay.example",
+      "wss://relay.example?next=wss://attacker.example",
+      "wss://relay.example/#fragment",
+      "wss://relay.example/%2e%2e/private",
+      "wss://relay.example/../private",
+      "wss://localhost",
+      "wss://relay.local",
+      "wss://127.0.0.1",
+      "wss://relay.example\u000a",
+    )
+    unsafe.forEach { relay ->
+      assertFails { PairingProtocol.validateRequest(requestJson(relays = listOf(relay)).toString(), now + 1) }
+    }
+
+    assertFails {
+      PairingProtocol.validateRequest(
+        requestJson(relays = (1..9).map { "wss://relay-$it.example" }).toString(),
+        now + 1,
+      )
+    }
+    assertFails {
+      PairingProtocol.validateRequest(
+        requestJson(relays = listOf("wss://relay.example", "wss://RELAY.example:443/")).toString(),
+        now + 1,
+      )
+    }
+  }
+
+  @Test
+  fun rejectsInvalidKeysCapabilitiesAndRelayDigest() {
+    val invalidKey = "ff".repeat(32)
+    assertFails {
+      PairingProtocol.validateRequest(requestJson(pairingPubkey = invalidKey).toString(), now + 1)
+    }
+    assertFails {
+      PairingProtocol.validateRequest(requestJson(chromeDevicePubkey = invalidKey).toString(), now + 1)
+    }
+    assertFails {
+      PairingProtocol.validateRequest(
+        requestJson(capabilities = PAIRING_CAPABILITIES.dropLast(1)).toString(),
+        now + 1,
+      )
+    }
+    assertFails {
+      PairingProtocol.validateRequest(
+        requestJson(capabilities = PAIRING_CAPABILITIES + PAIRING_CAPABILITIES.last()).toString(),
+        now + 1,
+      )
+    }
+    assertFails {
+      val badDigest = withField(requestJson(), "relaySetDigest", JsonPrimitive("00".repeat(32)))
+      PairingProtocol.validateRequest(badDigest.toString(), now + 1)
+    }
+  }
+
+  @Test
+  fun rejectsPrivateCarrierGradeNatAndUniqueLocalDnsAnswers() {
+    val relays = request().relays
+    listOf("10.0.0.1", "100.64.0.1", "fc00::1").forEach { address ->
+      assertFails {
+        PairingProtocol.validateResolvedRelayAddresses(relays) {
+          arrayOf(InetAddress.getByName(address))
+        }
       }
     }
   }

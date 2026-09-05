@@ -67,12 +67,14 @@ Chrome owns a durable `PairingSessionV2` state machine in trusted
 `storage.local`. It recovers on worker evaluation, extension install/update,
 browser startup, and the pairing alarm. The QR uses durable kind 1059, so a
 pairing tab or worker need not remain open. At most two live sessions are
-allowed; completion supersedes the others.
+allowed; completion supersedes the others. One serial executor owns pairing
+session read-modify-write operations within each worker lifetime.
 
 Android owns durable pairing rows in Room. Workers ignore `provisioning`, can
 resume the four pending v2 states, revoke expired/corrupt rows, and delete the
 associated Keystore entry on cancellation/failure. Promotion to `active` and
 revocation of a prior active channel happen in one Room transaction.
+Foreground and WorkManager pairing operations share a process-wide mutex.
 
 ## Delivery ownership and recovery
 
@@ -87,7 +89,11 @@ queued -> relay_accepted -> awaiting_device -> delivered
 ```
 
 Only a verified device ACK enters `delivered` and deletes captured content.
-Relay `OK=true` never does.
+Relay `OK=true` never does. Publish, ACK, retry, and discard operations for the
+same transfer are serialized and reload IndexedDB state inside that critical
+section. Chrome persists the small delivered receipt before deleting the
+outbox item, preventing stale async handlers from recreating acknowledged
+content.
 
 Android receives through a rolling kind-1059 `#p` query. It deduplicates relay
 copies by event ID within a run and persists authenticated wrapper IDs across

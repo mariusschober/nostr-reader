@@ -8,7 +8,7 @@ referenced specification.
 | NIP-01 | canonical event ID, signatures, `#p`, `OK`, REQ/EVENT/EOSE | complete JSON escaping, lowercase fixed-length wire hex, exact event ID/signature validation; baseline regressions and current TS/Kotlin tests | PASS |
 | NIP-11 | relay information document | dated NIP-11 fetches for all six defaults and the tested custom relay; limits/operator metadata retained in `LIVE_RELAY_REPORT.md` | PASS |
 | NIP-40 | wrapper expiration | exactly one integer `expiration` tag; receivers reject missing, duplicate, malformed, and expired wrappers before payload use; inner pairing/transfer expiry also enforced | PASS |
-| NIP-42 | relay authentication | challenge bound by the library/template to exact relay and challenge; anonymous transport key signs AUTH; publish and subscription retry after AUTH; stale/negative AUTH tests | PASS in local harness; no tested public relay required AUTH |
+| NIP-42 | relay authentication | independently validate exact kind-22242 fields, current timestamp, empty content, one exact relay tag, and one exact bounded challenge before the anonymous transport key signs; publish/subscription retry once after AUTH; stale/negative/misbound/duplicate AUTH tests | PASS in local harness; no tested public relay required AUTH |
 | NIP-44 v2 | endpoint encryption | exact conversation key, padding boundaries including extended lengths, MAC-before-plaintext, strict Base64/UTF-8/caps; pinned official positive/negative corpus in TS and Kotlin | PASS |
 | NIP-59 | rumors, seals, gift wraps | rumor ID present/no signature; kind-13 seal has empty tags; fresh random wrapper key; kind 1059 has exact `p` and expiration; signatures/sender/recipient/timestamps verified | PASS for Reader v2 tested paths |
 | NIP-07 | optional provenance proof | browser signer signs a bounded `device-auth` proof; returned pubkey/event/content are independently verified before use; no page-world key bridge | PASS unit; live Amber/nos2x browser signer NOT MEASURED |
@@ -43,10 +43,20 @@ Android channel key appropriate to that connection. Reader does not use or ask
 for a real social identity. A relay that requires payment or a real identity is
 classified incompatible rather than silently deanonymizing the user.
 
+Chrome does not treat the dependency-provided event template as trusted. Before
+signing, it requires exactly `kind`, `created_at`, `tags`, and `content`; kind
+22242; empty content; a timestamp within ten minutes; one normalized relay tag
+for the connected URL; and one exact 1–512-byte challenge tag. Android builds
+the same constrained event itself. A matching negative AUTH `OK` is never
+reported as rejection of the original Reader event, and duplicate AUTH `OK`s
+cannot cause repeated publication/subscription retries.
+
 Local harness evidence covers:
 
 - challenge -> valid AUTH -> publication/subscription retry -> matching OK;
 - stale/negative AUTH;
+- misbound, malformed, stale, oversized, and expanded AUTH templates/challenges;
+- contradictory original-event OKs and duplicate AUTH OKs;
 - CLOSED/auth-required classification;
 - challenge fingerprint logging without retaining the challenge.
 

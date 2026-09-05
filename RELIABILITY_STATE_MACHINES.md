@@ -15,15 +15,18 @@ NORMALIZED -> CONNECTING -> OPEN -> EVENT_QUEUED -> EVENT_SENT
 EVENT_SENT -> OK_TRUE
            -> OK_FALSE(reason-prefix)
            -> NO_OK_TIMEOUT
-           -> SOCKET_ERROR
-           -> TLS_ERROR
-           -> CLOSED
+AUTH_SENT  -> AUTH_ERROR / AUTH_REJECTED
+malformed or misbound AUTH -> PROTOCOL_ERROR
+either publish path -> SOCKET_ERROR / TLS_ERROR / CLOSED
 ```
 
 Only an `OK` with the exact event ID is terminal acceptance/rejection. NOTICE,
-malformed, binary, duplicate, and mismatched frames cannot forge either.
+malformed, binary, duplicate, contradictory, and mismatched frames cannot forge
+or revise either. A negative `OK` for the AUTH event is authentication failure,
+not rejection of the original pairing/article event.
 NIP-42 authenticates with the anonymous device/channel key and is bound to the
-exact relay URL and challenge. No real Nostr identity is used.
+exact relay URL and challenge. Chrome independently constrains the complete
+kind-22242 template before signing it. No real Nostr identity is used.
 
 ## Chrome pairing
 
@@ -59,7 +62,9 @@ pending/provisioning -> revoked (failure, cancellation, expiry, key loss)
 sync and removed if a process died before the wrapped-key commit. A failed
 initial response revokes the row and deletes the Keystore material. The final
 promotion requires a validated Chrome ACK and is transactional with revocation
-of any previous active channel.
+of any previous active channel. A process-wide mutex serializes UI and worker
+begin/process/cancel operations so the same pending channel cannot be advanced
+concurrently.
 
 Backoff starts near five seconds, doubles with jitter, and is capped. Expiry
 provides the hard ceiling. A single active v2 channel is enforced after
@@ -81,8 +86,11 @@ failed -> explicit user discard | a later valid ACK
 The full outgoing intent is in IndexedDB before network activity. Stable
 `transferId`, `documentId`, `manifestId`, and compressed hash survive retries;
 each Nostr envelope is freshly wrapped. Backoff has jitter and a one-hour cap.
-The service worker queries ACKs before republishing after startup so a late
-publisher cannot resurrect content already acknowledged.
+The service worker queries ACKs before republishing after startup. All publish,
+ACK, retry, and discard mutations for one transfer share a keyed serial critical
+section and reload the durable record inside it, so a late publisher cannot
+resurrect content already acknowledged or discarded. The delivered receipt is
+persisted before the outbox item is deleted.
 
 ## Android receive/ACK
 
@@ -132,9 +140,11 @@ The pinned local WebSocket harness covers exact `OK=true`, explicit
 `OK=false`, no/mismatched/delayed/duplicate OK, NOTICE, CLOSED, AUTH and stale
 AUTH, close before/after send, malformed/binary/fragmented/oversized frames,
 message-size/created-at rejection, store-then-disconnect, subscriber
-disconnect, subscription restoration, duplicate/reordered events, and one of
-three relays succeeding. Chrome and Android map rejection, timeout, socket/TLS,
-and acceptance to distinct states.
+disconnect, subscription restoration, contradictory matching OKs, duplicate
+AUTH replies, authentication-event rejection, malicious AUTH templates,
+duplicate/reordered events, and one of three relays succeeding. Chrome and
+Android map original-event rejection, authentication failure, protocol error,
+timeout, socket/TLS failure, and acceptance to distinct states.
 
 ## Evidence status
 

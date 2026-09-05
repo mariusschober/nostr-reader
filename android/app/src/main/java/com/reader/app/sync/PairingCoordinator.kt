@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -76,6 +78,8 @@ class PairingCoordinator(
   }
 
   private fun failureCode(results: List<RelayClient.PublishResult>): String = when {
+    results.any { it.terminalState == RelayClient.PublishState.PROTOCOL_ERROR } -> "PROTOCOL_ERROR"
+    results.any { it.terminalState == RelayClient.PublishState.AUTH_REJECTED } -> "AUTH_REJECTED"
     results.any { it.terminalState == RelayClient.PublishState.OK_FALSE } -> "RELAY_REJECTED"
     results.any { it.terminalState == RelayClient.PublishState.TLS_ERROR } -> "TLS_ERROR"
     results.any { it.terminalState == RelayClient.PublishState.SOCKET_ERROR } -> "SOCKET_ERROR"
@@ -83,6 +87,12 @@ class PairingCoordinator(
   }
 
   private fun failureMessage(results: List<RelayClient.PublishResult>): String {
+    if (results.any { it.terminalState == RelayClient.PublishState.PROTOCOL_ERROR }) {
+      return "A pairing relay sent an invalid authentication message."
+    }
+    if (results.any { it.terminalState == RelayClient.PublishState.AUTH_REJECTED }) {
+      return "A pairing relay refused the app's anonymous authentication key."
+    }
     val rejected = results.firstOrNull { it.terminalState == RelayClient.PublishState.OK_FALSE }
     if (rejected != null) {
       val reason = rejected.reasonPrefix?.take(120)?.takeIf { it.isNotBlank() }
@@ -103,7 +113,10 @@ class PairingCoordinator(
     return nowSecs + base + random.nextInt(maxOf(1, (base / 4).toInt() + 1))
   }
 
-  suspend fun begin(qrText: String, ackCollectSecs: Long = 8): BeginResult {
+  suspend fun begin(qrText: String, ackCollectSecs: Long = 8): BeginResult =
+    pairingMutex.withLock { beginLocked(qrText, ackCollectSecs) }
+
+  private suspend fun beginLocked(qrText: String, ackCollectSecs: Long): BeginResult {
     val nowSecs = System.currentTimeMillis() / 1000
     val request = PairingProtocol.validateRequest(qrText, nowSecs)
     withContext(Dispatchers.IO) { PairingProtocol.validateResolvedRelayAddresses(request.relays) }
@@ -112,10 +125,10 @@ class PairingCoordinator(
     if (existing?.state == "provisioning") {
       // A prior process died between durable intent and wrapped-key commit.
       // That half-created channel is not resumable; remove it before retrying.
-      cancel(existing.channelId, "PAIRING_PROVISIONING_INTERRUPTED")
+      cancelLocked(existing.channelId, "PAIRING_PROVISIONING_INTERRUPTED")
     } else if (existing != null) {
       require(existing.pairingRequestJson == request.json.toString()) { "PAIRING_SESSION_CONFLICT" }
-      val connected = process(existing.channelId, ackCollectSecs)
+      val connected = processLocked(existing.channelId, ackCollectSecs)
       return BeginResult(existing.channelId, connected, existing.acceptedRelaysJson?.let {
         runCatching { Json.parseToJsonElement(it).jsonArray.size }.getOrDefault(0)
       } ?: 0)
@@ -186,24 +199,27 @@ class PairingCoordinator(
         updatedAt = System.currentTimeMillis(),
       )
     }
-    val connected = process(channelId, ackCollectSecs)
+    val connected = processLocked(channelId, ackCollectSecs)
     if (!connected) scheduleNow(appContext)
     return BeginResult(channelId, connected, accepted.size)
   }
 
-  suspend fun process(channelId: String, collectSecs: Long = 5): Boolean {
+  suspend fun process(channelId: String, collectSecs: Long = 5): Boolean =
+    pairingMutex.withLock { processLocked(channelId, collectSecs) }
+
+  private suspend fun processLocked(channelId: String, collectSecs: Long): Boolean {
     var channel = withContext(Dispatchers.IO) { db.channels().byId(channelId) } ?: return false
     if (channel.state == "active") return true
     val nowSecs = System.currentTimeMillis() / 1000
     if ((channel.pendingExpiresAt ?: 0) <= nowSecs) {
-      cancel(channelId, "PAIRING_EXPIRED")
+      cancelLocked(channelId, "PAIRING_EXPIRED")
       return false
     }
     val request = restoredRequest(channel)
     val relays = relayList(channel)
     withContext(Dispatchers.IO) { PairingProtocol.validateResolvedRelayAddresses(relays) }
     val channelSeckey = keys.openChannelKey(channelId) ?: run {
-      cancel(channelId, "CHANNEL_KEY_UNAVAILABLE")
+      cancelLocked(channelId, "CHANNEL_KEY_UNAVAILABLE")
       return false
     }
 
@@ -323,17 +339,20 @@ class PairingCoordinator(
     return false
   }
 
-  suspend fun processDue(collectSecs: Long = 4) {
+  suspend fun processDue(collectSecs: Long = 4) = pairingMutex.withLock {
     val nowSecs = System.currentTimeMillis() / 1000
     val expired = withContext(Dispatchers.IO) { db.channels().expiredPending(nowSecs) }
-    for (channel in expired) cancel(channel.channelId, "PAIRING_EXPIRED")
+    for (channel in expired) cancelLocked(channel.channelId, "PAIRING_EXPIRED")
     val pending = withContext(Dispatchers.IO) { db.channels().pendingPairings() }
     for (channel in pending) {
-      if ((channel.nextAttemptAt ?: 0) <= nowSecs) runCatching { process(channel.channelId, collectSecs) }
+      if ((channel.nextAttemptAt ?: 0) <= nowSecs) runCatching { processLocked(channel.channelId, collectSecs) }
     }
   }
 
-  suspend fun cancel(channelId: String, reason: String = "PAIRING_CANCELLED") {
+  suspend fun cancel(channelId: String, reason: String = "PAIRING_CANCELLED") =
+    pairingMutex.withLock { cancelLocked(channelId, reason) }
+
+  private suspend fun cancelLocked(channelId: String, reason: String) {
     withContext(Dispatchers.IO) { db.channels().revoke(channelId, System.currentTimeMillis()) }
     keys.deleteChannelKey(channelId)
     // The reason is intentionally not persisted beside a deleted bootstrap key.
@@ -341,6 +360,8 @@ class PairingCoordinator(
   }
 
   companion object {
+    private val pairingMutex = Mutex()
+
     fun scheduleNow(context: Context) {
       val request = androidx.work.OneTimeWorkRequestBuilder<SyncWorker>()
         .setConstraints(

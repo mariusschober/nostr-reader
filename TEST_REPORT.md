@@ -17,7 +17,8 @@ Chrome/TCL pairing with seven relays completed; one synthetic article was
 stored once; Android's authenticated ACK cleared Chrome's outbox.
 
 The ACK-durability follow-up was installed byte-for-byte on both physical
-phones and the API-26 emulator. Six instrumentation cases passed in all three
+phones and the API-26 emulator. The final state-race/authentication hardening
+adds a seventh hostile-QR runtime case; all seven cases pass in all three
 environments. The preserved TCL then
 migrated to Room v5, emitted one expected historical recovery ACK batch, and an
 immediately serialized second catch-up read the retained events without another
@@ -47,7 +48,9 @@ commit because a commit cannot contain its own future hash.
 ## 2. Findings resolved
 
 Each baseline location is relative to immutable commit `982920b4…`; fix
-locations are relative to this branch.
+locations are relative to this branch. Rows explicitly marked “repair
+follow-up” were defects found during final review of the repaired path rather
+than claims about an immutable baseline line.
 
 | Severity/finding | Original file/lines | Evidence | Fix file/lines | Regression/evidence | Status |
 |---|---|---|---|---|---|
@@ -68,12 +71,15 @@ locations are relative to this branch.
 | HIGH H8 NIP-42 absent | Android `NostrCodec.kt:175-245`; Chrome pool path | auth-required relay misclassified | Chrome `transport.ts:49-126`; Android relay auth state | publish/subscription AUTH and stale-AUTH tests | PASS local; public AUTH NOT MEASURED |
 | HIGH H9 incoming expiry ignored | Chrome `transport.ts:93-128`; Android wrap/manifest receive | stale replay reached payload logic | Chrome `transport.ts:239-244`; Android `NostrCodec.kt:159-168`, `TransferManager.kt:119-125` | expiry tests | PASS |
 | HIGH H10 nonstandard BIP-340 nonce | Android `Secp256k1.kt:95-110` | official signing vector fails | exact BIP-340 implementation in same module | official vectors 0–14 | PASS |
+| HIGH H11 stale Chrome outbox write after ACK (repair follow-up) | detached publish/retry/ACK handlers mutated one transfer independently | a late publisher could recreate an item after authenticated ACK deletion | keyed serial executor, durable reload inside transfer lock, ACK-first retry, receipt-before-delete | deterministic scheduler + service-worker recovery tests | PASS |
 | MEDIUM M1 incomplete NIP-01 escaping | Android `NostrCodec.kt:30-50` | CR/tab/control canonical IDs diverge | serializer-backed `eventId()` `NostrCodec.kt:50-58` | canonical reference test | PASS |
 | MEDIUM M2 rumor missing ID | Chrome `transport.ts:42-47`; Android `NostrCodec.kt:84-92` | spec/interoperability drift | Chrome `transport.ts:154-164`; Android `NostrCodec.kt:112-119` | rumor ID/signature tests | PASS |
 | MEDIUM M3 `sent` item stranded | Chrome `service-worker.ts:153`, alarm pending-only | no ACK meant permanent nonretry | retryable states/backoff/age ceiling, ACK-only deletion | delivery-state/recovery tests | PASS |
 | MEDIUM M4 “instant” background claim | Android periodic WorkManager | OS makes timing inexact | docs now say catch-up; immediate resume work added | source/emulator; broad physical timing NOT MEASURED | PASS documentation/implementation truth |
 | MEDIUM M5 documentation drift | `PROTOCOL.md`, `SECURITY.md`, old report | claims exceeded implementation/evidence | regenerated v2 documentation set | manual cross-check + tests | PASS |
-| MEDIUM M6 receiver ACK was only deduped in memory | pre-follow-up `SyncWorker` per-run set | a later catch-up could republish a completed ACK; process death after document commit had no durable ACK owner | Room v5 `ack_intents` + `processed_events`; serialized bounded quorum retry | 75 JVM tests, six-case tests on API-26 and both phones, one TCL installed-state repeat | PASS for executed evidence; physical interruption matrix NOT MEASURED |
+| MEDIUM M6 receiver ACK was only deduped in memory | pre-follow-up `SyncWorker` per-run set | a later catch-up could republish a completed ACK; process death after document commit had no durable ACK owner | Room v5 `ack_intents` + `processed_events`; serialized bounded quorum retry | 82 JVM tests, seven-case tests on API-26 and both phones, one TCL installed-state repeat | PASS for executed evidence; physical interruption matrix NOT MEASURED |
+| MEDIUM M7 relay AUTH/OK attribution (repair follow-up) | Android relay listener shared terminal bookkeeping for AUTH and original event; Chrome trusted the dependency template shape | negative AUTH could be reported as article rejection; duplicate/contradictory frames could revise effects; a malformed template could reach signing | exact auth-event ID classification, first-terminal compare-and-set, one auth retry, independent Chrome template validator | Chrome/Android malicious, stale, negative, oversized, duplicate, and contradictory AUTH/OK tests | PASS local; public AUTH NOT MEASURED |
+| MEDIUM M8 overlapping pairing advancement (repair follow-up) | UI, alarm, and worker entry points could perform concurrent read-modify-write | duplicate sends or stale pairing state writes under rapid/reentrant triggers | serialized Chrome pairing executor and Android process-wide pairing mutex; confirmation UI disables duplicate action | compilation, unit/state review; physical reentrancy series NOT MEASURED | PASS implementation; statistical physical gate NOT MEASURED |
 
 ## 3. Test matrix
 
@@ -85,15 +91,15 @@ locations are relative to this branch.
 | original physical failure | TCL | scan baseline QR | capture exact relay outcomes | one matching `OK_FALSE`, two transport failures, UI error | original TCL trace | PASS |
 | Chrome dependencies | macOS/Node 22.16 | `npm ci`; `npm audit` | lockfile install; no known npm advisory | install PASS; 0 vulnerabilities | terminal run + lockfile | PASS |
 | Chrome static | TypeScript 5.5.4 | `npm run typecheck` | no errors | no errors | terminal run | PASS |
-| Chrome unit/fault | Vitest 5.0 | `npm test` | all pass | 15 files, 81 tests pass | terminal run | PASS |
+| Chrome unit/fault | Vitest 5.0 | `npm test` | all pass | 16 files, 87 tests pass | terminal run | PASS |
 | Chrome package | Vite 8.2.2/CFT | `npm run build` | valid MV3 package, standalone content script | verifier pass; no module/noncharacter packaging defect | build output | PASS |
 | Chrome secret boundary | CFT 151 | content script reads local storage keys | access denied/hidden | storage API absent in content world; no values visible | `chrome-content-storage-isolation-*` | PASS |
 | Chrome persistence | paired CFT profile | reload/restart + status | pairing/outbox survive | paired, exact seven relays, delivered 1, pending 0 | `chrome-paired-status-*` | PASS |
-| Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 75 tests, 0 failures/errors | XML reports | PASS |
+| Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 82 tests, 0 failures/errors | XML reports | PASS |
 | Android lint/build | Android SDK 34 | `lintDebug assembleDebug assembleDebugAndroidTest` | 0 errors; APKs | success, 0 lint errors, 29 retained warnings | Gradle/lint report | PASS |
-| Android instrumentation | API-26 emulator | exact APK + test APK, six current DB/codec/transfer cases | all pass | 6/6 | `exact-artifact-api26-2026-09-05.txt` | PASS |
-| Android instrumentation | physical TCL T807D | exact APK + test APK, six current cases | all pass | 6/6 | `exact-artifact-physical-followup-2026-09-05.txt` | PASS |
-| Android instrumentation | physical Samsung S23 | exact APK + test APK, six current cases | all pass | 6/6 | same evidence | PASS |
+| Android instrumentation | API-26 emulator | exact APK + test APK, seven current DB/codec/transfer/hostile-QR cases | all pass | 7/7 | `exact-artifact-api26-2026-09-05.txt` | PASS |
+| Android instrumentation | physical TCL T807D | exact APK + test APK, seven current cases | all pass | 7/7 | `exact-artifact-physical-followup-2026-09-05.txt` | PASS |
+| Android instrumentation | physical Samsung S23 | exact APK + test APK, seven current cases | all pass | 7/7 | same evidence | PASS |
 | Android installed-state ACK recovery | preserved paired TCL | v4 -> v5 first catch-up then immediate second serialized catch-up | one bounded recovery ACK; no second ACK | observed exactly | same evidence | PASS for observation |
 | Rust normative core | rustc/cargo 1.97.1 | `cargo test` | all pass | 6/6 | terminal run | PASS |
 | Swift core mirror | Swift 6.3.3 | `swift test` | all pass | 7/7 | terminal run | PASS |
@@ -129,6 +135,7 @@ check. Required reliability quotas remain **NOT MEASURED**.
 | exactly-once local effect | document hash + atomic Room commit | instrumentation + physical duplicate | PASS |
 | no completed-ACK restart on retained wrappers | Room v5 wrapper ledger + one bounded ACK lifecycle per transfer | unit/instrumentation + one installed-state TCL immediate repeat | PASS for executed evidence; broad physical matrix NOT MEASURED |
 | plaintext outbox deletion only on ACK | strict ACK match | Chrome delivery tests + physical state | PASS |
+| transport key signs only exact bound AUTH | full template/challenge constraints before signing | malicious-template and duplicate/rejection fault tests | PASS local; public AUTH NOT MEASURED |
 | secret-free logs/evidence | structural sanitized diagnostics | retained-log/source scan | PASS |
 | no backend/telemetry | direct relay architecture | dependency/source review | PASS |
 

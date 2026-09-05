@@ -44,6 +44,7 @@ import {
   summarizeDeliveryStates,
   type DeliveryStatus,
 } from "../protocol/delivery-state.js";
+import { KeyedSerialExecutor, SerialExecutor } from "../protocol/serial-executor.js";
 
 interface OutboxItem {
   transferId: string;
@@ -78,7 +79,12 @@ const ACK_ALARM = "reader-ack-check";
 const CUSTOM_RELAYS_KEY = "customRelays";
 const DELIVERY_RECEIPTS_KEY = "recentDeliveryReceipts";
 const MAX_PAIRING_SESSIONS = 2;
+const transferOperations = new KeyedSerialExecutor<string>();
+const receiptOperations = new SerialExecutor();
+const pairingOperations = new SerialExecutor();
 let pairingRecovery: Promise<void> | null = null;
+let ackPolling: Promise<void> | null = null;
+let transportEpoch = 0;
 
 function hexToSeckey(hex: string): Uint8Array {
   const b = new Uint8Array(32);
@@ -157,6 +163,16 @@ async function outboxAll(): Promise<OutboxItem[]> {
   db.close();
   return items;
 }
+async function outboxGet(transferId: string): Promise<OutboxItem | undefined> {
+  const db = await idb();
+  const item = await new Promise<OutboxItem | undefined>((res, rej) => {
+    const q = db.transaction("items").objectStore("items").get(transferId);
+    q.onsuccess = () => res(q.result as OutboxItem | undefined);
+    q.onerror = () => rej(q.error);
+  });
+  db.close();
+  return item;
+}
 async function outboxDelete(transferId: string): Promise<void> {
   const db = await idb();
   await new Promise<void>((res, rej) => {
@@ -186,9 +202,11 @@ async function loadDeliveryReceipts(nowSecs = Math.floor(Date.now() / 1000)): Pr
 }
 
 async function recordDelivered(transferId: string, deliveredAt: number): Promise<void> {
-  const receipts = (await loadDeliveryReceipts(deliveredAt)).filter((item) => item.transferId !== transferId);
-  receipts.push({ transferId, deliveredAt });
-  await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts.slice(-20) });
+  await receiptOperations.run(async () => {
+    const receipts = (await loadDeliveryReceipts(deliveredAt)).filter((item) => item.transferId !== transferId);
+    receipts.push({ transferId, deliveredAt });
+    await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts.slice(-20) });
+  });
 }
 
 // ---- Send pipeline ----
@@ -270,7 +288,18 @@ function scheduleAckCheck(): void {
   // The Android foreground sync may finish after the publish call's immediate
   // ACK query. A one-shot alarm survives MV3 worker suspension and closes that
   // race without keeping the worker alive or retransmitting the article.
-  void chrome.alarms.create(ACK_ALARM, { when: Date.now() + 30_000 });
+  const when = Date.now() + 30_000;
+  void chrome.alarms.get(ACK_ALARM).then((existing) => {
+    // Repeated or concurrent publishes must not postpone an already-earlier
+    // device-ACK check by replacing its one-shot alarm with a later time.
+    if (!existing || existing.scheduledTime > when) {
+      chrome.alarms.create(ACK_ALARM, { when });
+    }
+  }).catch(() => {
+    // Failure to inspect an existing alarm must not suppress the only durable
+    // post-publish ACK catch-up.
+    chrome.alarms.create(ACK_ALARM, { when });
+  });
 }
 
 async function bindOutboxItem(item: OutboxItem, channelPubkey: string): Promise<void> {
@@ -297,7 +326,12 @@ async function bindOutboxItem(item: OutboxItem, channelPubkey: string): Promise<
   }
 }
 
-async function publishTransfer(item: OutboxItem, seckey: Uint8Array, channelPubkey: string): Promise<void> {
+async function publishTransferInternal(
+  item: OutboxItem,
+  seckey: Uint8Array,
+  channelPubkey: string,
+  epoch: number,
+): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   item.expiresAt = item.expiresAt || Number(item.manifest["expiresAt"] ?? item.createdAt + 7 * 86400);
   item.attemptCount = item.attemptCount || 0;
@@ -326,10 +360,12 @@ async function publishTransfer(item: OutboxItem, seckey: Uint8Array, channelPubk
   let anyAccepted = false;
   try {
     for (const payload of payloads) {
+      if (epoch !== transportEpoch) throw new Error("delivery interrupted by channel change");
       const accepted = await publishFreshPayload(item.relays, seckey, channelPubkey, payload, 7 * 86400);
       if (accepted.length) anyAccepted = true;
       if (accepted.length >= required) complete += 1;
     }
+    if (epoch !== transportEpoch) throw new Error("delivery interrupted by channel change");
     // Never stop at a manifest or early chunk merely because one relay is
     // unavailable. Every payload has now been attempted, so a surviving relay
     // can still deliver a complete transfer and the authenticated device ACK
@@ -360,8 +396,26 @@ async function publishTransfer(item: OutboxItem, seckey: Uint8Array, channelPubk
   void pollForAcks().catch(() => undefined);
 }
 
+async function publishTransfer(
+  item: OutboxItem,
+  seckey: Uint8Array,
+  channelPubkey: string,
+  force = false,
+): Promise<void> {
+  return transferOperations.run(item.transferId, async () => {
+    // Always reload inside the per-transfer critical section. An ACK or user
+    // discard may have deleted a stale caller's object while it was waiting.
+    const durable = await outboxGet(item.transferId);
+    if (!durable) return;
+    const storedChannel = (await chrome.storage.local.get(["channelPubkey"])).channelPubkey;
+    if (storedChannel !== channelPubkey) return;
+    if (force) durable.nextAttemptAt = 0;
+    await publishTransferInternal(durable, seckey, channelPubkey, transportEpoch);
+  });
+}
+
 // ---- E2E ACK catch-up (rolling window: NIP-59 timestamps are randomized) ----
-async function pollForAcks(): Promise<void> {
+async function pollForAcksInternal(): Promise<void> {
   const st = await chrome.storage.local.get(["deviceSeckey", "channelPubkey", "relays"]);
   if (!st.deviceSeckey || !st.channelPubkey) return;
   const seckey = hexToSeckey(st.deviceSeckey as string);
@@ -371,7 +425,6 @@ async function pollForAcks(): Promise<void> {
   if (!Array.isArray(relays) || !relays.length) return;
   const now = Math.floor(Date.now() / 1000);
   const events = await queryPairingEvents(relays, devicePubkey, syncSince(now), seckey);
-  const items = new Map((await outboxAll()).map((item) => [item.transferId, item]));
   for (const event of events) {
     try {
       const envelope = await unwrapAndVerifyEnvelope({
@@ -382,32 +435,45 @@ async function pollForAcks(): Promise<void> {
         nowSecs: now,
       });
       if (envelope.payload["type"] !== "ack") continue;
-      const item = items.get(String(envelope.payload["transferId"]));
-      if (!item) continue;
-      const ack = validateEndpointAck(
-        envelope.payload,
-        {
-          transferId: item.transferId,
-          documentId: item.documentId,
-          manifestId: String(item.manifest["manifestId"]),
-          channelPubkey,
-          devicePubkey,
-        },
-        envelope.senderPubkey,
-        now,
-      );
-      if (ack.status === "stored" || ack.status === "duplicate") {
-        await recordDelivered(item.transferId, now).catch(() => undefined);
-        await outboxDelete(item.transferId); // Only this strict E2E ACK clears captured content.
-      } else {
-        item.status = "failed";
-        item.lastError = ack.reasonCode ?? "device-rejected";
-        await outboxPut(item);
-      }
+      const transferId = String(envelope.payload["transferId"] ?? "");
+      await transferOperations.run(transferId, async () => {
+        const item = await outboxGet(transferId);
+        if (!item) return;
+        const ack = validateEndpointAck(
+          envelope.payload,
+          {
+            transferId: item.transferId,
+            documentId: item.documentId,
+            manifestId: String(item.manifest["manifestId"]),
+            channelPubkey,
+            devicePubkey,
+          },
+          envelope.senderPubkey,
+          now,
+        );
+        if (ack.status === "stored" || ack.status === "duplicate") {
+          // Persist the delivered receipt before deleting the only durable
+          // outbox copy. If receipt storage fails, retain the item so the same
+          // authenticated ACK can safely settle it on a later poll.
+          await recordDelivered(item.transferId, now);
+          await outboxDelete(item.transferId); // Only this strict E2E ACK clears captured content.
+        } else {
+          item.status = "failed";
+          item.lastError = ack.reasonCode ?? "device-rejected";
+          await outboxPut(item);
+        }
+      });
     } catch {
       // Hostile, expired, misbound, or unrelated events never mutate the outbox.
     }
   }
+}
+
+async function pollForAcks(): Promise<void> {
+  if (!ackPolling) {
+    ackPolling = pollForAcksInternal().finally(() => { ackPolling = null; });
+  }
+  return ackPolling;
 }
 
 // ---- Pairing ----
@@ -624,6 +690,9 @@ async function recoverPairingSessionsInternal(): Promise<void> {
         ? session
         : { ...stripPairingSecret(session), state: "superseded" as const, lastError: "Another pairing session completed first." }
     ));
+    // Stop any old-channel publisher between payloads before installing the
+    // newly authenticated channel transcript.
+    transportEpoch += 1;
     await chrome.storage.local.set({
       [PAIRING_SESSIONS_KEY]: sessions,
       channelPubkey: winner.androidChannelPubkey,
@@ -641,13 +710,13 @@ async function recoverPairingSessionsInternal(): Promise<void> {
 
 async function recoverPairingSessions(): Promise<void> {
   if (!pairingRecovery) {
-    pairingRecovery = recoverPairingSessionsInternal().finally(() => { pairingRecovery = null; });
+    pairingRecovery = pairingOperations.run(recoverPairingSessionsInternal)
+      .finally(() => { pairingRecovery = null; });
   }
   return pairingRecovery;
 }
 
-async function startPairing(): Promise<{ qr: PairingRequestV2; sessionId: string }> {
-  await recoverPairingSessions();
+async function startPairingInternal(): Promise<{ qr: PairingRequestV2; sessionId: string }> {
   let sessions = await loadPairingSessions();
   const active = sessions.filter((session) => isActivePairingState(session.state));
   if (active.length >= MAX_PAIRING_SESSIONS) throw new Error("Two pairing codes are already active. Cancel or let one expire.");
@@ -684,28 +753,35 @@ async function startPairing(): Promise<{ qr: PairingRequestV2; sessionId: string
   return { qr: request, sessionId: request.sessionId };
 }
 
-async function pairingStatus(sessionId: string): Promise<Record<string, unknown>> {
+async function startPairing(): Promise<{ qr: PairingRequestV2; sessionId: string }> {
   await recoverPairingSessions();
-  const session = (await loadPairingSessions()).find((item) => item.request.sessionId === sessionId);
-  if (!session) return { state: "missing", message: "Pairing session is no longer available." };
-  const message = session.state === "waiting_response"
-    ? "Waiting for Android's encrypted response…"
-    : session.state === "response_validated"
-      ? "Android authenticated. Sending Chrome acknowledgement…"
-      : session.state === "waiting_completion"
-        ? "Chrome acknowledged Android. Waiting for final confirmation…"
-        : session.state === "complete"
-          ? "Connected. Both devices authenticated the same pairing session."
-          : session.lastError ?? "Pairing ended.";
-  return {
-    state: session.state,
-    message,
-    expiresAt: session.request.expiresAt,
-    error: session.lastError,
-  };
+  return pairingOperations.run(startPairingInternal);
 }
 
-async function cancelPairing(sessionId: string): Promise<boolean> {
+async function pairingStatus(sessionId: string): Promise<Record<string, unknown>> {
+  await recoverPairingSessions();
+  return pairingOperations.run(async () => {
+    const session = (await loadPairingSessions()).find((item) => item.request.sessionId === sessionId);
+    if (!session) return { state: "missing", message: "Pairing session is no longer available." };
+    const message = session.state === "waiting_response"
+      ? "Waiting for Android's encrypted response…"
+      : session.state === "response_validated"
+        ? "Android authenticated. Sending Chrome acknowledgement…"
+        : session.state === "waiting_completion"
+          ? "Chrome acknowledged Android. Waiting for final confirmation…"
+          : session.state === "complete"
+            ? "Connected. Both devices authenticated the same pairing session."
+            : session.lastError ?? "Pairing ended.";
+    return {
+      state: session.state,
+      message,
+      expiresAt: session.request.expiresAt,
+      error: session.lastError,
+    };
+  });
+}
+
+async function cancelPairingInternal(sessionId: string): Promise<boolean> {
   const sessions = await loadPairingSessions();
   let found = false;
   const updated = sessions.map((session) => {
@@ -715,6 +791,10 @@ async function cancelPairing(sessionId: string): Promise<boolean> {
   });
   await savePairingSessions(updated);
   return found;
+}
+
+async function cancelPairing(sessionId: string): Promise<boolean> {
+  return pairingOperations.run(() => cancelPairingInternal(sessionId));
 }
 
 // ---- Wiring ----
@@ -761,17 +841,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         relayChangePending: !!st.channelPubkey && !sameRelayOrder(pairedRelays, nextRelays),
       });
     } else if (msg?.kind === "reader-disconnect") {
-      const sessions = cancelActivePairingSessions(
-        await loadPairingSessions(),
-        "Pairing cancelled by disconnect.",
-      );
-      await savePairingSessions(sessions);
-      await chrome.storage.local.remove([...PAIRED_CHANNEL_STORAGE_KEYS]);
+      transportEpoch += 1;
+      await pairingOperations.run(async () => {
+        const sessions = cancelActivePairingSessions(
+          await loadPairingSessions(),
+          "Pairing cancelled by disconnect.",
+        );
+        await savePairingSessions(sessions);
+        await chrome.storage.local.remove([...PAIRED_CHANNEL_STORAGE_KEYS]);
+      });
       sendResponse({ ok: true });
     } else if (msg?.kind === "reader-discard-failed") {
       const failed = (await outboxAll()).filter((item) => item.status === "failed");
-      await Promise.all(failed.map((item) => outboxDelete(item.transferId)));
-      sendResponse({ ok: true, discarded: failed.length });
+      const discarded = (await Promise.all(failed.map((item) => transferOperations.run(item.transferId, async () => {
+        const durable = await outboxGet(item.transferId);
+        if (durable?.status !== "failed") return false;
+        await outboxDelete(item.transferId);
+        return true;
+      })))).filter(Boolean).length;
+      sendResponse({ ok: true, discarded });
     } else if (msg?.kind === "reader-check-acks") {
       // Read-only status refresh: query for authenticated device ACKs without
       // retransmitting article payloads.
@@ -784,9 +872,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const { seckey } = await getDeviceKey();
       const ch = (await chrome.storage.local.get(["channelPubkey"])).channelPubkey as string | undefined;
       const retryable = items.filter((item) => item.status !== "failed");
-      const now = Math.floor(Date.now() / 1000);
-      for (const item of retryable) item.nextAttemptAt = now;
-      if (ch) await Promise.all(retryable.map((item) => publishTransfer(item, seckey, ch).catch(() => undefined)));
+      if (ch) await Promise.all(retryable.map((item) => publishTransfer(item, seckey, ch, true).catch(() => undefined)));
       sendResponse({ ok: true, retried: retryable.length });
     }
   })().catch((e) => sendResponse({ ok: false, error: String(e).slice(0, 300) }));

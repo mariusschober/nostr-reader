@@ -22,9 +22,9 @@ one custom relay. One synthetic article was stored exactly once and its bound
 Android ACK moved Chrome from pending to delivered. This proves the complete
 path can work; it is not the unexecuted 20/20 and 50/50 reliability series.
 
-The exact ACK-durability APK was subsequently installed byte-for-byte on the
-TCL, S23, and API-26 emulator and passed 6/6 instrumentation cases in each
-environment. On the preserved TCL,
+The exact final APK was subsequently installed byte-for-byte on the TCL, S23,
+and API-26 emulator and passed 7/7 instrumentation cases in each environment,
+including hostile pairing-code validation. On the preserved TCL,
 the first Room v5 catch-up emitted the expected one recovery ACK, while the
 immediately serialized second catch-up read the retained events without another
 ACK batch. No new article was sent for that follow-up.
@@ -41,7 +41,9 @@ reported independently in `TEST_REPORT.md`.
   NIP-42, BIP-340 signing, expiry, replay, gzip, hashes, chunk assembly, and
   endpoint ACK validation have executable regression coverage.
 - Chrome persists pairing sessions and outbox state across MV3 suspension and
-  restart. Relay acceptance and device delivery are separate states.
+  restart. Relay acceptance and device delivery are separate states. Per-item
+  mutations are serialized so a late publisher cannot recreate an ACK-deleted
+  outbox item.
 - Android stages pairing and transfers transactionally, revokes key-loss
   channels, performs rolling-window catch-up, and persists both authenticated
   wrapper IDs and receiver ACK intent/outcomes in Room v5.
@@ -49,6 +51,9 @@ reported independently in `TEST_REPORT.md`.
   user-added secure relays in Chrome Settings. Relay changes require re-pairing.
 - The unsafe page-world signing bridge and inert settings controls were
   removed. Chrome key storage is restricted to trusted extension contexts.
+- NIP-42 event rejection is distinct from Reader-event rejection; malformed or
+  misbound Chrome AUTH templates are rejected before signing, and duplicate
+  AUTH/OK frames cannot cause repeated effects.
 
 ## Evidence map
 

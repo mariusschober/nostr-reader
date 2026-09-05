@@ -113,6 +113,9 @@ fun PairingScreen(
       if (review != null && reviewText != null) {
         PairingReview(
           request = review,
+          settings = settings,
+          status = status,
+          error = error,
           onConfirm = { onScanned(reviewText!!) },
           onReset = {
             reviewText = null
@@ -170,10 +173,15 @@ fun PairingScreen(
 @Composable
 private fun PairingReview(
   request: ValidatedPairingRequest,
+  settings: ReaderSettings,
+  status: String?,
+  error: String?,
   onConfirm: () -> Unit,
   onReset: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val busy = status != null
+  val c = colorsFor(settings.background)
   Column(modifier.padding(top = 20.dp)) {
     Text("Review connection", fontFamily = ReaderFonts.Ui, fontSize = 18.sp)
     Spacer(Modifier.height(8.dp))
@@ -194,11 +202,19 @@ private fun PairingReview(
       fontFamily = ReaderFonts.Ui,
       fontSize = 13.sp,
     )
+    status?.let {
+      Spacer(Modifier.height(12.dp))
+      Text(it, fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary)
+    }
+    error?.let {
+      Spacer(Modifier.height(12.dp))
+      Text(it, fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.error)
+    }
     Spacer(Modifier.weight(1f))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-      TextButton(onClick = onReset) { Text("Scan another", fontFamily = ReaderFonts.Ui) }
+      TextButton(onClick = onReset, enabled = !busy) { Text("Scan another", fontFamily = ReaderFonts.Ui) }
       Spacer(Modifier.width(8.dp))
-      Button(onClick = onConfirm) { Text("Connect", fontFamily = ReaderFonts.Ui) }
+      Button(onClick = onConfirm, enabled = !busy) { Text(if (busy) "Connecting…" else "Connect", fontFamily = ReaderFonts.Ui) }
     }
   }
 }

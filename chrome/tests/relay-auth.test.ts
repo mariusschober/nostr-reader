@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { getPublicKey } from "nostr-tools/pure";
 import type { SimplePool } from "nostr-tools/pool";
-import { publishPerRelay, queryRelayWithAuth, randomSeckey } from "../src/nostr/transport.js";
+import {
+  publishPerRelay,
+  queryRelayWithAuth,
+  randomSeckey,
+  validateAuthTemplate,
+} from "../src/nostr/transport.js";
 
 describe("NIP-42 relay authentication", () => {
   it("authenticates and retries a challenged publish with the supplied app key", async () => {
@@ -53,7 +58,12 @@ describe("NIP-42 relay authentication", () => {
       challenge: undefined as string | undefined,
       auth: async (sign: (template: Record<string, unknown>) => Promise<Record<string, unknown>>) => {
         if (!challengeAvailable) throw new Error("can't perform auth, no challenge was received");
-        await sign({ kind: 22242, created_at: 1, tags: [["relay", "wss://relay.example/"], ["challenge", "c"]], content: "" });
+        await sign({
+          kind: 22242,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [["relay", "wss://relay.example/"], ["challenge", "c"]],
+          content: "",
+        });
         authenticated = true;
         return "";
       },
@@ -75,5 +85,65 @@ describe("NIP-42 relay authentication", () => {
     const events = await queryRelayWithAuth(pool, "wss://relay.example", { kinds: [1059] }, authKey, 50);
     expect(events).toEqual([expected]);
     expect(queryCalls).toBe(2);
+  });
+
+  it("independently rejects misbound, stale, and expanded authentication templates", () => {
+    const now = 1_800_000_000;
+    const valid = {
+      kind: 22242,
+      created_at: now,
+      tags: [["relay", "wss://relay.example/"], ["challenge", "exact-challenge"]],
+      content: "",
+    };
+    expect(() => validateAuthTemplate(valid, "wss://relay.example", "exact-challenge", now)).not.toThrow();
+    expect(() => validateAuthTemplate(
+      { ...valid, tags: [["relay", "wss://other.example/"], ["challenge", "exact-challenge"]] },
+      "wss://relay.example",
+      "exact-challenge",
+      now,
+    )).toThrow(/binding/);
+    expect(() => validateAuthTemplate(
+      { ...valid, tags: [["relay", "not a relay URL"], ["challenge", "exact-challenge"]] },
+      "wss://relay.example",
+      "exact-challenge",
+      now,
+    )).toThrow(/binding/);
+    expect(() => validateAuthTemplate(
+      { ...valid, tags: [["relay", "wss://relay.example/"], ["challenge", "wrong"]] },
+      "wss://relay.example",
+      "exact-challenge",
+      now,
+    )).toThrow(/binding/);
+    expect(() => validateAuthTemplate({ ...valid, created_at: now - 601 }, "wss://relay.example", "exact-challenge", now)).toThrow(/timestamp/);
+    expect(() => validateAuthTemplate({ ...valid, extra: true }, "wss://relay.example", "exact-challenge", now)).toThrow(/fields/);
+  });
+
+  it("classifies a malicious library authentication template as a client protocol error", async () => {
+    const authKey = randomSeckey();
+    let authenticated = false;
+    const relay = {
+      _onauth: null,
+      challenge: undefined as string | undefined,
+      auth: async (sign: (template: Record<string, unknown>) => Promise<Record<string, unknown>>) => {
+        await sign({
+          kind: 22242,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [["relay", "wss://attacker.example/"], ["challenge", "challenge"]],
+          content: "",
+        });
+        authenticated = true;
+      },
+      publish: async () => {
+        if (!authenticated) {
+          relay.challenge = "challenge";
+          (relay._onauth as null | ((challenge: string) => void))?.("challenge");
+          throw new Error("auth-required: authenticate first");
+        }
+      },
+    };
+    const pool = { ensureRelay: async () => relay } as unknown as SimplePool;
+    const [result] = await publishPerRelay(pool, ["wss://relay.example"], {} as never, authKey);
+    expect(result).toMatchObject({ ok: false, state: "PROTOCOL_ERROR" });
+    expect(authenticated).toBe(false);
   });
 });

@@ -166,9 +166,9 @@ describe("deterministic local Nostr fault relay", () => {
     expect(await publish("close-after")).toMatchObject({ ok: false, state: "CLOSED" });
   });
 
-  it("handles a real NIP-42 challenge and rejects stale authentication", async () => {
+  it("handles a real NIP-42 challenge and classifies stale authentication separately", async () => {
     const authKey = generateSecretKey();
-    for (const [mode, expected] of [["auth", "OK_TRUE"], ["stale-auth", "OK_FALSE"]] as const) {
+    for (const [mode, expected] of [["auth", "OK_TRUE"], ["stale-auth", "AUTH_ERROR"]] as const) {
       const pool = new SimplePool();
       const url = modeUrl(mode);
       try {

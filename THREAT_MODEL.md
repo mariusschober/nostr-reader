@@ -15,11 +15,12 @@ fully compromised browser, Android OS, or unlocked user session.
 
 | Adversary/capability | Primary risk | Enforced control | Evidence | Residual |
 |---|---|---|---|---|
-| malicious relay | drop, reorder, replay, correlate, lie about storage | exact matching OK semantics; end-device ACK; NIP-44/NIP-59 verification; expiry/dedupe; multi-relay quorum | fault harness + physical seven-relay flow | traffic metadata and denial of service remain |
+| malicious relay | drop, reorder, replay, correlate, lie about storage, or trick a transport key into signing a chosen AUTH event | exact matching first-terminal OK semantics; independently constrained NIP-42 template; end-device ACK; NIP-44/NIP-59 verification; expiry/dedupe; multi-relay quorum | fault harness + physical seven-relay flow | traffic metadata and denial of service remain |
 | malicious QR | SSRF/local-network connection, long-lived or attacker-bound channel | 4 KiB cap, exact fields/protocol, near-now expiry, x-only points, nonce/session sizes, 1–8 normalized unique WSS URLs, DNS public-address validation, human review | TS/Kotlin tests + emulator malformed QR | hostname operator may later change DNS; guarded again per connection |
 | DNS rebinding | custom relay resolves public during pairing then private later | resolve and reject private/loopback/link-local/multicast/CGNAT/ULA answers before every Android connection | unit/fault tests and source review | Chrome performs only fixed-default readiness probes before QR |
 | forged/tampered Nostr event | insert/ack false content | outer/seal signature, NIP-44 MAC, canonical rumor ID, sender/recipient/version/schema/hash binding | official vectors, transport tests, instrumentation | endpoint key compromise defeats authenticity |
 | replay/duplicate | duplicate document, stale trust promotion, or repeated ACK traffic | expiry, one-shot session binding, run + persistent wrapper dedupe, persistent document ID, exact transfer identity, one terminal ACK lifecycle per transfer | unit/instrumentation/live duplicate + installed-state repeat observation | first v5 catch-up has no historical v4 wrapper ledger and may emit one recovery ACK; observed once on TCL |
+| overlapping Chrome handlers | stale publisher rewrites an outbox item after authenticated ACK deletion | keyed per-transfer serial execution, durable reload inside the critical section, ACK-first retry, receipt-before-delete ordering | deterministic scheduler tests + source/state assertions | browser crash between durable operations is recovered by the retained item or ACK replay |
 | hostile article input | memory/CPU exhaustion, script/embed injection | byte/chunk/title/URL caps, bounded gzip, strict UTF-8/canonicalization, sanitized native Markdown, no webview execution | boundary/corruption/XSS tests | remote image requests reveal reader IP to image host |
 | compromised content script | steal Chrome keys from extension storage | `storage.local` access level `TRUSTED_CONTEXTS`; no page-world signing bridge | real Chrome isolated-world negative test | a compromised trusted extension page/service worker remains in boundary |
 | browser-signer manipulation | swap proof fields/key or expose identity | optional provenance only; exact returned event/pubkey/content verification; proof stays encrypted | NIP-07 mutation tests | live third-party signer compatibility not measured |
@@ -44,6 +45,8 @@ fully compromised browser, Android OS, or unlocked user session.
    backend, or real Nostr identity fallback exists.
 8. Expensive decode/inflate/DB work occurs only after cheap format/size/auth
    gates appropriate to the layer.
+9. A relay-supplied AUTH template is validated as an exact, current,
+   relay/challenge-bound kind-22242 event before any transport key signs it.
 
 ## Metadata and privacy limits
 

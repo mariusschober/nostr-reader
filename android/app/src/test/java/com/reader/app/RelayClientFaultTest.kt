@@ -64,6 +64,25 @@ class RelayClientFaultTest {
   }
 
   @Test
+  fun firstMatchingOkIsTerminalAndContradictoryDuplicatesCannotFlipAcceptance() {
+    val accepted = runCase { socket, event ->
+      socket.send("[\"OK\",\"${event.id}\",true,\"saved\"]")
+      socket.send("[\"OK\",\"${event.id}\",false,\"contradiction\"]")
+    }
+    assertTrue(accepted.accepted)
+    assertEquals(RelayClient.PublishState.OK_TRUE, accepted.terminalState)
+    assertFalse(accepted.trace.any { it.state == RelayClient.PublishState.OK_FALSE })
+
+    val rejected = runCase { socket, event ->
+      socket.send("[\"OK\",\"${event.id}\",false,\"blocked: policy\"]")
+      socket.send("[\"OK\",\"${event.id}\",true,\"contradiction\"]")
+    }
+    assertFalse(rejected.accepted)
+    assertEquals(RelayClient.PublishState.OK_FALSE, rejected.terminalState)
+    assertFalse(rejected.trace.any { it.state == RelayClient.PublishState.OK_TRUE })
+  }
+
+  @Test
   fun absentAndMismatchedOkBecomeTimeoutNotRejection() {
     val absent = runCase(timeoutSecs = 1) { _, _ -> }
     assertEquals(RelayClient.PublishState.NO_OK_TIMEOUT, absent.terminalState)

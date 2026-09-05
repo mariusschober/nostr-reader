@@ -82,11 +82,11 @@ revalidated.
 | background/screen-off Android | 0 controlled runs | NOT MEASURED |
 | network switch | 0 | NOT MEASURED |
 | one relay unreachable + one explicit rejection + one success | 0 physical; local harness PASS | NOT MEASURED physically |
-| expired QR | 0 physical; unit/emulator validation PASS | NOT MEASURED physically |
+| expired QR | 0 camera-flow runs; validator PASS in physical instrumentation | NOT MEASURED through camera UI |
 | replayed QR | 0 physical; unit logic PASS | NOT MEASURED physically |
-| tampered QR | 0 physical; unit/emulator malformed-input PASS | NOT MEASURED physically |
-| prohibited private-network QR | 0 physical; Kotlin/Chrome tests PASS | NOT MEASURED physically |
-| oversized input | 0 physical; unit boundaries PASS | NOT MEASURED physically |
+| tampered QR | 0 camera-flow runs; validator PASS in physical instrumentation | NOT MEASURED through camera UI |
+| prohibited private-network QR | 0 camera-flow runs; DNS boundary PASS in physical instrumentation | NOT MEASURED through camera UI |
+| oversized input | 0 camera-flow runs; unit boundary PASS | NOT MEASURED through camera UI |
 | unpair | 0 controlled current-flow run | NOT MEASURED |
 | old credentials fail | 0 | NOT MEASURED |
 | re-pair/new credentials work | one fresh v2 pairing, but not full old-key sequence | NOT MEASURED for required sequence |
@@ -107,12 +107,14 @@ revalidated.
 
 ## Instrumentation and UI evidence
 
-The exact APK/test-APK pair passed all six instrumentation cases on the physical
+The exact APK/test-APK pair passed all seven instrumentation cases on the physical
 TCL, Samsung S23, and API-26 emulator. The cases cover v3 -> v5 database
 migration, missing-key
 revocation, sole-active replacement, Chrome/normative gzip decode, conflicting
 sender/duplicate safety, and reordered/duplicate chunk atomic commit with a
-durable bound ACK intent and terminal replay behavior. The current API-26 run
+durable bound ACK intent and terminal replay behavior. The seventh case runs
+the strict hostile pairing-code and prohibited-DNS boundary in the Android
+runtime without contacting those destinations. The current API-26 run
 is retained in `evidence/raw/final/exact-artifact-api26-2026-09-05.txt`; the
 earlier screenshots remain supplemental UI evidence.
 

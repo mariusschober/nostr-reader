@@ -25,7 +25,10 @@ describe("durable delivery recovery ordering", () => {
     const loopEnd = publish.indexOf("if (complete < payloads.length)");
     expect(loopStart).toBeGreaterThanOrEqual(0);
     expect(loopEnd).toBeGreaterThan(loopStart);
-    expect(publish.slice(loopStart, loopEnd)).not.toContain("throw new Error");
+    const payloadLoop = publish.slice(loopStart, loopEnd);
+    expect(payloadLoop).toContain("publishFreshPayload");
+    expect(payloadLoop).not.toContain("relay quorum failed");
+    expect(payloadLoop).toContain("delivery interrupted by channel change");
   });
 
   it("polls for an authenticated ACK after partial relay acceptance", () => {
@@ -42,7 +45,10 @@ describe("durable delivery recovery ordering", () => {
       source.indexOf("// ---- E2E ACK catch-up"),
     );
     expect(source).toContain('const ACK_ALARM = "reader-ack-check"');
-    expect(source).toContain("chrome.alarms.create(ACK_ALARM, { when: Date.now() + 30_000 })");
+    expect(source).toContain("const when = Date.now() + 30_000");
+    expect(source).toContain("chrome.alarms.get(ACK_ALARM)");
+    expect(source).toContain("chrome.alarms.create(ACK_ALARM, { when })");
+    expect(source).toMatch(/\.catch\(\(\) => \{[\s\S]*chrome\.alarms\.create\(ACK_ALARM, \{ when \}\)/);
     expect(publish.match(/scheduleAckCheck\(\)/g)).toHaveLength(2);
     expect(source).toMatch(/if \(a\.name === ACK_ALARM\) \{[\s\S]*await pollForAcks\(\)[\s\S]*return;/);
   });
@@ -74,6 +80,27 @@ describe("durable delivery recovery ordering", () => {
     expect(retry).toContain("await Promise.all");
   });
 
+  it("serializes every same-transfer mutation and reloads durable state inside the lock", () => {
+    const publish = source.slice(
+      source.indexOf("async function publishTransfer("),
+      source.indexOf("// ---- E2E ACK catch-up"),
+    );
+    const ack = source.slice(
+      source.indexOf("async function pollForAcksInternal"),
+      source.indexOf("async function pollForAcks()"),
+    );
+    const discard = source.slice(
+      source.indexOf('msg?.kind === "reader-discard-failed"'),
+      source.indexOf('msg?.kind === "reader-check-acks"'),
+    );
+    expect(publish).toContain("transferOperations.run(item.transferId");
+    expect(publish).toContain("const durable = await outboxGet(item.transferId)");
+    expect(ack).toContain("transferOperations.run(transferId");
+    expect(ack).toContain("const item = await outboxGet(transferId)");
+    expect(discard).toContain("transferOperations.run(item.transferId");
+    expect(discard).toContain("const durable = await outboxGet(item.transferId)");
+  });
+
   it("offers a read-only ACK refresh that does not republish payloads", () => {
     const check = source.slice(
       source.indexOf('msg?.kind === "reader-check-acks"'),
@@ -102,6 +129,7 @@ describe("durable delivery recovery ordering", () => {
     expect(publish).toContain("deliveryCeilingReason");
     expect(publish).not.toContain("item.chunks = []");
     expect(publish).not.toContain('item.title = ""');
-    expect(source).toMatch(/recordDelivered\(item\.transferId, now\)[\s\S]*outboxDelete\(item\.transferId\)/);
+    expect(source).toMatch(/await recordDelivered\(item\.transferId, now\);\s*await outboxDelete\(item\.transferId\)/);
+    expect(source).not.toContain("recordDelivered(item.transferId, now).catch");
   });
 });

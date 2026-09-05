@@ -6,7 +6,7 @@ Every item is evidence-based and uses the required status vocabulary.
 |---|---|---|
 | Mandatory statistical reliability gates were not run | no 20/20 pairing, 50/50 delivery, or 20/20 offline/replay rate claim can be made | NOT MEASURED |
 | Only one fresh repaired Chrome/TCL pairing and one synthetic article transfer were observed | proves the complete path can work, not its field reliability | PASS for 1/1 observation; larger gates NOT MEASURED |
-| Latest post-hardening source was not exercised by another public article transmission without separate approval | the earlier E2E transfer predates the final log wording, backup-rule, dependency, and settings-copy changes; protocol path itself is unchanged | NOT MEASURED for another latest-build public E2E |
+| Latest post-hardening source was not exercised by another public article transmission without separate approval | the earlier E2E transfer predates the final serialized outbox/pairing and AUTH-template hardening; the exact final artifacts were verified without creating another public payload | NOT MEASURED for another latest-build public E2E |
 | An existing Room v4 installation has no historical wrapper/ACK ledger | the first v5 catch-up may emit one authenticated recovery ACK batch for a still-retained completed transfer; subsequent catch-ups suppress it | bounded migration behavior; one TCL migration/repeat observation PASS |
 | Android background work is WorkManager catch-up, not instant push | delivery timing is OS/network dependent; force-stop requires user reopen | known platform constraint |
 | Full Android lifecycle matrix (reboot, Doze, battery saver, screen-off, network switch, captive network, storage failure) was not physically executed | no claim for those cases | NOT MEASURED |
@@ -34,3 +34,7 @@ Every item is evidence-based and uses the required status vocabulary.
 - Android persists authenticated wrapper IDs and ACK intent/outcomes; a
   completed two-relay ACK quorum cannot be restarted by later copies of the
   same transfer.
+- Chrome serializes all mutations for one outbox transfer and persists a
+  delivered receipt before deleting its durable payload.
+- Relay rejection of an AUTH event is distinct from rejection of the original
+  Reader event, and Chrome validates the exact NIP-42 template before signing.

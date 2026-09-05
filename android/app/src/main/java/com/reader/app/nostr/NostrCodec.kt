@@ -243,6 +243,8 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     EVENT_SENT,
     OK_TRUE,
     OK_FALSE,
+    AUTH_REJECTED,
+    PROTOCOL_ERROR,
     NO_OK_TIMEOUT,
     SOCKET_ERROR,
     TLS_ERROR,
@@ -308,7 +310,7 @@ class RelayClient private constructor(private val http: OkHttpClient) {
   }
 
   private fun authEvent(url: String, challenge: String, seckey: ByteArray): NostrEvent {
-    require(challenge.length in 1..512) { "invalid relay authentication challenge" }
+    require(challenge.toByteArray(Charsets.UTF_8).size in 1..512) { "invalid relay authentication challenge" }
     val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(seckey))
     return NostrCodec.signEvent(
       pubkey = pubkey,
@@ -363,10 +365,24 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     val trace = Collections.synchronizedList(mutableListOf<TracePoint>())
     val terminal = AtomicReference<PublishState?>(null)
     val reason = AtomicReference<String?>(null)
-    fun record(state: PublishState, detail: String? = null) {
-      val safeDetail = sanitizeReason(detail)
+    fun record(state: PublishState, detail: String? = null): Boolean {
+      val isTerminal = state in setOf(
+        PublishState.OK_TRUE,
+        PublishState.OK_FALSE,
+        PublishState.AUTH_REJECTED,
+        PublishState.PROTOCOL_ERROR,
+        PublishState.NO_OK_TIMEOUT,
+        PublishState.SOCKET_ERROR,
+        PublishState.TLS_ERROR,
+        PublishState.CLOSED,
+      )
+      val becameTerminal = isTerminal && terminal.compareAndSet(null, state)
+      val recordedState = if (isTerminal && !becameTerminal) PublishState.IGNORED_FRAME else state
+      val safeDetail = sanitizeReason(
+        if (isTerminal && !becameTerminal) "ignored ${state.name} after ${terminal.get()?.name}" else detail,
+      )
       val point = TracePoint(
-        state = state,
+        state = recordedState,
         wallClockUtc = Instant.now().toString(),
         monotonicMillis = (System.nanoTime() - startedNanos) / 1_000_000,
         detail = safeDetail,
@@ -374,20 +390,11 @@ class RelayClient private constructor(private val http: OkHttpClient) {
       trace.add(point)
       Log.i(
         "NostrReaderRelay",
-        "relay=$relay eventId=${event.id} state=${state.name} monotonicMs=${point.monotonicMillis}" +
+        "relay=$relay eventId=${event.id} state=${recordedState.name} monotonicMs=${point.monotonicMillis}" +
           (safeDetail?.let { " detail=$it" } ?: ""),
       )
-      if (state in setOf(
-          PublishState.OK_TRUE,
-          PublishState.OK_FALSE,
-          PublishState.NO_OK_TIMEOUT,
-          PublishState.SOCKET_ERROR,
-          PublishState.TLS_ERROR,
-          PublishState.CLOSED,
-        )
-      ) {
-        if (terminal.compareAndSet(null, state) && safeDetail != null) reason.compareAndSet(null, safeDetail)
-      }
+      if (becameTerminal && safeDetail != null) reason.compareAndSet(null, safeDetail)
+      return becameTerminal
     }
 
     record(PublishState.NORMALIZED)
@@ -395,6 +402,7 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     val latch = CountDownLatch(1)
     val accepted = AtomicReference(false)
     val authenticated = AtomicBoolean(false)
+    val authPending = AtomicBoolean(false)
     val authEventId = AtomicReference<String?>(null)
     fun sendOriginal(webSocket: WebSocket) {
       record(PublishState.EVENT_QUEUED)
@@ -425,13 +433,17 @@ class RelayClient private constructor(private val http: OkHttpClient) {
               if (arr.size >= 3 && responseId == authEventId.get()) {
                 val ok = arr[2].jsonPrimitive.boolean
                 val prefix = arr.getOrNull(3)?.jsonPrimitive?.content
-                if (ok) {
-                  authenticated.set(true)
-                  record(PublishState.AUTH_SENT, "relay authentication accepted")
-                  sendOriginal(webSocket)
+                if (terminal.get() != null) {
+                  record(PublishState.IGNORED_FRAME, "authentication OK after terminal result")
+                } else if (ok) {
+                  if (authenticated.compareAndSet(false, true)) {
+                    record(PublishState.AUTH_SENT, "relay authentication accepted")
+                    sendOriginal(webSocket)
+                  }
                 } else {
-                  record(PublishState.OK_FALSE, "relay authentication rejected: ${prefix.orEmpty()}")
-                  latch.countDown()
+                  if (record(PublishState.AUTH_REJECTED, "relay authentication rejected: ${prefix.orEmpty()}")) {
+                    latch.countDown()
+                  }
                 }
               } else if (arr.size >= 3 && responseId == event.id) {
                 val ok = arr[2].jsonPrimitive.boolean
@@ -439,21 +451,32 @@ class RelayClient private constructor(private val http: OkHttpClient) {
                 if (!ok && authSeckey != null && !authenticated.get() && prefix.orEmpty().contains("auth-required", ignoreCase = true)) {
                   record(PublishState.AUTH_CHALLENGE, "relay requires authentication")
                 } else {
-                  accepted.set(ok)
-                  record(if (ok) PublishState.OK_TRUE else PublishState.OK_FALSE, prefix)
-                  latch.countDown()
-                  webSocket.close(1000, null)
+                  if (record(if (ok) PublishState.OK_TRUE else PublishState.OK_FALSE, prefix)) {
+                    accepted.set(ok)
+                    latch.countDown()
+                    webSocket.close(1000, null)
+                  }
                 }
               } else {
                 record(PublishState.IGNORED_FRAME, "mismatched OK event id")
               }
             }
             "AUTH" -> {
+              if (terminal.get() != null) {
+                record(PublishState.IGNORED_FRAME, "authentication challenge after terminal result")
+                return
+              }
               val challenge = arr.getOrNull(1)?.jsonPrimitive?.content.orEmpty()
               record(PublishState.AUTH_CHALLENGE, "challengeSha256=${challengeFingerprint(challenge)}")
-              if (authSeckey != null) {
-                val auth = runCatching { authEvent(url, challenge, authSeckey) }.getOrNull()
-                if (auth != null) {
+              if (authSeckey != null && authPending.compareAndSet(false, true)) {
+                val auth = runCatching { authEvent(url, challenge, authSeckey) }
+                  .onFailure {
+                    if (record(PublishState.PROTOCOL_ERROR, "invalid relay authentication challenge")) {
+                      latch.countDown()
+                    }
+                  }
+                  .getOrNull()
+                if (auth != null && terminal.get() == null) {
                   authEventId.set(auth.id)
                   if (webSocket.send("[\"AUTH\",${auth.toJson()}]")) {
                     record(PublishState.AUTH_SENT)
@@ -520,6 +543,8 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     val latch = CountDownLatch(1)
     val subId = "reader-" + SecureRandom().nextInt(1_000_000)
     val authEventId = AtomicReference<String?>(null)
+    val authPending = AtomicBoolean(false)
+    val authenticated = AtomicBoolean(false)
     val filter = buildJsonObject {
       put("kinds", buildJsonArray { kinds.forEach { add(it) } })
       put("#p", buildJsonArray { add(recipientPubkey) })
@@ -545,16 +570,28 @@ class RelayClient private constructor(private val http: OkHttpClient) {
             out.add(NostrCodec.parseEvent(arr[2].toString()))
           } else if (arr.size >= 2 && arr[0].jsonPrimitive.content == "EOSE") {
             // keep socket open for live events until timeout
-          } else if (arr.size >= 2 && arr[0].jsonPrimitive.content == "AUTH" && authSeckey != null) {
-            val challenge = arr[1].jsonPrimitive.content
-            val auth = authEvent(url, challenge, authSeckey)
-            authEventId.set(auth.id)
-            webSocket.send("[\"AUTH\",${auth.toJson()}]")
           } else if (
-            arr.size >= 3 && arr[0].jsonPrimitive.content == "OK" &&
-            arr[1].jsonPrimitive.content == authEventId.get() && arr[2].jsonPrimitive.boolean
+            arr.size >= 2 && arr[0].jsonPrimitive.content == "AUTH" &&
+            authSeckey != null && authPending.compareAndSet(false, true)
           ) {
-            request(webSocket)
+            val challenge = arr[1].jsonPrimitive.content
+            val auth = runCatching { authEvent(url, challenge, authSeckey) }.getOrNull()
+            if (auth == null) {
+              latch.countDown()
+              webSocket.close(1002, "invalid relay authentication challenge")
+            } else {
+              authEventId.set(auth.id)
+              webSocket.send("[\"AUTH\",${auth.toJson()}]")
+            }
+          } else if (
+            arr.size >= 3 && arr[0].jsonPrimitive.content == "OK" && arr[1].jsonPrimitive.content == authEventId.get()
+          ) {
+            if (arr[2].jsonPrimitive.boolean) {
+              if (authenticated.compareAndSet(false, true)) request(webSocket)
+            } else {
+              latch.countDown()
+              webSocket.close(1000, "relay authentication rejected")
+            }
           }
         } catch (e: Exception) {
         }

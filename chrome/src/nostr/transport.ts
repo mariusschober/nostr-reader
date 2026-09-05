@@ -22,7 +22,7 @@ export interface RelayHealth {
 export interface RelayPublishResult {
   url: string;
   ok: boolean;
-  state: "OK_TRUE" | "OK_FALSE" | "NO_OK_TIMEOUT" | "SOCKET_ERROR" | "TLS_ERROR" | "CLOSED";
+  state: "OK_TRUE" | "OK_FALSE" | "NO_OK_TIMEOUT" | "SOCKET_ERROR" | "TLS_ERROR" | "CLOSED" | "AUTH_ERROR" | "PROTOCOL_ERROR";
   reasonPrefix?: string;
 }
 
@@ -42,6 +42,55 @@ interface AuthController {
   authenticated(): boolean;
 }
 
+class ClientProtocolError extends Error {}
+class RelayAuthError extends Error {}
+
+/** Independently constrain the exact NIP-42 template before any key signs it. */
+export function validateAuthTemplate(
+  template: Record<string, unknown>,
+  relayUrl: string,
+  expectedChallenge: string,
+  nowSecs = Math.floor(Date.now() / 1000),
+): void {
+  const keys = Object.keys(template).sort();
+  if (keys.join(",") !== "content,created_at,kind,tags") {
+    throw new ClientProtocolError("relay authentication template fields are invalid");
+  }
+  if (template["kind"] !== 22242 || template["content"] !== "") {
+    throw new ClientProtocolError("relay authentication template kind or content is invalid");
+  }
+  const createdAt = template["created_at"];
+  if (!Number.isSafeInteger(createdAt) || Math.abs(nowSecs - Number(createdAt)) > 600) {
+    throw new ClientProtocolError("relay authentication timestamp is out of range");
+  }
+  const challengeBytes = new TextEncoder().encode(expectedChallenge).length;
+  if (challengeBytes < 1 || challengeBytes > 512) {
+    throw new ClientProtocolError("relay authentication challenge is invalid");
+  }
+  const tags = template["tags"];
+  if (
+    !Array.isArray(tags) || tags.length !== 2 ||
+    !tags.every((tag) => Array.isArray(tag) && tag.length === 2 && tag.every((part) => typeof part === "string"))
+  ) {
+    throw new ClientProtocolError("relay authentication tags are invalid");
+  }
+  const relayTags = tags.filter((tag) => tag[0] === "relay");
+  const challengeTags = tags.filter((tag) => tag[0] === "challenge");
+  let relayBindingMatches = false;
+  try {
+    relayBindingMatches = normalizeRelayUrl(String(relayTags[0]?.[1])) === normalizeRelayUrl(relayUrl);
+  } catch {
+    throw new ClientProtocolError("relay authentication binding mismatch");
+  }
+  if (
+    relayTags.length !== 1 || challengeTags.length !== 1 ||
+    !relayBindingMatches ||
+    challengeTags[0]?.[1] !== expectedChallenge
+  ) {
+    throw new ClientProtocolError("relay authentication binding mismatch");
+  }
+}
+
 /** Configure NIP-42 with the app's pseudonymous device/channel key, never a user identity. */
 async function configureRelayAuth(
   pool: SimplePool,
@@ -54,6 +103,7 @@ async function configureRelayAuth(
     challenge?: string;
   };
   let inFlight: Promise<void> | null = null;
+  let latest: Promise<void> | null = null;
   let didAuthenticate = false;
   let markChallenge!: () => void;
   const challengeReady = new Promise<void>((resolve) => { markChallenge = resolve; });
@@ -64,10 +114,21 @@ async function configureRelayAuth(
       if (!(typeof authRelay.challenge === "string" && authRelay.challenge.length > 0)) {
         await bounded(challengeReady, 2500, "relay authentication challenge");
       }
-      await relay.auth(async (template) => finalizeEvent(template, authSeckey));
+      const challenge = authRelay.challenge;
+      if (typeof challenge !== "string") throw new ClientProtocolError("relay authentication challenge is unavailable");
+      try {
+        await relay.auth(async (template) => {
+          validateAuthTemplate(template as unknown as Record<string, unknown>, url, challenge);
+          return finalizeEvent(template, authSeckey);
+        });
+      } catch (error) {
+        if (error instanceof ClientProtocolError) throw error;
+        throw new RelayAuthError(error instanceof Error ? error.message : String(error));
+      }
       didAuthenticate = true;
     })();
     inFlight = pending;
+    latest = pending;
     void pending.finally(() => {
       if (inFlight === pending) inFlight = null;
     }).catch(() => undefined);
@@ -79,7 +140,7 @@ async function configureRelayAuth(
   };
   return {
     relay,
-    auth: { authenticate, current: () => inFlight, authenticated: () => didAuthenticate },
+    auth: { authenticate, current: () => inFlight ?? latest, authenticated: () => didAuthenticate },
   };
 }
 
@@ -122,7 +183,7 @@ export async function queryRelayWithAuth(
     return boundedRelayEvents(await pool.querySync([url], filter, { maxWait }));
   }
   const pending = controller.auth.current();
-  if (pending) await bounded(pending, 2500, "relay authentication").catch(() => undefined);
+  if (pending) await bounded(pending, 2500, "relay authentication");
   if (!controller.auth.authenticated()) return boundedRelayEvents(first);
   const second = await pool.querySync([url], filter, { maxWait });
   const unique = new Map(first.map((event) => [event.id, event]));
@@ -342,6 +403,8 @@ function sanitizedReason(error: unknown): string {
 }
 
 function classifyPublishFailure(error: unknown): RelayPublishResult["state"] {
+  if (error instanceof ClientProtocolError) return "PROTOCOL_ERROR";
+  if (error instanceof RelayAuthError) return "AUTH_ERROR";
   const raw = error instanceof Error ? error.message : String(error);
   if (/timed out|timeout/i.test(raw)) return "NO_OK_TIMEOUT";
   if (/\bclosed\b/i.test(raw)) return "CLOSED";
@@ -374,7 +437,9 @@ export async function publishPerRelay(
         }
       } else {
         const publications = pool.publish([url], event as never);
-        if (publications.length !== 1) throw new Error(`unexpected publish Promise count ${publications.length}`);
+        if (publications.length !== 1) {
+          throw new ClientProtocolError(`unexpected publish Promise count ${publications.length}`);
+        }
         await bounded(publications[0], timeoutMs, "relay publish");
       }
       return { url, ok: true, state: "OK_TRUE" };
