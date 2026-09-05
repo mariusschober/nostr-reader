@@ -24,8 +24,9 @@ not used in repair testing.
   Reader's isolated content-script world could see the API namespace but its
   storage read was denied; no device secret or pairing state was visible.
 - Secrets are not stored in sync storage, page localStorage, the DOM, reports,
-  or logs. Pairing material is removed on completion, cancellation, expiry,
-  disconnect, and supersession.
+  or logs. The one-time bootstrap secret is removed immediately after the
+  Android response authenticates and before ACK publication; cancellation,
+  expiry, disconnect, and supersession remove any remaining obsolete material.
 - The removed page-world bridge means arbitrary page JavaScript cannot invoke a
   NIP-07 signing surface through Reader.
 - Manifest permissions are limited to `activeTab`, `scripting`, `storage`,
@@ -69,6 +70,12 @@ and `evidence/raw/final/pairing-relay-state-hardening-2026-09-05.txt`.
 - Chrome reads an unauthenticated pair response only from fixed bootstrap
   relays. After that response authenticates the full relay digest, final
   completion catch-up uses every bound relay, including custom relays.
+- Pairing ACK publication is throttled to one fresh attempt per 30 seconds and
+  completion is queried first. Missing relay `OK` does not suppress completion
+  reads after a finished send attempt; Android's authenticated completion is
+  stronger evidence. Android's one-time worker remains retryable while any
+  non-expired pairing row exists, so timing cannot silently transfer recovery
+  to a later periodic job.
 - Durable relay state is treated as untrusted input before connection and
   quorum calculation; missing or reordered state cannot become a zero-relay
   success or an implicit default fallback.
@@ -78,6 +85,9 @@ and `evidence/raw/final/pairing-relay-state-hardening-2026-09-05.txt`.
 - Outer expiry is checked before decryption; application expiry, recipient,
   sender, protocol, kind, signature, MAC, hash, and resource limits are checked
   before state mutation.
+- Reader gzip is decoded as one exact member under a streaming expanded-size
+  limit. The consumed DEFLATE boundary, CRC32, ISIZE, and end-of-input must all
+  agree; concatenated members and trailing bytes are rejected.
 - There is no NIP-04 downgrade or plaintext transport fallback.
 
 ## Logs and retained evidence

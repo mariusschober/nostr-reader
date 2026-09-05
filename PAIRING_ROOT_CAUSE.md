@@ -85,6 +85,11 @@ Android becomes active only after validating Chrome's signed, transcript-bound
 ACK and publishing the signed completion. Chrome becomes connected only after
 validating that completion.
 
+In the repaired path, zero matching positive response confirmations leave the
+new row non-active in `pending_response` with bounded one-time retry ownership.
+That preserves the transcript through a transient relay failure without
+recreating the baseline ghost-channel bug or requiring an immediate rescan.
+
 ## Source-linked causal chain
 
 | Defect | Baseline source | Effect | Repaired source |

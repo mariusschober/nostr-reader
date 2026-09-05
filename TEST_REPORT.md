@@ -16,14 +16,14 @@ failure has a matching relay trace and source-linked cause. One real v2
 Chrome/TCL pairing with seven relays completed; one synthetic article was
 stored once; Android's authenticated ACK cleared Chrome's outbox.
 
-The ACK-durability follow-up was installed byte-for-byte on both physical
-phones and the API-26 emulator. The final state-race/authentication hardening
-added a seventh hostile-QR runtime case; the shared field-exact Chrome/Android
-pairing transcript adds an eighth. All eight cases pass in all three
-environments. The preserved TCL then
-migrated to Room v5, emitted one expected historical recovery ACK batch, and an
-immediately serialized second catch-up read the retained events without another
-ACK or document mutation.
+The final runtime checkpoint was installed byte-for-byte on both physical
+phones and the API-26 emulator. Two additional cases exercise pending-pairing
+worker ownership and strict rejection of concatenated/trailing gzip input. All
+ten instrumentation cases pass in all three environments. The preserved TCL
+still exposes the authenticated Chrome device after the exact install. Chrome
+loaded the exact ZIP worker bytes, preserved the seven-relay binding through a
+full same-profile restart, and recovered 20/20 distinct post-pair worker
+terminations without outbox mutation.
 
 The full task is not labeled PASS because the requested 20/20 and 50/50
 physical reliability series, several lifecycle/network scenarios, and a second
@@ -40,11 +40,17 @@ old kind-21059 timestamp -> matching relay OK_FALSE “ephemeral event expired�
   + Android early trust -> ghost channel risk
   + false Chrome promise-array accounting -> false relay success
   + zlib/gzip mismatch -> article decode failure
+  + one-time worker could finish before next pairing retry -> recovery gap
+  + decoders accepted a second gzip member/trailing bytes -> ambiguous frame
 ```
 
 The final implementation and documentation commit IDs are recorded by Git and
 the generated `artifacts/ARTIFACTS.json`. They are not embedded into their own
 commit because a commit cannot contain its own future hash.
+
+Final runtime fix commit:
+`6ea80ee6f3732a192307661fd9cd5c485a4dd1dc`. The later audited artifact and
+documentation commit is the `sourceCommit` in generated `ARTIFACTS.json`.
 
 ## 2. Findings resolved
 
@@ -73,16 +79,18 @@ than claims about an immutable baseline line.
 | HIGH H9 incoming expiry ignored | Chrome `transport.ts:93-128`; Android wrap/manifest receive | stale replay reached payload logic | Chrome `transport.ts:239-244`; Android `NostrCodec.kt:159-168`, `TransferManager.kt:119-125` | expiry tests | PASS |
 | HIGH H10 nonstandard BIP-340 nonce | Android `Secp256k1.kt:95-110` | official signing vector fails | exact BIP-340 implementation in same module | official vectors 0–14 | PASS |
 | HIGH H11 stale Chrome outbox write after ACK (repair follow-up) | detached publish/retry/ACK handlers mutated one transfer independently | a late publisher could recreate an item after authenticated ACK deletion | keyed serial executor, durable reload inside transfer lock, ACK-first retry, receipt-before-delete | deterministic scheduler + service-worker recovery tests | PASS |
+| HIGH H12 Chrome channel not bound to retained device key (repair follow-up) | Chrome `service-worker.ts:129-182,365-425`; completed state stored the Android channel and relays but not the authenticated Chrome device public key | missing/malformed storage could display an unrecoverable old channel as connected; a replacement valid key could sign under stale trust; an unbound old capture could retain the wrong sender identity | `device-binding.ts:1-62`; service worker now validates both x-only keys, persists/migrates the public device binding, cancels mismatched sessions, strips unusable channel state, rebinds only never-sent captures, and fails already-bound sender drift before network | device-binding unit tests + worker recovery assertions + preserved-profile migration/integrity check | PASS implementation/local/profile; deliberate live key corruption not performed |
+| HIGH H13 pairing retry ownership and bootstrap-secret lifetime (repair follow-up) | Android discarded a newly provisioned transcript when the first response got no positive `OK`, and one-time sync could return success while a future pending pairing remained; Chrome ACK was attempted on each 2.5-second UI poll, never repeated after first acceptance, and retained the bootstrap secret beyond response authentication | transient/missing relay confirmation could force another scan; Android could fall back to a 30-minute periodic run after the transcript expired; Chrome could flood retries or strand Android after an ACK stored without a returned `OK`; a crash extended one-time secret retention | zero-confirmation Android responses remain non-active/retryable; `processDue()` returns pending ownership and WorkManager uses 10-second exponential retry; Chrome durably strips the secret immediately after response authentication, enters completion-reading after every send attempt, and republishes a fresh authenticated ACK at most every 30 seconds until completion/expiry | JVM/instrumentation retry regressions; Chrome transition/timing and recovery-source tests; 10/10 exact-device instrumentation | PASS implementation/deterministic; physical in-flight kill quota NOT MEASURED |
+| HIGH H14 gzip decoders accepted extra members/trailing bytes (repair follow-up) | runtime convenience decoders stopped after or transparently joined a valid first stream | concatenated members and arbitrary suffixes violated the documented one-member wire contract and created cross-runtime ambiguity | TypeScript/Kotlin/Swift stream raw DEFLATE to an exact consumed boundary and verify CRC32/ISIZE; Rust requires complete one-member cursor consumption; all enforce the expanded limit during decode | pre-fix rejection tests failed on all four runtimes; post-fix Chrome/Kotlin/Rust/Swift tests and Android physical runtime case pass | PASS |
 | MEDIUM M1 incomplete NIP-01 escaping | Android `NostrCodec.kt:30-50` | CR/tab/control canonical IDs diverge | serializer-backed `eventId()` `NostrCodec.kt:50-58` | canonical reference test | PASS |
 | MEDIUM M2 rumor missing ID | Chrome `transport.ts:42-47`; Android `NostrCodec.kt:84-92` | spec/interoperability drift | Chrome `transport.ts:154-164`; Android `NostrCodec.kt:112-119` | rumor ID/signature tests | PASS |
 | MEDIUM M3 `sent` item stranded | Chrome `service-worker.ts:153`, alarm pending-only | no ACK meant permanent nonretry | retryable states/backoff/age ceiling, ACK-only deletion | delivery-state/recovery tests | PASS |
 | MEDIUM M4 “instant” background claim | Android periodic WorkManager | OS makes timing inexact | docs now say catch-up; immediate resume work added | source/emulator; broad physical timing NOT MEASURED | PASS documentation/implementation truth |
 | MEDIUM M5 documentation drift | `PROTOCOL.md`, `SECURITY.md`, old report | claims exceeded implementation/evidence | regenerated v2 documentation set | manual cross-check + tests | PASS |
-| MEDIUM M6 receiver ACK was only deduped in memory | pre-follow-up `SyncWorker` per-run set | a later catch-up could republish a completed ACK; process death after document commit had no durable ACK owner | Room v5 `ack_intents` + `processed_events`; serialized bounded quorum retry | 85 JVM tests, eight-case tests on API-26 and both phones, one TCL installed-state repeat | PASS for executed evidence; physical interruption matrix NOT MEASURED |
+| MEDIUM M6 receiver ACK was only deduped in memory | pre-follow-up `SyncWorker` per-run set | a later catch-up could republish a completed ACK; process death after document commit had no durable ACK owner | Room v5 `ack_intents` + `processed_events`; serialized bounded quorum retry | 86 JVM tests, ten-case tests on API-26 and both phones, one TCL installed-state repeat | PASS for executed evidence; physical interruption matrix NOT MEASURED |
 | MEDIUM M7 relay AUTH/OK attribution and challenge retention (repair follow-up) | Android relay listener shared terminal bookkeeping for AUTH and original event; Chrome trusted the dependency template shape and dependency NOTICE logger | negative AUTH could be reported as article rejection; duplicate/changed challenges could create repeated signatures; a relay could echo a complete short challenge into retained diagnostics | exact auth-event ID classification, first-terminal compare-and-set, one challenge/signature per operation, independent Chrome template validator, exact challenge redaction in NOTICE/OK/CLOSED/error paths | Chrome/Android malicious, stale, negative, oversized, duplicate, changed, echoed, and contradictory AUTH/OK tests | PASS local; public AUTH NOT MEASURED |
 | MEDIUM M8 overlapping pairing advancement (repair follow-up) | UI, alarm, and worker entry points could perform concurrent read-modify-write | duplicate sends or stale pairing state writes under rapid/reentrant triggers | serialized Chrome pairing executor and Android process-wide pairing mutex; confirmation UI disables duplicate action | compilation, unit/state review; physical reentrancy series NOT MEASURED | PASS implementation; statistical physical gate NOT MEASURED |
 | MEDIUM M9 custom-relay completion and corrupt relay state (repair follow-up) | Chrome final-completion catch-up filtered to defaults; paired capture had a default fallback; quorum used the durable item-list length | Android could become active after custom-only completion acceptance while Chrome kept waiting; corrupt state could change the channel set or make required quorum zero | fixed-only unauthenticated bootstrap, full authenticated completion read, relay-digest recheck, canonical durable-set validation before network/quorum, unbound queue on incomplete channel; removed unused connectivity-only probe | relay-contract and service-worker recovery regressions | PASS implementation/local; public custom-only completion failover NOT MEASURED |
-| HIGH H12 Chrome channel not bound to retained device key (repair follow-up) | Chrome `service-worker.ts:129-182,365-425`; completed state stored the Android channel and relays but not the authenticated Chrome device public key | missing/malformed storage could display an unrecoverable old channel as connected; a replacement valid key could sign under stale trust; an unbound old capture could retain the wrong sender identity | `device-binding.ts:1-62`; service worker now validates both x-only keys, persists/migrates the public device binding, cancels mismatched sessions, strips unusable channel state, rebinds only never-sent captures, and fails already-bound sender drift before network | device-binding unit tests + worker recovery assertions + preserved-profile migration/integrity check | PASS implementation/local/profile; deliberate live key corruption not performed |
 
 ## 3. Test matrix
 
@@ -92,19 +100,19 @@ than claims about an immutable baseline line.
 | baseline Chrome regressions | Node/Vitest 2 | patched regression tests on baseline | demonstrate defects | 4 expected failures | `regressions-chrome-fail.log` | PASS |
 | baseline Android regressions | JVM/Gradle | patched regression tests on baseline | demonstrate defects | 6 expected failures | `regressions-android-fail.log` | PASS |
 | original physical failure | TCL | scan baseline QR | capture exact relay outcomes | one matching `OK_FALSE`, two transport failures, UI error | original TCL trace | PASS |
-| Chrome dependencies | macOS/Node 22.16 | `npm ci`; `npm audit` | lockfile install; no known npm advisory | install PASS; 0 vulnerabilities | terminal run + lockfile | PASS |
+| Chrome dependencies | macOS/Node 22.16 | `npm ci --offline`; unchanged-lock advisory evidence | locked local install; no known cached/prior advisory | 183 packages installed/audited; 0 vulnerabilities reported; online rerun denied egress | terminal run + lockfile + final evidence | PASS for locked install and unchanged advisory result; fresh online query NOT MEASURED |
 | Chrome static | TypeScript 5.5.4 | `npm run typecheck` | no errors | no errors | terminal run | PASS |
-| Chrome unit/fault | Vitest 5.0 | `npm test` | all pass | 17 files, 100 tests pass | `chrome-device-binding-hardening-2026-09-05.txt` | PASS |
+| Chrome unit/fault | Vitest 5.0 | `npm test` | all pass | 17 files, 101 tests pass | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
 | Chrome package | Vite 8.2.2/CFT | `npm run build` | valid MV3 package, standalone content script | verifier pass; no module/noncharacter packaging defect | build output | PASS |
 | Chrome secret boundary | CFT 151 | content script reads local storage keys | access denied/hidden | API namespace present in exact current isolated world, but read denied; no values visible | `chrome-content-storage-isolation-*`, `pairing-relay-state-hardening-*` | PASS |
 | Chrome persistence | paired CFT profile | reload/restart + status + device/relay binding integrity | pairing/outbox survive with exact bound state | paired, exact seven relays, device binding present/verified, relay digest present/matched, delivered 1, pending 0 | `chrome-paired-status-*`, `chrome-device-binding-hardening-*` | PASS |
 | Chrome post-pair worker recovery | paired CFT profile | terminate 20 distinct service-worker targets and request read-only status after each | every new worker revalidates the same bound channel without outbox mutation | 20/20 recovered; paired 7, pending 0, delivered 1, failed 0 | `chrome-device-binding-hardening-*` | PASS for post-pair recovery; required before-reply pairing quota NOT MEASURED |
-| Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 85 tests, 0 failures/errors | XML reports + `auth-challenge-redaction-2026-09-05.txt` | PASS |
+| Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 86 tests, 0 failures/errors | XML reports + `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
 | Android lint/build | Android SDK 34 | `lintDebug assembleDebug assembleDebugAndroidTest` | 0 errors; APKs | success, 0 lint errors, 29 retained warnings | Gradle/lint report | PASS |
 | shared pairing transcript | Chrome + Android JVM + Android runtime | one fixed request/response/ACK/completion across both implementations | exact field equality and opposite-end validation | unit PASS; runtime PASS | `shared-pairing-vector-2026-09-05.txt` | PASS |
-| Android instrumentation | API-26 emulator | exact APK + test APK, eight current DB/codec/transfer/QR/pairing-vector cases | all pass | 8/8 | generated `ARTIFACTS.json` + final evidence | PASS |
-| Android instrumentation | physical TCL T807D | exact APK + test APK, eight current cases | all pass | 8/8 | `shared-pairing-vector-2026-09-05.txt` + generated manifest | PASS |
-| Android instrumentation | physical Samsung S23 | exact APK + test APK, eight current cases | all pass | 8/8 | same evidence | PASS |
+| Android instrumentation | API-26 emulator | exact APK + test APK, ten current DB/codec/transfer/QR/pairing/recovery cases | all pass | 10/10 | generated `ARTIFACTS.json` + final evidence | PASS |
+| Android instrumentation | physical TCL T807D | byte-matched APK + test APK, ten current cases | all pass | 10/10 | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` + generated manifest | PASS |
+| Android instrumentation | physical Samsung S23 | byte-matched APK + test APK, ten current cases | all pass | 10/10 | same evidence | PASS |
 | Android installed-state ACK recovery | preserved paired TCL | v4 -> v5 first catch-up then immediate second serialized catch-up | one bounded recovery ACK; no second ACK | observed exactly | same evidence | PASS for observation |
 | Rust normative core | rustc/cargo 1.97.1 | `cargo test` | all pass | 6/6 | terminal run | PASS |
 | Swift core mirror | Swift 6.3.3 | `swift test` | all pass | 7/7 | terminal run | PASS |
@@ -140,6 +148,7 @@ check. Required reliability quotas remain **NOT MEASURED**.
 | exactly-once local effect | document hash + atomic Room commit | instrumentation + physical duplicate | PASS |
 | no completed-ACK restart on retained wrappers | Room v5 wrapper ledger + one bounded ACK lifecycle per transfer | unit/instrumentation + one installed-state TCL immediate repeat | PASS for executed evidence; broad physical matrix NOT MEASURED |
 | no ghost Chrome channel after device-key loss/replacement | persisted public identity marker + current private-key derivation check before status/network | deterministic key classes + worker assertions + compatible live-profile marker migration | PASS; deliberate live key corruption not performed |
+| exact one-member gzip framing | streaming expanded limit + exact DEFLATE boundary + CRC32/ISIZE + no suffix | four runtime rejection tests + physical Android case | PASS |
 | plaintext outbox deletion only on ACK | strict ACK match | Chrome delivery tests + physical state | PASS |
 | transport key signs only exact bound AUTH | full template/challenge constraints before signing | malicious-template and duplicate/rejection fault tests | PASS local; public AUTH NOT MEASURED |
 | secret-free logs/evidence | structural sanitized diagnostics | retained-log/source scan | PASS |
@@ -156,6 +165,13 @@ to ignored generated files:
 - `artifacts/reader-chrome-extension.zip`
 - `artifacts/ARTIFACTS.json`
 - `artifacts/SHA256SUMS`
+
+On this host the wrapper's online `npm audit` step was denied network egress.
+The same clean-build steps were therefore run individually with
+`npm ci --offline` and offline Gradle, followed by the complete local test,
+lint, package, SBOM, and dependency-inventory gates. The unchanged lockfile's
+local install reported zero vulnerabilities; a fresh online advisory query is
+explicitly **NOT MEASURED** for this final rebuild.
 
 Exact post-commit values belong in `ARTIFACTS.json`; placing a future commit
 hash inside this tracked report would create an impossible self-reference.

@@ -50,9 +50,9 @@ matching positive relay results per payload.
 | Create QR | Chrome | Android camera/manual paste | v2 pairing session including one-time secret | none | none | QR contains public material only | fresh pairing pubkey + stable Chrome device pubkey | at least two default relays queryable before display | none | `sessionId` + nonce | 300 s | Chrome alarm/session recovery |
 | Validate request | Chrome | Android | none until explicit Connect | none | none | none | validate both x-only public keys | none | human consent permits next step | `sessionId` | near-now bounded | user may rescan |
 | Provision channel | Android | local Android state | `provisioning` row, then Keystore-wrapped fresh key | none | none | Android Keystore AES-GCM wrapping | new Android channel key | none | not connected | channel/session IDs | request + 600 s cleanup window | Android coordinator |
-| Pair response | Android | Chrome pairing key | pending state before network send | 1059 | one exact `p`, one `expiration` | NIP-44 rumor -> signed seal -> NIP-44 wrap | Android channel key signs seal; fresh outer key signs wrap | per-relay matching `OK=true`; at least one advances to awaiting ACK | Chrome decrypts and validates full transcript | session, nonce, rumor/event IDs | 600 s | Android WorkManager/backoff |
-| Pair ACK | Chrome | Android channel key | response-validated Chrome session | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | stable Chrome device key signs seal; fresh outer per relay | per-relay matching result retained separately | Android validates signer, both keys, session, digest, status, time | session + Android key | 600 s | Chrome pairing alarm |
-| Pair complete | Android | Chrome device key | `ack_validated`/`completion_pending` | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Android channel key signs seal; fresh outer per relay | at least one matching positive publication before Android promotion | Chrome catches up across the full authenticated relay set, validates completion, then stores channel, exact Chrome-device binding, and relay digest and removes the pairing secret | session + both endpoint keys | 600 s | Android coordinator; Chrome catch-up |
+| Pair response | Android | Chrome pairing key | pending state before network send | 1059 | one exact `p`, one `expiration` | NIP-44 rumor -> signed seal -> NIP-44 wrap | Android channel key signs seal; fresh outer key signs wrap | per-relay matching `OK=true`; at least one advances to awaiting ACK; zero remains pending/retryable | Chrome decrypts and validates full transcript | session, nonce, rumor/event IDs | 600 s | Android WorkManager/backoff |
+| Pair ACK | Chrome | Android channel key | response-validated Chrome session with bootstrap secret already removed | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | stable Chrome device key signs seal; fresh outer per relay | per-relay matching result retained separately; fresh retry no more than every 30 s | Android validates signer, both keys, session, digest, status, time | session + Android key | 600 s | Chrome pairing recovery/alarm |
+| Pair complete | Android | Chrome device key | `ack_validated`/`completion_pending` | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Android channel key signs seal; fresh outer per relay | at least one matching positive publication before Android promotion | Chrome catches up across the full authenticated relay set, validates completion, then stores channel, exact Chrome-device binding, and relay digest; the bootstrap secret was removed at response authentication | session + both endpoint keys | 600 s | Android coordinator; Chrome catch-up |
 | Capture article | Chrome | local outbox | full plaintext intent and immutable transfer identity | none | none | local only | stable Chrome device key selected | none | none | `transferId`, `manifestId`, `documentId` | 7 d | Chrome alarm/manual retry |
 | Manifest | Chrome | Android channel | outbox already durable | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Chrome device seal; fresh outer key per relay | two unique relay `OK=true` results => `relay_accepted` | no delivery claim | stable transfer + manifest identity | outer and inner 7 d | Chrome bounded backoff |
 | Chunks | Chrome | Android channel | all compressed bytes retained in outbox | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Chrome device seal; fresh outer key per relay and retry | two unique positive results per chunk | none until full durable assembly | transfer/manifest/hash/index tuple | 7 d | Chrome bounded backoff |
@@ -69,6 +69,13 @@ browser startup, and the pairing alarm. The QR uses durable kind 1059, so a
 pairing tab or worker need not remain open. At most two live sessions are
 allowed; completion supersedes the others. One serial executor owns pairing
 session read-modify-write operations within each worker lifetime.
+After authenticating Android's response, Chrome first persists the
+`response_validated` state without the one-time decryption secret. A later
+recovery sends the ACK, checks completion before republishing, and throttles
+fresh ACK wraps to one attempt per 30 seconds until completion or expiry. A
+completed send attempt enters completion-reading even when no relay returns a
+positive `OK`; a valid Android completion is stronger than missing transport
+evidence.
 The completed channel also stores the public key derived from the exact local
 device secret used in that transcript. Missing, malformed, replaced, or
 non-curve key state cannot report paired or send under the old channel. The
@@ -80,7 +87,12 @@ Android owns durable pairing rows in Room. Workers ignore `provisioning`, can
 resume the four pending v2 states, revoke expired/corrupt rows, and delete the
 associated Keystore entry on cancellation/failure. Promotion to `active` and
 revocation of a prior active channel happen in one Room transaction.
-Foreground and WorkManager pairing operations share a process-wide mutex.
+Foreground and WorkManager pairing operations share a process-wide mutex. A
+one-time worker returns retry while any pairing remains pending—even if it woke
+before that row's next protocol attempt—and uses a ten-second exponential
+WorkManager backoff rather than abandoning ownership to periodic catch-up. A
+zero-confirmation initial response stays `pending_response`; it neither becomes
+active nor destroys the resumable transcript and forces a new scan.
 
 ## Delivery ownership and recovery
 
@@ -114,6 +126,11 @@ after document presence; accepted relays and retry timing then survive process
 death. A completed two-relay ACK quorum is terminal for that immutable
 transfer. WorkManager provides catch-up; `onResume()` requests an immediate
 run. Force-stop is explicitly not promised until the app is reopened.
+
+All receiving runtimes treat a Reader gzip value as one exact frame: streaming
+inflation enforces the expanded-size ceiling, the consumed DEFLATE boundary is
+followed by its verified CRC32/ISIZE trailer, and no second member or trailing
+byte is accepted.
 
 ## Source map
 

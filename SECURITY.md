@@ -34,17 +34,21 @@ no keys in backups/exports.
 - Chrome: private keys are used only in the service worker and key-bearing
   `storage.local` is restricted to `TRUSTED_CONTEXTS`. No web-accessible or
   page-world signing bridge exists. CSP forbids remote script/eval; captured
-  input is size-limited before transport crypto.
+  input is size-limited before transport crypto. The one-time pairing secret
+  is durably removed immediately after Android's response authenticates;
+  completion-first ACK retries are throttled to one attempt per 30 seconds.
 - Android: secp256k1 channel key wrapped by Keystore AES-256-GCM; keys, Room
   DB, and sensitive prefs excluded from auto-backup; custom relay DNS is checked
   against private/local ranges before pairing and again on every connection; every received doc is
-  hostile input (auth sender first, enforce limits, bounded inflate, sanitize
-  HTML, http(s) images only, no javascript:/embeds).
+  hostile input (auth sender first, enforce limits, one-member streaming
+  inflate with exact boundary/CRC32/ISIZE/end-of-input, sanitize HTML, http(s)
+  images only, no javascript:/embeds). Pending pairing work retains a one-time
+  retry owner until completion or expiry.
 - Mac: same contract via Keychain (see MAC.md).
 
 ## Abuse limits (all platforms)
 
-5 MiB compressed / 20 MiB expanded / 512 chunks / bounded titles, URLs,
+5 MiB compressed / 20 MiB expanded / exactly one gzip member / 512 chunks / bounded titles, URLs,
 authors, Base64 bodies / capped concurrent incomplete transfers + transfer age.
 Failures are bounded, deterministic, and tested (see chrome/tests,
 android tests). Remote images are loaded directly and therefore reveal the

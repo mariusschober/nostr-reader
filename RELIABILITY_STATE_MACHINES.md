@@ -40,10 +40,16 @@ any active state -> expired | cancelled | superseded
 ```
 
 Durable session data includes the exact request, relay set, timestamps,
-attempt/error metadata, and—only while needed—the one-time pairing key. Recovery
-is re-entered on service-worker evaluation, startup, install/update, and a
-one-minute alarm. Completing, canceling, expiring, disconnecting, or superseding
-a session removes its pairing secret rather than writing `null` or `undefined`.
+attempt/error metadata, and—only until response authentication—the one-time
+pairing key. That transition is durably saved without the secret before any ACK
+network attempt. Recovery is re-entered on service-worker evaluation, startup,
+install/update, and a one-minute alarm. Chrome queries for completion first and
+republishes a freshly wrapped ACK at most once every 30 seconds until completion
+or expiry. It enters completion-reading after every completed ACK send attempt,
+even without a positive relay `OK`, because Android's authenticated completion
+is the stronger endpoint proof. Completing, canceling, expiring, disconnecting,
+or superseding a session also removes any obsolete pairing secret rather than
+writing `null` or `undefined`.
 Response bootstrap queries are restricted to fixed relays. After the response
 authenticates Android and the relay digest, completion catch-up uses the whole
 bound relay set so a custom-relay-only success cannot split endpoint state.
@@ -62,19 +68,24 @@ provisioning
   -> completion_pending (only when publish must retry)
   -> active
 
-pending/provisioning -> revoked (failure, cancellation, expiry, key loss)
+pending/provisioning -> revoked (cancellation, expiry, corrupt state, key loss)
 ```
 
 `provisioning` is persisted before key wrapping. It is intentionally ignored by
-sync and removed if a process died before the wrapped-key commit. A failed
-initial response revokes the row and deletes the Keystore material. The final
-promotion requires a validated Chrome ACK and is transactional with revocation
-of any previous active channel. A process-wide mutex serializes UI and worker
-begin/process/cancel operations so the same pending channel cannot be advanced
-concurrently.
+sync and removed if a process died before the wrapped-key commit. An initial
+response with no matching positive relay `OK` remains non-active in
+`pending_response` with its next bounded retry; it does not force another scan
+or create a ghost active channel. The final promotion requires a validated
+Chrome ACK and is transactional with revocation of any previous active channel.
+A process-wide mutex serializes UI and worker begin/process/cancel operations so
+the same pending channel cannot be advanced concurrently.
 
-Backoff starts near five seconds, doubles with jitter, and is capped. Expiry
-provides the hard ceiling. A single active v2 channel is enforced after
+The durable pairing protocol backoff starts near five seconds, doubles with
+jitter, and is capped. Its one-time WorkManager owner uses Android's ten-second
+exponential retry floor and returns `retry` whenever a pending pairing remains,
+including when it wakes before `nextAttemptAt`. It therefore cannot silently
+fall through to the 30-minute periodic catch-up before transcript expiry.
+Expiry provides the hard ceiling. A single active v2 channel is enforced after
 replacement.
 
 ## Chrome delivery
@@ -145,7 +156,7 @@ periodic and foreground-triggered workers.
 | browser restarts | Chrome storage + alarms | startup ACK/pairing/outbox recovery | one paired-profile restart PASS; 20/20 NOT MEASURED |
 | Chrome device key is missing/corrupt/replaced | public binding marker + retained outbox | old channel fails closed; create a fresh identity and explicitly re-pair | PASS deterministic tests; deliberate live corruption not performed |
 | Android dies during provisioning | Room `provisioning` row | revoke/delete on resumed begin | PASS instrumentation |
-| Android dies during pairing ACK/completion | Room pending row + Keystore | WorkManager `processDue()` | PASS source/unit; physical lifecycle matrix NOT MEASURED |
+| Android dies during pairing ACK/completion | Room pending row + Keystore + retryable one-time work | `processDue()` reports retained ownership; ten-second exponential WorkManager retry | PASS source/unit/instrumentation; physical lifecycle matrix NOT MEASURED |
 | Android dies after document commit/before ACK quorum | Room ACK intent + accepted-relay set | next WorkManager run resumes only missing relay attempts | PASS instrumentation/unit; physical interruption scenario NOT MEASURED |
 | Chrome dies during article send | IndexedDB outbox | ACK-first startup then bounded retry | PASS tests; physical scenario NOT MEASURED |
 | Android offline | relays + WorkManager | rolling 10-day query after network returns | PASS local harness; 20/20 physical NOT MEASURED |

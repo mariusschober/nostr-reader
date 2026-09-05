@@ -47,6 +47,12 @@ preferences remain local.
 Pairing sessions are versioned and bounded. Old ad-hoc pairing keys are removed
 after v2 recovery.
 
+The pairing-session persistence hardening is compatible with valid v2
+transcripts. A session that has already authenticated Android no longer needs
+its bootstrap decryption secret; old `response_validated` or
+`waiting_completion` rows have that field stripped on recovery and continue
+with the stable Chrome device key.
+
 Adding or removing custom relays changes only the preferred next pairing set.
 An established channel keeps its authenticated relays until the user re-pairs.
 This prevents relay-set split brain.
@@ -92,3 +98,8 @@ deterministic gzip/hash behavior in Rust, TypeScript, Kotlin, and Swift. The
 NIP-44 and BIP-340 corpora gate applicable crypto implementations. Mac code
 currently validates the codec/core contract but is not a complete v2 transport
 client; UniFFI and release UI work remain future work.
+
+Valid Reader v2 gzip bytes remain compatible. Concatenated gzip members and
+arbitrary bytes after a valid member were never part of the one-member wire
+contract; inputs that older convenience decoders accidentally accepted now
+fail closed on every runtime.

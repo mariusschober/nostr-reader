@@ -22,10 +22,13 @@ flow. The missing scenarios and counts are not inferred from those successes.
 | Relay set | six defaults plus custom `wss://relay.mostr.pub`; two-relay write quorum |
 | Physical UTC window | original failure 2026-09-04T19:43:14.839Z–19:43:25.860Z; repaired flow 2026-09-05 |
 | Earlier E2E APK/ZIP hashes | exact hashes for the original live pair/article were not retained |
-| ACK follow-up APK | SHA-256 `7da2e042595b454d29910ad1322bed3d7eb1a447e54ea7eb671a1d12ddaadbac`; installed base APK matched on TCL and S23 |
+| First exact checkpoint APK (`b9b812d…`) | SHA-256 `a742c8b52f45729b8c2291cdb32bfeeeeb605f03b005d9b446efa8451ab2a977`; installed base APK matched on TCL, S23, and API-26 |
+| First exact checkpoint test APK (`b9b812d…`) | SHA-256 `5cd42331032998506652927dc03a120a84ce5838e40bed3b711ee198c3173ac8`; installed test APK matched on all three targets |
+| Final audited artifacts | source commit, hashes, byte comparison, and exact install results are recorded in generated `artifacts/ARTIFACTS.json` |
 
-The exact follow-up artifact was physically installed and its migration/ACK
-behavior was exercised, but no new article was sent. The “exact final artifact
+The exact runtime-checkpoint artifact was physically installed and its
+pairing-recovery/gzip boundary cases were exercised, but no new article was
+sent. The “exact final artifact
 physically tested end-to-end with a fresh article” item therefore remains **NOT
 MEASURED**, even though installed bytes, pairing persistence, and catch-up were
 revalidated.
@@ -59,6 +62,7 @@ revalidated.
 | App force-stop/relaunch after connection | one active channel, catch-up safe | one active channel; duplicate doc not reinserted | 1 observed restart | TCL logs | PASS |
 | Room v4 -> v5 preserved-state migration | no data/trust loss; bounded recovery | cold launch retained one active channel and seven relays | 1/1 | `exact-artifact-physical-followup-2026-09-05.txt` | PASS |
 | Repeated catch-up after recovery ACK | retained wrappers do not restart completed ACK | first v5 run sent one recovery batch (7 `OK_TRUE`); immediately serialized second run read the events and sent no ACK | 1/1 repeat | same evidence | PASS for observation |
+| Exact runtime-checkpoint install preserves pairing UI | update in place, no data clear, still bound to Chrome | Settings shows `Chrome device` and `Revoke`; returned to Inbox | 1/1 | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
 
 ## Required physical scenario matrix
 
@@ -107,7 +111,7 @@ revalidated.
 
 ## Instrumentation and UI evidence
 
-The exact APK/test-APK pair passed all eight instrumentation cases on the physical
+The exact APK/test-APK pair passed all ten instrumentation cases on the physical
 TCL, Samsung S23, and API-26 emulator. The cases cover v3 -> v5 database
 migration, missing-key
 revocation, sole-active replacement, Chrome/normative gzip decode, conflicting
@@ -117,9 +121,11 @@ the strict hostile pairing-code and prohibited-DNS boundary in the Android
 runtime without contacting those destinations. The eighth case consumes the
 same synthetic public-only v2 pairing transcript as Chrome and requires exact
 request, response, ACK, completion, relay-digest, endpoint, and time fields.
-The shared-vector physical run is retained in
-`evidence/raw/final/shared-pairing-vector-2026-09-05.txt`; exact post-commit
-artifact identity and install results belong to generated
+The ninth keeps a future-due pending pairing under WorkManager retry ownership;
+the tenth rejects concatenated gzip members and trailing bytes in the actual
+Android runtime. The current physical run is retained in
+`evidence/raw/final/pairing-retry-gzip-boundary-hardening-2026-09-05.txt`; exact
+final-commit artifact identity and install results belong to generated
 `artifacts/ARTIFACTS.json`. Earlier screenshots remain supplemental UI
 evidence.
 

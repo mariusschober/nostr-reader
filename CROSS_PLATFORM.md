@@ -28,6 +28,10 @@ and key storage.
   request/ACK and Android-produced response/completion transcript. The
   historical `golden-v1.json` is migration evidence only. No platform may
   "fix" vectors locally.
+- Every codec port must stream one raw DEFLATE stream under the shared expanded
+  limit, verify its gzip CRC32/ISIZE, and require that member's trailer to end
+  the input. Concatenated members and trailing bytes are cross-runtime
+  rejection gates, not implementation-defined behavior.
 - Design tokens: one Flexoki table per platform generated from the same hex
   source (`shared/`); article fonts bundled, never fetched.
 - No platform may add protocol fields unilaterally; a breaking change requires

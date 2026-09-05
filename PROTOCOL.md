@@ -85,6 +85,10 @@ human-readable Chrome fingerprint and full relay list. Only the explicit
 Android first persists a `provisioning` intent, wraps a fresh channel private
 key with Android Keystore, then advances to `pending_response`. A process death
 therefore leaves a bounded, revocable row rather than an orphaned credential.
+As long as any non-expired pairing row remains pending, the one-time
+WorkManager owner returns `retry` with a ten-second exponential backoff; waking
+before `nextAttemptAt` cannot hand recovery solely to the 30-minute periodic
+worker.
 
 ### 3. Android sends `pair-response`
 
@@ -93,6 +97,13 @@ Chrome device key, fresh Android channel key, relay digest, app version,
 capabilities, and bounded timestamps. The inner NIP-59 sender must own the
 returned Android channel key. Android publishes a freshly wrapped copy to each
 relay and persists exact per-relay outcomes.
+
+At least one matching positive `OK` is still required before Android advances
+to `awaiting_ack`. If none arrives, the non-active channel remains
+`pending_response`, the UI reports that confirmation is still pending, and
+bounded one-time work retries without requiring another scan. Explicit cancel,
+expiry, malformed durable state, or key loss revokes the row and deletes its
+wrapped key.
 
 No channel is active at this point.
 
@@ -104,6 +115,17 @@ inner sender to `androidChannelPubkey`. It sends `pair-ack` from the stable
 Chrome device key to that Android key. Before that authenticated response,
 Chrome queries only the six fixed bootstrap relays; it does not contact custom
 hostnames merely because they appeared in durable state.
+
+The authenticated response transition is persisted without the one-time
+pairing secret before Chrome attempts the ACK. Chrome publishes a freshly
+wrapped ACK immediately on the next recovery pass and then at most once every
+30 seconds while waiting for completion. A completed ACK send attempt enters
+completion-reading even if no relay returned a matching positive `OK`, because
+missing transport evidence does not prove the event was not stored. Chrome
+queries for completion before each retry, so a retained authenticated
+completion wins without another publication. ACK retry continues until
+authenticated completion, cancellation, supersession, or the session expiry
+ceiling.
 
 `acceptedRelays` means the ordered subset Chrome accepts as the channel
 configuration. It is not a claim that every listed relay returned `OK=true` for
@@ -122,9 +144,10 @@ Because Android has now authenticated the exact relay-set digest and applied
 its public-address guard, Chrome queries for this completion on the complete
 bound set, including custom relays. A completion accepted only by a custom
 relay therefore cannot leave Android active while Chrome waits only on the
-defaults. Chrome then removes the one-time pairing secret and supersedes other
-live pairing sessions. Cancellation, expiry, disconnect, and replacement also
-physically remove one-time or obsolete key material.
+defaults. Chrome then supersedes other live pairing sessions. The one-time
+pairing secret was already physically removed at authenticated response, not
+deferred to this final step. Cancellation, expiry, disconnect, and replacement
+also physically remove one-time or obsolete key material.
 
 `shared/test-vectors/pairing-v2.json` is the field-exact cross-runtime
 transcript gate: Chrome must reproduce its request and ACK, Android must
@@ -166,13 +189,16 @@ Canonical Markdown is produced by:
 
 `documentId = SHA-256(UTF-8(canonicalMarkdown))`.
 
-The only v2 compression is deterministic RFC-1952 gzip: one member, DEFLATE
-level 6, no optional header fields, `mtime=0`, `XFL=0`, and `OS=3`. Decoders
-require this ten-byte header, validate gzip CRC/size through their runtime,
-reject zlib/raw-DEFLATE framing and truncation, and enforce compressed and
-expanded limits. Different conformant DEFLATE implementations may choose
-different blocks, so hashes bind the actual transmitted bytes. Cross-runtime
-fixtures live in `shared/test-vectors/codec-v2.json`.
+The only v2 compression is deterministic RFC-1952 gzip: exactly one member,
+DEFLATE level 6, no optional header fields, `mtime=0`, `XFL=0`, and `OS=3`.
+Decoders require this ten-byte header, stream inflation under the 20 MiB
+expanded limit, identify the exact end of the first raw DEFLATE stream, verify
+that member's CRC32 and ISIZE, and require its eight-byte trailer to end the
+input. A second member or even one trailing byte is invalid. Decoders also
+reject zlib/raw-DEFLATE framing and truncation. Different conformant DEFLATE
+implementations may choose different blocks, so hashes bind the actual
+transmitted bytes. Cross-runtime fixtures and malformed-boundary regressions
+live in `shared/test-vectors/codec-v2.json` and the four runtime suites.
 
 ## Manifest and chunks
 

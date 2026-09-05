@@ -6,7 +6,8 @@ Every item is evidence-based and uses the required status vocabulary.
 |---|---|---|
 | Mandatory statistical reliability gates were not run | no 20/20 pairing, 50/50 delivery, or 20/20 offline/replay rate claim can be made | NOT MEASURED |
 | Only one fresh repaired Chrome/TCL pairing and one synthetic article transfer were observed | proves the complete path can work, not its field reliability | PASS for 1/1 observation; larger gates NOT MEASURED |
-| Latest post-hardening source was not exercised by another public article transmission without separate approval | the earlier E2E transfer predates the final serialized outbox/pairing and AUTH-template hardening; the exact final artifacts were verified without creating another public payload | NOT MEASURED for another latest-build public E2E |
+| Latest post-hardening source was not exercised by another public article transmission without separate approval | the earlier E2E transfer predates the final serialized outbox/pairing, AUTH-template, retry-ownership, and strict-gzip hardening; the latest artifacts were verified without creating another public payload | NOT MEASURED for another latest-build public E2E |
+| The new ACK-retry path was not interrupted physically between response authentication, ACK acceptance, and completion | deterministic recovery/timing tests and exact post-pair restart evidence do not substitute for the required in-flight pairing kill/restart series | NOT MEASURED physically |
 | An existing Room v4 installation has no historical wrapper/ACK ledger | the first v5 catch-up may emit one authenticated recovery ACK batch for a still-retained completed transfer; subsequent catch-ups suppress it | bounded migration behavior; one TCL migration/repeat observation PASS |
 | Android background work is WorkManager catch-up, not instant push | delivery timing is OS/network dependent; force-stop requires user reopen | known platform constraint |
 | Full Android lifecycle matrix (reboot, Doze, battery saver, screen-off, network switch, captive network, storage failure) was not physically executed | no claim for those cases | NOT MEASURED |
@@ -41,3 +42,8 @@ Every item is evidence-based and uses the required status vocabulary.
   explicit re-pairing.
 - Relay rejection of an AUTH event is distinct from rejection of the original
   Reader event, and Chrome validates the exact NIP-42 template before signing.
+- Pairing response authentication removes the one-time Chrome bootstrap secret
+  before ACK network work; Chrome throttles later ACK attempts and Android
+  retains a retryable one-time owner while pairing remains pending.
+- All four codec runtimes reject concatenated gzip members and arbitrary
+  trailing bytes under the same one-member contract.

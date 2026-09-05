@@ -4,12 +4,19 @@ Primary v2 implementation commit: `91aa1c49ebc98cb68ef0df1c9c0608d8b3c1791b`
 
 Receiver ACK durability follow-up: `3c4546bfd8b27fa11ac3d5af576dba2050b5de6e`
 
+Final runtime fix commit: `6ea80ee6f3732a192307661fd9cd5c485a4dd1dc`
+
+Final audited artifact/documentation commit: recorded in generated
+`artifacts/ARTIFACTS.json` because that commit cannot contain its own hash.
+
 Immutable pre-repair baseline: `982920b4e91dd5af4af6046f56df281c7adfe545`
 
 Rollback is intentionally not an in-place protocol downgrade. Reader v2
 changes the Android database, trust states, compression framing, pairing
-transcript, and delivery ACK. An older build must never reinterpret a v2
-channel or Room v5 database.
+transcript, retry ownership, and delivery ACK. An older build must never
+reinterpret a v2 channel or Room v5 database. The stricter one-member decoder
+does not change valid v2 bytes; it rejects only concatenated or suffixed input
+that was already outside the documented contract.
 
 ## Preferred source rollback
 
@@ -17,12 +24,32 @@ Create a separate branch/worktree at the immutable baseline and build there.
 This preserves the repaired branch and its evidence and avoids history
 rewrites. Do not force-push or reset the repair branch.
 
-If a normal forward-moving Git rollback is required, review and revert the
-implementation commits in reverse order: first
-`3c4546bfd8b27fa11ac3d5af576dba2050b5de6e`, then
-`91aa1c49ebc98cb68ef0df1c9c0608d8b3c1791b`. Resolve later documentation-only
-commits separately. Re-run the baseline build/tests and inspect the resulting
-diff before using its artifacts.
+If a normal forward-moving Git rollback is required, first revert any later
+documentation-only audited commit, then review and revert this exact repair
+series newest-first with `git revert --no-commit`:
+
+```text
+6ea80ee6f3732a192307661fd9cd5c485a4dd1dc
+b9b812db7b899708948f5e946045fd73e2af3b03
+0a2ac8b4a930ea57f89e33427bef2768b92a961d
+4d8211f3ce7d51a0c37f99e74af53b015332a83b
+1eccb27e6b08f22bb9236c4981879f0f587ac666
+a40beb55217526eccc84f4673a157a106ad47a54
+3a18670772a2ddfed8ced607b1a43f8a7fbb31d4
+0df5baf43d67cd42ec13e91d7a72bf759821c7b2
+f1497551f7130b5b449050288b35e16d01dfce87
+720180ff8a2fe1eecea2eefaf07b2fd0229a0255
+286137f1d69c0596dbfd5a075ba6481c9174fb96
+3c4546bfd8b27fa11ac3d5af576dba2050b5de6e
+22a84eb2b3f48787a69ff5fd72a4bcdec430cf8d
+4e979bd03fa1ae95e1b1be04156522facdef3b85
+91aa1c49ebc98cb68ef0df1c9c0608d8b3c1791b
+```
+
+Confirm the resulting tree against `982920b4e91dd5af4af6046f56df281c7adfe545`
+before committing the rollback. Re-run the baseline build/tests and inspect the
+resulting diff before using its artifacts. The preferred separate-baseline
+branch remains simpler and safer.
 
 ## Android data boundary
 

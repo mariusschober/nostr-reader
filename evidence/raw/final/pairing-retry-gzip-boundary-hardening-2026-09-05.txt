@@ -1,0 +1,117 @@
+Reader v2 pairing retry and gzip-boundary hardening evidence
+Date: 2026-09-05
+Immutable baseline: 982920b4e91dd5af4af6046f56df281c7adfe545
+Branch: fix/pairing-delivery-hardening-982920b4
+First exact checkpoint: b9b812db7b899708948f5e946045fd73e2af3b03
+Final runtime fix commit: 6ea80ee6f3732a192307661fd9cd5c485a4dd1dc
+Final audited commit and hashes: generated artifacts/ARTIFACTS.json
+
+Evidence and privacy boundary
+- No pairing was created or replaced.
+- No article or other new public-relay payload was sent.
+- Existing Android and Chrome data was preserved; installs used update-in-place.
+- No real Nostr, browser-signer, Amber, or production identity was used.
+- No private keys, pairing codes, plaintext documents, ciphertext, or complete
+  AUTH challenges are retained here.
+
+Finding A: pending pairing recovery ownership
+- Before repair, PairingCoordinator.processDue() returned no ownership signal.
+  SyncWorker could wake before nextAttemptAt, find only a future-due pairing,
+  return success, and leave the next attempt to a 30-minute periodic worker.
+  That interval exceeds the pairing transcript lifetime.
+- Before repair, Chrome could attempt a failed pairing ACK on every 2.5-second
+  UI poll, but after the first ACK acceptance it never republished while
+  waiting for completion. The bootstrap secret also survived beyond the point
+  at which Android's response had been authenticated.
+- Android now returns retry while any non-expired pending pairing remains and
+  both one-time entry points use a 10-second exponential WorkManager backoff.
+- An initial response with zero positive matching relay confirmations remains
+  non-active in pending_response and is scheduled for bounded retry rather than
+  deleting the transcript/key and forcing another scan.
+- Chrome now persists response_validated without the bootstrap secret before
+  ACK network work, enters completion-reading after any completed send attempt
+  even without a positive relay OK, queries completion before retry, and
+  publishes a fresh ACK at most once per 30 seconds until completion or expiry.
+- Regression results: Chrome pairing/recovery subset 20/20 PASS; Android JVM
+  ownership test PASS; Android future-due Room instrumentation PASS on both
+  physical phones and in the final full API-26 run.
+- Final review after the first checkpoint added the no-positive-OK Android
+  retention and no-returned-OK Chrome completion transitions. Their exact
+  final-commit artifacts and post-build validation are recorded in the
+  generated manifest because this tracked evidence file cannot name the commit
+  that contains itself.
+
+Finding B: one-member gzip boundary
+- The documented wire contract allowed exactly one deterministic RFC-1952
+  member, but the TypeScript, Kotlin, Rust, and Swift convenience decoders all
+  accepted a valid first member followed by another member or trailing data.
+- Before the decoder repair, newly added concatenated-member assertions failed
+  independently in Chrome, Android JVM, Rust, and Swift.
+- TypeScript, Kotlin, and Swift now inflate one raw DEFLATE stream under the
+  expanded-size ceiling, retain its exact consumed-input boundary, verify
+  CRC32/ISIZE, and require the trailer to end the input. Rust now requires its
+  one-member decoder cursor to consume the exact input.
+- After repair: Chrome focused codec 10/10 PASS; Android ReaderGzip JVM PASS;
+  Rust 6/6 plus 0 doc tests PASS; Swift 7/7 PASS. The real Android runtime
+  rejects both concatenated members and a one-byte suffix on TCL, S23, and
+  API-26.
+
+First clean checkpoint build and deterministic gates
+- The tracked tree was clean at b9b812db7b899708948f5e946045fd73e2af3b03.
+- The combined audit script was not run because its online npm-audit step was
+  denied network egress. The safer local equivalent used npm ci --offline;
+  the unchanged lockfile installed/audited 183 packages and reported zero
+  vulnerabilities. Every compile, test, package, SBOM, and dependency-inventory
+  step was then run locally.
+- Chrome: typecheck PASS; 17 files / 101 tests PASS; Vite build and Chromium
+  package verifier PASS; ZIP integrity PASS.
+- Android: clean test/lint/assemble PASS; 86 debug JVM tests; 0 lint errors and
+  29 retained warnings; debug and instrumentation APKs produced.
+- Rust: 6/6 unit tests plus 0 doc tests PASS.
+- Swift: 7/7 core tests PASS.
+
+First checkpoint artifact identity
+- reader-debug.apk
+  SHA-256 a742c8b52f45729b8c2291cdb32bfeeeeb605f03b005d9b446efa8451ab2a977
+- reader-debug-androidTest.apk
+  SHA-256 5cd42331032998506652927dc03a120a84ce5838e40bed3b711ee198c3173ac8
+- reader-chrome-extension.zip
+  SHA-256 bb9f52fd6cf7109ed45d9ae2dd958358da2412412c8f121123c7d77187aee9ae
+- Chrome background.js in dist, ZIP, and the loaded worker
+  SHA-256 e44776a6b01b897ca0a3641671633d380e564b72387e925e4571b7f53523bdf7
+
+Exact Android artifact validation
+- TCL T807D: both installed APK hashes matched; full instrumentation OK
+  (10 tests, reported time 2.035 s).
+- Samsung S23: both installed APK hashes matched; full instrumentation OK
+  (10 tests, reported time 1.912 s).
+- API-26 emulator: API level confirmed as 26; both installed APK hashes
+  matched; full instrumentation OK (10 tests, reported time 3.046 s).
+- API-26 UI smoke: MainActivity launched successfully and exposed Reader,
+  Inbox, Priority, Later, Archive, Import/paste/pair, and Settings controls.
+- Preserved TCL UI: Reader Settings still showed Chrome device and Revoke after
+  update-in-place; the app was returned to Inbox.
+
+Exact Chrome for Testing validation
+- Browser: Google Chrome for Testing 151.0.7922.34; Brave was not used.
+- Isolated profile and extension ID were preserved.
+- Reloaded exact build: paired=true; protocol v2; seven exact bound relays
+  including the existing Mostr custom relay; device binding verified; relay
+  digest present and matched; pending=0; delivered=1; failed=0.
+- Dist/ZIP/loaded service-worker hashes matched exactly.
+- Post-pair worker termination series: requested=20, terminated=20,
+  recovered=20 with the same paired-seven/pending-zero/delivered-one state.
+- Full same-profile browser restart: PASS with the same integrity and delivery
+  state after restart.
+
+Acceptance boundary
+- PASS: deterministic pairing retry ownership, minimum bootstrap-secret
+  retention, ACK retry throttle, exact one-member gzip rejection, checkpoint
+  builds, exact installed bytes, 10/10 on three Android targets, exact Chrome
+  worker load, 20/20 post-pair worker recovery, and one full browser restart.
+- NOT MEASURED: fresh final-build public pairing/article delivery, the required
+  20/20 in-flight pairing interruption/restart series, 50/50 delivery series,
+  offline/online quota, and remaining controlled physical lifecycle matrix.
+- Generated artifacts/ARTIFACTS.json is authoritative for the final audited
+  documentation commit and its byte-equivalence/install record; a tracked file
+  cannot embed the future commit that contains itself.

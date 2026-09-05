@@ -6,6 +6,11 @@ Immutable baseline: `982920b4e91dd5af4af6046f56df281c7adfe545`
 
 Working branch: `fix/pairing-delivery-hardening-982920b4`
 
+Final runtime fix commit: `6ea80ee6f3732a192307661fd9cd5c485a4dd1dc`
+
+Final audited artifact/documentation commit: generated
+`artifacts/ARTIFACTS.json` `sourceCommit`.
+
 ## Current truth
 
 Reader v2 now has an authenticated, durable Chrome-to-Android path:
@@ -22,13 +27,18 @@ one custom relay. One synthetic article was stored exactly once and its bound
 Android ACK moved Chrome from pending to delivered. This proves the complete
 path can work; it is not the unexecuted 20/20 and 50/50 reliability series.
 
-The exact final APK was subsequently installed byte-for-byte on the TCL, S23,
-and API-26 emulator and passed 8/8 instrumentation cases in each environment,
-including hostile pairing-code validation and the shared field-exact
-Chrome/Android pairing transcript. On the preserved TCL,
-the first Room v5 catch-up emitted the expected one recovery ACK, while the
-immediately serialized second catch-up read the retained events without another
-ACK batch. No new article was sent for that follow-up.
+The exact runtime-checkpoint APK/test-APK pair was installed byte-for-byte on
+the TCL, S23, and API-26 emulator and passed 10/10 instrumentation cases in each
+environment. The two newest cases prove that future-due pending pairing work
+retains a one-time recovery owner and that the Android runtime rejects a second
+gzip member or trailing byte. On the preserved TCL, the existing authenticated
+Chrome-device row remained visible after installation. No new pairing or
+article was created for this follow-up.
+
+The exact Chrome worker bytes matched `chrome/dist/background.js`, the packaged
+ZIP, and the worker loaded by Chrome for Testing. Its seven-relay/device/digest
+binding and delivered-1/pending-0 state survived both 20/20 distinct post-pair
+worker terminations and one full same-profile browser restart.
 
 The complete acceptance gate is therefore **NOT MEASURED**, while the executed
 unit, instrumentation, packaging, live-relay, and single-flow checks are
@@ -50,9 +60,17 @@ termination-before-Android-reply pairing series.
   restart. Relay acceptance and device delivery are separate states. Per-item
   mutations are serialized so a late publisher cannot recreate an ACK-deleted
   outbox item.
+- After response authentication Chrome persists the pairing session without
+  the one-time bootstrap secret, then retries a fresh ACK no more than once per
+  30 seconds after first querying for completion.
 - Android stages pairing and transfers transactionally, revokes key-loss
   channels, performs rolling-window catch-up, and persists both authenticated
   wrapper IDs and receiver ACK intent/outcomes in Room v5.
+- Android one-time work remains retryable whenever a pending pairing exists,
+  including when it wakes before the protocol's next-attempt timestamp.
+- An initial response with zero matching positive relay confirmations remains
+  non-active and retryable until expiry instead of discarding the provisioned
+  transcript and forcing another scan.
 - Reader uses six fixed public relays, a two-relay write quorum, and up to two
   user-added secure relays in Chrome Settings. Relay changes require re-pairing.
 - The unsafe page-world signing bridge and inert settings controls were
@@ -64,6 +82,9 @@ termination-before-Android-reply pairing series.
   frames cannot cause repeated effects.
 - The public-only `shared/test-vectors/pairing-v2.json` fixture makes Chrome's
   request/ACK and Android's response/completion one exact cross-runtime gate.
+- All four codec runtimes require one complete gzip member and reject a second
+  member or trailing data after streaming size, boundary, CRC32, and ISIZE
+  checks.
 - Chrome now restricts unauthenticated response catch-up to the fixed bootstrap
   relays but queries authenticated completion across the entire bound set. It
   also rejects corrupt durable relay state before network use or quorum math;
