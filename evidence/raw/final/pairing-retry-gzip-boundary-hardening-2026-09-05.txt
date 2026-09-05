@@ -66,7 +66,7 @@ First clean checkpoint build and deterministic gates
 - Chrome: typecheck PASS; 17 files / 101 tests PASS; Vite build and Chromium
   package verifier PASS; ZIP integrity PASS.
 - Android: clean test/lint/assemble PASS; 86 debug JVM tests; 0 lint errors and
-  29 retained warnings; debug and instrumentation APKs produced.
+  17 retained warnings; debug and instrumentation APKs produced.
 - Rust: 6/6 unit tests plus 0 doc tests PASS.
 - Swift: 7/7 core tests PASS.
 
