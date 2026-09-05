@@ -50,6 +50,7 @@ Evidence is in `evidence/beta/`, especially `RECOVERY_ARTIFACTS.json`, `tcl-reco
 - All app/QA/test/ZIP hashes and relationships are in `evidence/beta/RECOVERY_ARTIFACTS.json`.
 - Local downloads: `artifacts/recovery-checkpoint/{reader.apk,reader-test.apk,reader-qa.apk,reader-qa-test.apk,reader-chrome.zip,chrome-unpacked/,ARTIFACTS.json,SHA256SUMS}`. Generated binaries are gitignored; GitHub contains source/evidence, not a public release. No merge or store submission.
 - Original paired Chrome extension reads `chrome/dist`, now updated with tested package bytes. Existing extension ID stays the same. The original profile was launched again and Reader loaded through normal Load unpacked at the original path; settings confirmed **Connected · 7 relays**, including `wss://relay.mostr.pub`. Its existing data was not cleared.
+- At the final read-only check, the restored original profile showed **one pre-existing transfer awaiting the device and one older delivered receipt**. Its pending item was not erased or declared fixed; investigate this with the trial feedback. The two latest verified receipts belong to isolated QA.
 - Only the isolated QA extension/profile was paired anew. Do not confuse QA with the owner’s library or re-pair the owner just to make a test pass.
 
 ## Remaining plan — preserve this order
