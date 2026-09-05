@@ -1,4 +1,5 @@
 import Foundation
+import zlib
 
 public enum ReaderCodecError: Error, Equatable {
     case invalidExpandedSize
@@ -47,13 +48,11 @@ public enum ReaderGzip {
         guard input.prefix(header.count) == header else {
             throw ReaderCodecError.invalidGzipFraming
         }
-        let trailerStart = input.count - 8
-        let deflated = input.subdata(in: header.count..<trailerStart)
-        let decoded: Data
-        do {
-            decoded = try (deflated as NSData).decompressed(using: .zlib) as Data
-        } catch {
-            throw ReaderCodecError.decompressionFailed
+        let compressedTail = input.subdata(in: header.count..<input.count)
+        let (decoded, deflateBytes) = try inflateOneRawDeflateStream(compressedTail)
+        let trailerStart = header.count + deflateBytes
+        guard trailerStart + 8 == input.count else {
+            throw ReaderCodecError.invalidGzipFraming
         }
         guard (1...ReaderCore.maxExpandedBytes).contains(decoded.count) else {
             throw ReaderCodecError.invalidExpandedSize
@@ -65,6 +64,52 @@ public enum ReaderGzip {
             throw ReaderCodecError.decompressionFailed
         }
         return decoded
+    }
+
+    /// zlib reports unconsumed bytes at the first raw DEFLATE stream boundary.
+    /// That boundary is required because Foundation's convenience decoder
+    /// accepts a valid first stream followed by another gzip member.
+    private static func inflateOneRawDeflateStream(_ input: Data) throws -> (Data, Int) {
+        var stream = z_stream()
+        guard inflateInit2_(
+            &stream,
+            -15,
+            ZLIB_VERSION,
+            Int32(MemoryLayout<z_stream>.size)
+        ) == Z_OK else {
+            throw ReaderCodecError.decompressionFailed
+        }
+        defer { inflateEnd(&stream) }
+
+        return try input.withUnsafeBytes { rawBuffer in
+            guard let source = rawBuffer.bindMemory(to: UInt8.self).baseAddress else {
+                throw ReaderCodecError.decompressionFailed
+            }
+            stream.next_in = UnsafeMutablePointer<Bytef>(mutating: source)
+            stream.avail_in = uInt(input.count)
+            var output = Data()
+            let destinationSize = 64 * 1024
+            let destination = UnsafeMutablePointer<UInt8>.allocate(capacity: destinationSize)
+            defer { destination.deallocate() }
+            while true {
+                stream.next_out = destination
+                stream.avail_out = uInt(destinationSize)
+                let status = inflate(&stream, Z_NO_FLUSH)
+                let produced = destinationSize - Int(stream.avail_out)
+                if produced > 0 {
+                    guard output.count + produced <= ReaderCore.maxExpandedBytes else {
+                        throw ReaderCodecError.invalidExpandedSize
+                    }
+                    output.append(destination, count: produced)
+                }
+                if status == Z_STREAM_END {
+                    return (output, input.count - Int(stream.avail_in))
+                }
+                if status != Z_OK || (produced == 0 && stream.avail_in == 0) {
+                    throw ReaderCodecError.decompressionFailed
+                }
+            }
+        }
     }
 
     private static func appendLittleEndian(_ value: UInt32, to data: inout Data) {

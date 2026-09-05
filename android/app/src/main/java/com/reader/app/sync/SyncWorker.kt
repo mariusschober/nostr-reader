@@ -58,6 +58,9 @@ internal fun ackRetryDelayMillis(attempt: Int, transferId: String): Long {
   return (base * jitterPercent / 100L).coerceAtMost(ACK_MAX_BACKOFF_MILLIS)
 }
 
+internal fun syncNeedsRetry(pairingPending: Boolean, ackPending: Boolean): Boolean =
+  pairingPending || ackPending
+
 /** Background poll: rolling 10-day window, dedupe, assemble, ACK. No permanent socket. */
 class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
   private data class AckRelayAttempt(
@@ -187,7 +190,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
       db.manifests().purgeExpired(System.currentTimeMillis() / 1000)
       db.ackIntents().purgeExpired(System.currentTimeMillis() / 1000)
       db.processedEvents().purgeExpired(System.currentTimeMillis() / 1000)
-      PairingCoordinator(applicationContext, db, keys, relays).processDue()
+      val pairingRetryNeeded = PairingCoordinator(applicationContext, db, keys, relays).processDue()
       val channels = db.channels().active()
       Log.i("NostrReaderSync", "activeChannels=${channels.size}")
       val tm = TransferManager(db)
@@ -246,7 +249,9 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         }
         if (dispatchPendingAcks(db, tm, relays, ch, seckey, relayList)) ackRetryNeeded = true
       }
-      if (ackRetryNeeded) Result.retry() else Result.success()
+      if (syncNeedsRetry(pairingRetryNeeded, ackRetryNeeded)) Result.retry() else Result.success()
+    } catch (error: CancellationException) {
+      throw error
     } catch (e: Exception) {
       Result.retry()
     }
@@ -269,6 +274,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
     fun runNow(ctx: Context) {
       val req = OneTimeWorkRequestBuilder<SyncWorker>()
         .setConstraints(connectedConstraint())
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
         .build()
       WorkManager.getInstance(ctx).enqueueUniqueWork("reader-sync-now", ExistingWorkPolicy.KEEP, req)
     }

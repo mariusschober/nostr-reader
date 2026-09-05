@@ -7,6 +7,8 @@ export type PairingLifecycleState =
   | "cancelled"
   | "superseded";
 
+export const PAIR_ACK_RETRY_SECS = 30;
+
 export interface SecretBearingPairingSession {
   state: PairingLifecycleState;
   pairingSeckey?: string;
@@ -24,6 +26,15 @@ export const PAIRED_CHANNEL_STORAGE_KEYS = [
 
 export function isActivePairingState(state: PairingLifecycleState): boolean {
   return state === "waiting_response" || state === "response_validated" || state === "waiting_completion";
+}
+
+/** Throttle durable pairing-ACK retries despite the UI polling every 2.5s. */
+export function pairingAckRetryDue(lastAttemptAt: unknown, nowSecs: number): boolean {
+  if (!Number.isSafeInteger(nowSecs) || nowSecs < 0) throw new Error("invalid pairing retry clock");
+  if (!Number.isSafeInteger(lastAttemptAt) || Number(lastAttemptAt) < 0 || Number(lastAttemptAt) > nowSecs + 60) {
+    return true;
+  }
+  return nowSecs - Number(lastAttemptAt) >= PAIR_ACK_RETRY_SECS;
 }
 
 /** Remove—not merely overwrite—the one-time bootstrap secret before persistence. */

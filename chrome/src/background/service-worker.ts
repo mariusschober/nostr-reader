@@ -38,6 +38,7 @@ import {
 import {
   cancelActivePairingSessions,
   isActivePairingState,
+  pairingAckRetryDue,
   PAIRED_CHANNEL_STORAGE_KEYS,
   stripPairingSecret,
   type PairingLifecycleState,
@@ -76,6 +77,7 @@ interface PairingSession {
   androidChannelPubkey?: string;
   responseRumorId?: string;
   lastAttemptAt?: number;
+  lastAckAttemptAt?: number;
   lastError?: string;
   completedAt?: number;
 }
@@ -662,7 +664,7 @@ async function publishFreshPayload(
 
 async function processPairingSession(session: PairingSession): Promise<PairingSession> {
   const now = Math.floor(Date.now() / 1000);
-  let next: PairingSession = { ...session, lastAttemptAt: now, lastError: undefined };
+  let next: PairingSession = { ...session, lastAttemptAt: now };
   if (!isActivePairingState(next.state)) return next;
   if (now >= next.request.expiresAt + 600) {
     return { ...stripPairingSecret(next), state: "expired", lastError: "Pairing expired. Create a new code." };
@@ -687,6 +689,13 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
       state: "cancelled",
       lastError: "Chrome's device key changed. Create a new pairing code.",
     };
+  }
+
+  // Once Android's signed channel response is authenticated, this bootstrap
+  // key no longer participates in the transcript. Old durable sessions may
+  // still contain it; remove it before the next write.
+  if (next.state !== "waiting_response" && next.pairingSeckey) {
+    next = stripPairingSecret(next);
   }
 
   if (next.state === "waiting_response") {
@@ -718,26 +727,41 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
           nowSecs: now,
         });
         const response = validatePairResponse(envelope.payload, next.request, envelope.senderPubkey, now);
-        next = {
-          ...next,
+        // Persist the authenticated transition without the bootstrap secret
+        // before any ACK network attempt. A crash can then only delay the ACK;
+        // it cannot extend retention of the one-time decryption key.
+        return {
+          ...stripPairingSecret(next),
           state: "response_validated",
           androidChannelPubkey: response.androidChannelPubkey,
           responseRumorId: envelope.rumorId,
+          lastError: undefined,
         };
-        break;
       } catch {
         // Hostile, stale, or unrelated events are deliberately ignored.
       }
     }
   }
 
-  if (next.state === "response_validated" && next.androidChannelPubkey) {
+  if (
+    next.state === "response_validated" && next.androidChannelPubkey &&
+    pairingAckRetryDue(next.lastAckAttemptAt, now)
+  ) {
     const ack = createPairAck(next.request, next.androidChannelPubkey, requestRelays, now);
     const accepted = await publishFreshPayload(requestRelays, deviceKey.seckey, next.androidChannelPubkey, ack);
     if (!accepted.length) {
-      return { ...next, lastError: "No pairing relay accepted Chrome's authenticated acknowledgement yet." };
+      return {
+        ...next,
+        lastAckAttemptAt: now,
+        lastError: "No pairing relay accepted Chrome's authenticated acknowledgement yet.",
+      };
     }
-    next = { ...next, state: "waiting_completion", lastError: undefined };
+    next = {
+      ...stripPairingSecret(next),
+      state: "waiting_completion",
+      lastAckAttemptAt: now,
+      lastError: undefined,
+    };
   }
 
   if (next.state === "waiting_completion" && next.androidChannelPubkey) {
@@ -766,6 +790,17 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
       } catch {
         // Only an authenticated completion over the exact transcript is accepted.
       }
+    }
+    if (pairingAckRetryDue(next.lastAckAttemptAt, now)) {
+      const ack = createPairAck(next.request, next.androidChannelPubkey, requestRelays, now);
+      const accepted = await publishFreshPayload(requestRelays, deviceKey.seckey, next.androidChannelPubkey, ack);
+      next = {
+        ...next,
+        lastAckAttemptAt: now,
+        lastError: accepted.length
+          ? undefined
+          : "No pairing relay accepted Chrome's authenticated acknowledgement yet.",
+      };
     }
   }
   return next;

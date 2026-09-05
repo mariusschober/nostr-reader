@@ -110,8 +110,8 @@ pub fn pack_chunks(canonical: &str, chunk_size: usize) -> Result<(Vec<u8>, Vec<V
 /// Decode the one-member deterministic Reader v2 gzip profile with strict
 /// compressed and expanded limits. CRC/ISIZE are verified by flate2.
 pub fn unpack_gzip(gzip: &[u8]) -> Result<Vec<u8>, String> {
-    use flate2::read::GzDecoder;
-    use std::io::Read;
+    use flate2::bufread::GzDecoder;
+    use std::io::{Cursor, Read};
     const HEADER: [u8; 10] = [0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 3];
     if gzip.len() < 18 || gzip.len() > MAX_COMPRESSED_BYTES {
         return Err("invalid Reader gzip size".into());
@@ -119,7 +119,7 @@ pub fn unpack_gzip(gzip: &[u8]) -> Result<Vec<u8>, String> {
     if gzip[..10] != HEADER {
         return Err("invalid Reader gzip framing".into());
     }
-    let mut decoder = GzDecoder::new(gzip);
+    let mut decoder = GzDecoder::new(Cursor::new(gzip));
     let mut decoded = Vec::new();
     decoder
         .by_ref()
@@ -128,6 +128,9 @@ pub fn unpack_gzip(gzip: &[u8]) -> Result<Vec<u8>, String> {
         .map_err(|_| "invalid or truncated Reader gzip stream".to_string())?;
     if decoded.is_empty() || decoded.len() > MAX_EXPANDED_BYTES {
         return Err("expanded transfer must be 1 byte to 20 MiB".into());
+    }
+    if decoder.get_ref().position() as usize != gzip.len() {
+        return Err("invalid Reader gzip: expected exactly one member and no trailing bytes".into());
     }
     Ok(decoded)
 }
@@ -290,6 +293,12 @@ mod tests {
         let trailer = corrupt.len() - 8;
         corrupt[trailer] ^= 1;
         assert!(unpack_gzip(&corrupt).is_err());
+        let mut concatenated = good.clone();
+        concatenated.extend_from_slice(&good);
+        assert!(unpack_gzip(&concatenated).is_err());
+        let mut trailing = good.clone();
+        trailing.push(0);
+        assert!(unpack_gzip(&trailing).is_err());
         assert!(unpack_gzip(&vec![0; MAX_COMPRESSED_BYTES + 1]).is_err());
         assert!(pack_chunks(&"x".repeat(MAX_EXPANDED_BYTES + 1), 1024).is_err());
 

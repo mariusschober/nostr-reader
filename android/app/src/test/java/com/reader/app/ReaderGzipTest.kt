@@ -53,6 +53,8 @@ class ReaderGzipTest {
     expectRejected(zlib)
     expectRejected(good.copyOf(good.size - 1))
     expectRejected(good.clone().also { it[it.size - 8] = (it[it.size - 8].toInt() xor 1).toByte() })
+    expectRejected(good + deterministicTestGzip("second\n".toByteArray()))
+    expectRejected(good + byteArrayOf(0))
     expectRejected(ByteArray(ReaderCore.MAX_COMPRESSED_BYTES + 1))
   }
 

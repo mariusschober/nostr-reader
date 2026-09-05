@@ -129,6 +129,10 @@ describe("durable delivery recovery ordering", () => {
     expect(pairing).toContain('pairingReadRelays("bootstrap_response", requestRelays)');
     expect(pairing).toContain('pairingReadRelays("authenticated_completion", requestRelays)');
     expect(pairing).toContain("await relaySetDigest(requestRelays)");
+    expect(pairing).toContain("pairingAckRetryDue(next.lastAckAttemptAt, now)");
+    expect(pairing).toContain("lastAckAttemptAt: now");
+    expect(pairing).toContain("...stripPairingSecret(next)");
+    expect(pairing).toContain("return {\n          ...stripPairingSecret(next),\n          state: \"response_validated\"");
     expect(pairing).not.toContain("next.request.relays.filter");
   });
 

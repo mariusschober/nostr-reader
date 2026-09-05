@@ -13,6 +13,7 @@ import com.reader.app.nostr.StrictJson
 import com.reader.app.nostr.ValidatedPairingRequest
 import com.reader.app.nostr.WRAP_KIND
 import com.reader.app.security.KeystoreWrap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -29,6 +30,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import java.security.SecureRandom
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
 /** Durable Android half of the reader-pair/2 authenticated handshake. */
@@ -339,14 +341,26 @@ class PairingCoordinator(
     return false
   }
 
-  suspend fun processDue(collectSecs: Long = 4) = pairingMutex.withLock {
+  suspend fun processDue(collectSecs: Long = 4): Boolean = pairingMutex.withLock {
     val nowSecs = System.currentTimeMillis() / 1000
     val expired = withContext(Dispatchers.IO) { db.channels().expiredPending(nowSecs) }
     for (channel in expired) cancelLocked(channel.channelId, "PAIRING_EXPIRED")
     val pending = withContext(Dispatchers.IO) { db.channels().pendingPairings() }
     for (channel in pending) {
-      if ((channel.nextAttemptAt ?: 0) <= nowSecs) runCatching { processLocked(channel.channelId, collectSecs) }
+      if ((channel.nextAttemptAt ?: 0) <= nowSecs) {
+        try {
+          processLocked(channel.channelId, collectSecs)
+        } catch (error: CancellationException) {
+          throw error
+        } catch (_: Exception) {
+          // Durable state still owns the next bounded retry.
+        }
+      }
     }
+    // A one-time worker that wakes before nextAttemptAt must remain retryable.
+    // Returning success here used to hand ownership back to the 30-minute
+    // periodic worker, which is later than the pairing transcript's lifetime.
+    withContext(Dispatchers.IO) { db.channels().pendingPairings().isNotEmpty() }
   }
 
   suspend fun cancel(channelId: String, reason: String = "PAIRING_CANCELLED") =
@@ -369,6 +383,7 @@ class PairingCoordinator(
             .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
             .build(),
         )
+        .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
         .build()
       androidx.work.WorkManager.getInstance(context)
         .enqueueUniqueWork("reader-sync-now", androidx.work.ExistingWorkPolicy.REPLACE, request)

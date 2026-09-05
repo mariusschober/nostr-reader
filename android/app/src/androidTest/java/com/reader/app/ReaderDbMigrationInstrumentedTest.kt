@@ -15,6 +15,7 @@ import com.reader.app.data.ChannelEntity
 import com.reader.app.data.ProcessedEventEntity
 import com.reader.app.data.ReaderDb
 import com.reader.app.security.KeystoreWrap
+import com.reader.app.sync.PairingCoordinator
 import com.reader.app.sync.openActiveChannelKeyOrRevoke
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -226,6 +227,32 @@ class ReaderDbMigrationInstrumentedTest {
       }
     } finally {
       keys.deleteChannelKey(channelId)
+      db.close()
+    }
+  }
+
+  @Test
+  fun futurePendingPairingKeepsRecoveryWorkRetryable() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = Room.inMemoryDatabaseBuilder(context, ReaderDb::class.java).build()
+    val nowSecs = System.currentTimeMillis() / 1000
+    val pending = channel("pending-future", "awaiting_ack", System.currentTimeMillis()).copy(
+      sessionId = "00".repeat(16),
+      pairingPubkey = "11".repeat(32),
+      pairingNonce = "22".repeat(32),
+      pairingRequestJson = "{}",
+      relaySetDigest = "33".repeat(32),
+      pendingExpiresAt = nowSecs + 600,
+      nextAttemptAt = nowSecs + 60,
+    )
+    try {
+      db.channels().upsert(pending)
+      val coordinator = PairingCoordinator(context, db)
+
+      assertTrue(coordinator.processDue(collectSecs = 0))
+      db.channels().revoke(pending.channelId, System.currentTimeMillis())
+      assertFalse(coordinator.processDue(collectSecs = 0))
+    } finally {
       db.close()
     }
   }

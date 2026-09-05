@@ -48,6 +48,14 @@ describe("golden vector", () => {
     const corrupted = good.slice();
     corrupted[corrupted.length - 8] ^= 1;
     expect(() => decodeReaderGzip(corrupted)).toThrow(/invalid|truncated/);
+    const second = deterministicGzip(new TextEncoder().encode("second\n"));
+    const concatenated = new Uint8Array(good.length + second.length);
+    concatenated.set(good);
+    concatenated.set(second, good.length);
+    expect(() => decodeReaderGzip(concatenated)).toThrow(/framing|member|trailing/);
+    const trailing = new Uint8Array(good.length + 1);
+    trailing.set(good);
+    expect(() => decodeReaderGzip(trailing)).toThrow(/framing|member|trailing/);
     expect(() => decodeReaderGzip(new Uint8Array(MAX_COMPRESSED_BYTES + 1))).toThrow(/compressed/);
     expect(() => deterministicGzip(new Uint8Array(MAX_EXPANDED_BYTES + 1))).toThrow(/expanded/);
   });

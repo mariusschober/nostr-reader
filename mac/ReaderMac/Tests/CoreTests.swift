@@ -43,6 +43,8 @@ final class CoreTests: XCTestCase {
         var corrupt = good
         corrupt[corrupt.count - 8] ^= 1
         XCTAssertThrowsError(try ReaderGzip.decode(corrupt))
+        XCTAssertThrowsError(try ReaderGzip.decode(good + good))
+        XCTAssertThrowsError(try ReaderGzip.decode(good + Data([0])))
         XCTAssertThrowsError(try ReaderGzip.decode(Data(count: ReaderCore.maxCompressedBytes + 1)))
         XCTAssertThrowsError(try ReaderGzip.encode(Data(count: ReaderCore.maxExpandedBytes + 1)))
     }

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   cancelActivePairingSessions,
   isActivePairingState,
+  pairingAckRetryDue,
+  PAIR_ACK_RETRY_SECS,
   PAIRED_CHANNEL_STORAGE_KEYS,
   stripPairingSecret,
 } from "../src/protocol/pairing-session.js";
@@ -44,5 +46,13 @@ describe("pairing session lifecycle hygiene", () => {
     ]);
     expect(PAIRED_CHANNEL_STORAGE_KEYS).not.toContain("deviceSeckey");
     expect(PAIRED_CHANNEL_STORAGE_KEYS).not.toContain("customRelays");
+  });
+
+  it("throttles pairing ACK retries without trusting corrupt future timestamps", () => {
+    expect(pairingAckRetryDue(undefined, 100)).toBe(true);
+    expect(pairingAckRetryDue(100, 100 + PAIR_ACK_RETRY_SECS - 1)).toBe(false);
+    expect(pairingAckRetryDue(100, 100 + PAIR_ACK_RETRY_SECS)).toBe(true);
+    expect(pairingAckRetryDue(10_000, 100)).toBe(true);
+    expect(() => pairingAckRetryDue(0, -1)).toThrow("invalid pairing retry clock");
   });
 });
