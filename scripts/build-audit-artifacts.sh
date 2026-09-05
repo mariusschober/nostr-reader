@@ -20,9 +20,12 @@ npm run build
 npm sbom --package-lock-only --sbom-format cyclonedx --sbom-type application > "$repo_dir/artifacts/chrome-sbom.cdx.json"
 
 cd "$repo_dir"
-rm -f "$repo_dir/artifacts/reader-chrome-extension.zip"
-(cd "$repo_dir/chrome/dist" && zip -X -q -r "$repo_dir/artifacts/reader-chrome-extension.zip" .)
-unzip -t "$repo_dir/artifacts/reader-chrome-extension.zip"
+reader_repro_zip=$(mktemp "${TMPDIR:-/tmp}/reader-chrome-repro.XXXXXX")
+trap 'rm -f -- "$reader_repro_zip"' EXIT HUP INT TERM
+"$repo_dir/scripts/package-chrome-extension.sh" "$repo_dir/artifacts/reader-chrome-extension.zip"
+"$repo_dir/scripts/package-chrome-extension.sh" "$reader_repro_zip"
+cmp "$repo_dir/artifacts/reader-chrome-extension.zip" "$reader_repro_zip"
+echo "Chrome extension packaging reproducibility: PASS"
 
 cd "$repo_dir/android"
 ./gradlew clean test lint assembleDebug assembleDebugAndroidTest

@@ -22,7 +22,7 @@ const definitions = [
   },
   {
     path: join(repo, "artifacts", "reader-chrome-extension.zip"),
-    buildCommand: "cd chrome && npm ci && npm run typecheck && npm test && npm run build; zip -X dist contents",
+    buildCommand: "cd chrome && npm ci && npm run typecheck && npm test && npm run build; scripts/package-chrome-extension.sh twice followed by cmp",
     installTest: process.env.READER_CHROME_RESULT ?? "NOT MEASURED: build and ZIP integrity completed; installed-browser result not supplied",
   },
   {
