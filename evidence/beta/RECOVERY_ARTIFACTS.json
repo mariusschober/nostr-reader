@@ -1,0 +1,55 @@
+{
+  "status": "recovery-trial-checkpoint-not-beta-ready",
+  "sourceCommit": "e322c300e5b623904626812b53e75bf4949fbd8e",
+  "branch": "codex/reader-0.9-beta",
+  "android": {
+    "package": "com.reader.app",
+    "testPackage": "com.reader.app.test",
+    "versionName": "0.1.0",
+    "versionCode": 1,
+    "signerCertificateSha256": "3af50cab6e0515f478413e79786958671913b2cae67037defe537bb1e7465069",
+    "device": "TCL T807D",
+    "androidVersion": "16",
+    "normalPackageInstrumentation": "10/10 PASS",
+    "qaInstrumentation": "10/10 PASS",
+    "qaManualPairingUI": "1/1 PASS",
+    "existingKeyAndSettingsBytesPreserved": true,
+    "installedApkBytesMatchArtifacts": true
+  },
+  "chrome": {
+    "version": "0.1.0",
+    "minimumVersion": "120",
+    "testedBrowser": "Chrome for Testing 151.0.7922.34",
+    "tests": "114/114 PASS",
+    "qaEndToEnd": "two acknowledged transfers; one exact single-copy document",
+    "qaDevice": "TCL T807D Android 16",
+    "zipMatchesTestedUnpackedBytes": true
+  },
+  "artifacts": [
+    {
+      "file": "reader.apk",
+      "sha256": "62a96738a40dea7ba2b61d1db1e469ac1fb6d5f87f7cade7c5dd4feaff11ecfb",
+      "bytes": 27717692
+    },
+    {
+      "file": "reader-test.apk",
+      "sha256": "518230db2062a061746a528b8499e65748ba5d832e2d5a6b169eb59a53541a3c",
+      "bytes": 524485
+    },
+    {
+      "file": "reader-qa.apk",
+      "sha256": "734fbc8e4bce30dc1271db5d2b58748f300e2e77634de9adf72445dcfd0428bd",
+      "bytes": 32286016
+    },
+    {
+      "file": "reader-qa-test.apk",
+      "sha256": "23def5d5ad7a24a07d79428ca7f5abdc75e387482e7c0b12a6dabfa08dd4aece",
+      "bytes": 557552
+    },
+    {
+      "file": "reader-chrome.zip",
+      "sha256": "3185f0ec9989998364ff56a931342e863e2fbdeee2c010cab8c5f77d108121a0",
+      "bytes": 263867
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "package": "com.reader.app",
+  "device": "TCL T807D Android 16",
+  "inPlaceInstall": "PASS",
+  "signatureMatched": "PASS",
+  "existingKeyFileByteEquality": "PASS",
+  "existingSettingsFileByteEquality": "PASS",
+  "dataCleared": false,
+  "exactNormalPackageInstrumentation": "10/10 PASS",
+  "ownerLibraryContentsExported": false
+}

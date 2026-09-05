@@ -1,3 +1,5 @@
+> **Current branch update (2026-09-05):** Work is paused for the owner's 24-hour recovery trial. Read [HANDOVER_RECOVERY_TRIAL.md](HANDOVER_RECOVERY_TRIAL.md) first; it supersedes current-status and installation claims below. Tested application source: `e322c300e5b623904626812b53e75bf4949fbd8e` on `codex/reader-0.9-beta`. The full beta brief is unfinished.
+
 # AI continuation context — Nostr Reader
 
 Updated: 2026-09-05

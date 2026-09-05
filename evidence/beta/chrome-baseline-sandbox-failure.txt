@@ -15,7 +15,7 @@ found 0 vulnerabilities
 > vitest run
 
 
- RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+ RUN  v5.0.0 <workspace>/chrome
 
  ❯ tests/fault-relay.test.ts (18 tests | 18 skipped) 10011ms
 

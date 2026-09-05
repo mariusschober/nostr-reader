@@ -71,7 +71,7 @@ Daemon will be stopped at the end of the build
 > Task :app:lintAnalyzeDebugUnitTest
 
 > Task :app:lintReportDebug
-Wrote HTML report to file:///Users/schober/Projects/Nostr%20Reader/android/app/build/reports/lint-results-debug.html
+Wrote HTML report to file://<workspace>/android/app/build/reports/lint-results-debug.html
 
 > Task :app:lintDebug
 > Task :app:lint
