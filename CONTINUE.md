@@ -23,7 +23,8 @@ Android ACK moved Chrome from pending to delivered. This proves the complete
 path can work; it is not the unexecuted 20/20 and 50/50 reliability series.
 
 The exact ACK-durability APK was subsequently installed byte-for-byte on the
-TCL and S23 and passed 6/6 instrumentation cases on each. On the preserved TCL,
+TCL, S23, and API-26 emulator and passed 6/6 instrumentation cases in each
+environment. On the preserved TCL,
 the first Room v5 catch-up emitted the expected one recovery ACK, while the
 immediately serialized second catch-up read the retained events without another
 ACK batch. No new article was sent for that follow-up.

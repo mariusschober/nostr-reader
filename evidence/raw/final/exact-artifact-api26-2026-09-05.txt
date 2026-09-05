@@ -1,0 +1,30 @@
+Reader v2 exact-artifact API-26 instrumentation follow-up
+UTC date: 2026-09-05
+
+Environment
+- AVD: sprich_review_api26
+- Emulator serial: emulator-5554
+- Android API: 26
+- Launch mode: read-only, no snapshot save
+- Source commit: 720180ff8a2fe1eecea2eefaf07b2fd0229a0255
+- Main APK SHA-256: 4bf9fbcd0a3a7258d95ca7543c2696681e4f9519d4ace6a0a57f94388b881a93
+- Test APK SHA-256: 86aaa44b36a923652f6e9ce03e76982cd69fdd00a670337b1645709e3caa17e7
+
+Command
+adb -s emulator-5554 shell am instrument -w -r com.reader.app.test/androidx.test.runner.AndroidJUnitRunner
+
+Executed cases
+1. missingWrappedKeyRevokesFalseConnectedChannel
+2. validatedReplacementBecomesTheOnlyActiveChannel
+3. physicalDiagnosticV3AdvancesToV5WithoutLosingDocuments
+4. physicalRuntimeDecodesChromeAndNormativeGzipVectors
+5. wrongSenderAndConflictingDuplicateCannotMutateTransfer
+6. reorderedAndDuplicateChunksCommitAtomicallyThenProduceBoundAck
+
+Result
+- Time: 2.987 seconds
+- OK (6 tests)
+- Status: PASS
+
+No public relay publication, real identity, production signing material, or
+physical-device state change was part of this emulator run.

@@ -108,11 +108,13 @@ revalidated.
 ## Instrumentation and UI evidence
 
 The exact APK/test-APK pair passed all six instrumentation cases on the physical
-TCL and Samsung S23. The cases cover v3 -> v5 database migration, missing-key
+TCL, Samsung S23, and API-26 emulator. The cases cover v3 -> v5 database
+migration, missing-key
 revocation, sole-active replacement, Chrome/normative gzip decode, conflicting
 sender/duplicate safety, and reordered/duplicate chunk atomic commit with a
-durable bound ACK intent and terminal replay behavior. The API-26 emulator
-screenshots remain supplemental evidence from the earlier suite.
+durable bound ACK intent and terminal replay behavior. The current API-26 run
+is retained in `evidence/raw/final/exact-artifact-api26-2026-09-05.txt`; the
+earlier screenshots remain supplemental UI evidence.
 
 Emulator screenshots:
 
