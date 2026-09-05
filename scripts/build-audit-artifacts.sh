@@ -31,7 +31,27 @@ cp "$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk" "$repo_dir/arti
 cp "$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" "$repo_dir/artifacts/reader-debug-androidTest.apk"
 
 cd "$repo_dir/rust-core"
-cargo test
+reader_cargo_bin=$(command -v cargo || true)
+if [ -z "$reader_cargo_bin" ]; then
+  reader_user_dir=$(cd && pwd)
+  for reader_cargo_candidate in \
+    "$reader_user_dir"/.rustup/toolchains/stable-*/bin/cargo \
+    "$reader_user_dir"/.rustup/toolchains/*/bin/cargo
+  do
+    if [ -x "$reader_cargo_candidate" ]; then
+      reader_cargo_bin=$reader_cargo_candidate
+      break
+    fi
+  done
+fi
+if [ -z "$reader_cargo_bin" ]; then
+  echo "Cargo was not found in PATH or a rustup toolchain." >&2
+  exit 1
+fi
+reader_rust_bin=$(dirname "$reader_cargo_bin")
+PATH="$reader_rust_bin:$PATH"
+export PATH
+"$reader_cargo_bin" test
 
 cd "$repo_dir/mac"
 swift test
