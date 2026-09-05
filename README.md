@@ -22,10 +22,11 @@ iOS) is a thin native shell over one shared, openly specified protocol.
   appearance controls, native rendering, TTS and single-word RSVP sharing one
   semantic reading position.
 
-Status and evidence boundary: [`TEST_REPORT.md`](TEST_REPORT.md) and
-[`CONTINUE.md`](CONTINUE.md). Protocol: [`PROTOCOL.md`](PROTOCOL.md). Security:
-[`THREAT_MODEL.md`](THREAT_MODEL.md) and
-[`SECURITY_AND_PRIVACY_NOTES.md`](SECURITY_AND_PRIVACY_NOTES.md).
+Start here when continuing the project:
+[`AI_CONTINUATION_CONTEXT.md`](AI_CONTINUATION_CONTEXT.md). Status and evidence
+boundary: [`TEST_REPORT.md`](TEST_REPORT.md) and [`CONTINUE.md`](CONTINUE.md).
+Protocol: [`PROTOCOL.md`](PROTOCOL.md). Security: [`THREAT_MODEL.md`](THREAT_MODEL.md)
+and [`SECURITY_AND_PRIVACY_NOTES.md`](SECURITY_AND_PRIVACY_NOTES.md).
 
 ---
 # Reader — private zero-server reading inbox
@@ -47,7 +48,7 @@ PROTOCOL.md           normative transport rules
 SECURITY.md           threat model (read before claiming anything)
 CROSS_PLATFORM.md     binding contract + iOS checklist
 MAC.md                Mac sender + reader definition
-artifacts/            built APK, extension ZIP, TEST-REPORT.md
+artifacts/            local generated artifacts plus tracked artifact policy
 scripts/              clean-tree artifact build + provenance manifest
 ```
 
@@ -62,7 +63,7 @@ platform.
 
 ## Install
 
-- Android: `adb install artifacts/reader-debug.apk` (debug-signed QA build,
+- Android: `adb install -r artifacts/reader-debug.apk` (debug-signed QA build,
   not a store release).
 - Chrome: `chrome://extensions` -> Developer mode -> Load unpacked ->
   `chrome/dist`. Or unzip `artifacts/reader-chrome-extension.zip`.

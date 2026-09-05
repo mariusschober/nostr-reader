@@ -2,6 +2,9 @@
 
 Updated: 2026-09-05
 
+Authoritative full-project continuation context:
+`AI_CONTINUATION_CONTEXT.md`.
+
 Immutable baseline: `982920b4e91dd5af4af6046f56df281c7adfe545`
 
 Working branch: `fix/pairing-delivery-hardening-982920b4`
@@ -51,6 +54,9 @@ map despite matching normalized DEX semantics. The narrowly upgraded,
 officially compatible Gradle 8.9/AGP 8.7.2/D8 8.7.18 toolchain closes that gap:
 two clean app builds and two clean test-APK builds were byte-identical. The
 exact APK hashes named in the generated artifact manifest remain authoritative.
+The reproducible pair was not installed after this toolchain-only change; the
+user retained the final install/use test. Do not transfer the earlier physical
+PASS to the new hashes—record them as **NOT MEASURED** until actually installed.
 
 The paired Chrome profile also survived 20/20 distinct post-pair service-worker
 terminations with identical seven-relay and outbox status. This is useful exact
@@ -164,7 +170,9 @@ write, repeated wrappers cannot restart a completed two-relay ACK quorum.
 
 ## Safety boundary
 
-Do not push, merge, publish, force-push, introduce a backend, use a real Nostr
-identity, or expose pairing/private-key material. Preserve the immutable
-baseline and the dedicated repair branch. Distinguish `PASS`, `FAIL`,
-`NOT MEASURED`, and `BLOCKED` exactly.
+This dedicated branch may be pushed once to `origin` under the user's explicit
+2026-09-05 authorization. Do not merge, release, publish binaries, force-push,
+introduce a backend, use a real Nostr identity, or expose pairing/private-key
+material. Future external changes require fresh user authorization. Preserve
+the immutable baseline and distinguish `PASS`, `FAIL`, `NOT MEASURED`, and
+`BLOCKED` exactly.

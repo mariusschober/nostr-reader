@@ -25,6 +25,12 @@ loaded the exact ZIP worker bytes, preserved the seven-relay binding through a
 full same-profile restart, and recovered 20/20 distinct post-pair worker
 terminations without outbox mutation.
 
+The later Gradle 8.9/AGP 8.7.2 rebuild made the app and instrumentation APKs
+byte-reproducible without changing app source. Those new exact APK hashes were
+not installed after the user chose to perform the final use test personally;
+their physical install and instrumentation result is therefore **NOT
+MEASURED**. The generated `artifacts/ARTIFACTS.json` records that boundary.
+
 The full task is not labeled PASS because the requested 20/20 and 50/50
 physical reliability series, several lifecycle/network scenarios, and a second
 public transfer of the exact final artifact were not executed. See
@@ -112,9 +118,10 @@ than claims about an immutable baseline line.
 | Android lint/build | Android SDK 34 | `lintDebug assembleDebug assembleDebugAndroidTest` | 0 errors; APKs | success, 0 lint errors, 17 retained warnings | Gradle/lint report | PASS |
 | Android debug APK reproducibility | Gradle 8.9 / AGP 8.7.2 / D8 8.7.18 | two clean same-source single-worker builds after diagnosing four failures on AGP 8.5.2 | byte-identical app and test APKs | both app APKs `4c555d6d…ea5e`; both test APKs `244c4bd0…563`; exact `cmp` PASS | `artifact-reproducibility-2026-09-05.txt` | PASS |
 | shared pairing transcript | Chrome + Android JVM + Android runtime | one fixed request/response/ACK/completion across both implementations | exact field equality and opposite-end validation | unit PASS; runtime PASS | `shared-pairing-vector-2026-09-05.txt` | PASS |
-| Android instrumentation | API-26 emulator | exact APK + test APK, ten current DB/codec/transfer/QR/pairing/recovery cases | all pass | 10/10 | generated `ARTIFACTS.json` + final evidence | PASS |
-| Android instrumentation | physical TCL T807D | byte-matched APK + test APK, ten current cases | all pass | 10/10 | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` + generated manifest | PASS |
-| Android instrumentation | physical Samsung S23 | byte-matched APK + test APK, ten current cases | all pass | 10/10 | same evidence | PASS |
+| Android instrumentation | API-26 emulator | runtime-checkpoint APK `0768111d…d74` + test APK `0dc99230…821`, ten DB/codec/transfer/QR/pairing/recovery cases | all pass | 10/10 | `exact-artifact-api26-2026-09-05.txt` + final evidence | PASS for the runtime checkpoint |
+| Android instrumentation | physical TCL T807D | same byte-matched runtime-checkpoint APK pair, ten current cases | all pass | 10/10 | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS for the runtime checkpoint |
+| Android instrumentation | physical Samsung S23 | same byte-matched runtime-checkpoint APK pair, ten current cases | all pass | 10/10 | same evidence | PASS for the runtime checkpoint |
+| Final reproducible Android artifacts | TCL/S23/API-26 | install app APK `4c555d6d…ea5e` and test APK `244c4bd0…563`; run instrumentation | exact final hashes installed and tested | user retained this final use test; no post-toolchain install was performed | generated `artifacts/ARTIFACTS.json` | NOT MEASURED |
 | Android installed-state ACK recovery | preserved paired TCL | v4 -> v5 first catch-up then immediate second serialized catch-up | one bounded recovery ACK; no second ACK | observed exactly | same evidence | PASS for observation |
 | Rust normative core | rustc/cargo 1.97.1 | `cargo test` | all pass | 6/6 | terminal run | PASS |
 | Swift core mirror | Swift 6.3.3 | `swift test` | all pass | 7/7 | terminal run | PASS |
@@ -181,7 +188,10 @@ package after another Vite build matched as well. Android's prior AGP
 between clean builds despite identical normalized DEX semantics. The pinned,
 officially compatible Gradle 8.9/AGP 8.7.2/D8 8.7.18 update closes that gap:
 two clean app builds and two clean test-APK builds compare byte-for-byte.
-Exact final APK hashes remain authoritative and are still installed/tested.
+Exact final APK hashes remain authoritative. The earlier runtime-checkpoint
+hashes were installed/tested on all three targets; the final reproducible APK
+pair was deliberately left for the user's own install/use test and is **NOT
+MEASURED** physically.
 
 Exact post-commit values belong in `ARTIFACTS.json`; placing a future commit
 hash inside this tracked report would create an impossible self-reference.
@@ -193,9 +203,10 @@ Artifacts are debug/developer builds with no production signing material.
 - Branch: `fix/pairing-delivery-hardening-982920b4`.
 - Fix implementation and documentation commits: see `git log` and generated
   artifact manifest.
-- Push: not performed.
+- Push: dedicated repair branch pushed to `origin` under explicit user
+  authorization for this handoff; verify the remote ref before relying on it.
 - Merge: not performed.
-- Publication/release: not performed.
+- Binary publication/release: not performed.
 - Final dirty/clean state: recorded after artifact generation; ignored generated
   artifacts do not dirty the tracked source tree.
 
@@ -219,6 +230,6 @@ Secret exposure: NOT DETECTED
 
 Backend introduced: NO
 
-Physical TCL validation: NOT MEASURED
+Full physical TCL reliability quotas: NOT MEASURED
 
 Live public-relay verification: PASS

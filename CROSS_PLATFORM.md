@@ -9,19 +9,28 @@ and key storage.
 
 | Layer | Android (now) | Chrome (now) | Mac (next) | iOS (after) |
 |---|---|---|---|---|
-| Core algo | Kotlin port, vector-gated | TS wrapper, vector-gated | Rust via FFI | Rust via FFI |
-| Crypto | BC secp256k1+NIP-44, no NDK | nostr-tools | rust-core + Keychain | rust-core + Keychain |
-| UI | Compose | vanilla DOM | SwiftUI | SwiftUI |
-| Keys | Keystore-GCM wrap | storage.local | Keychain wrap | Keychain wrap |
-| TTS | Android TTS+Media3 | — | AVSpeechSynthesizer | AVSpeechSynthesizer |
-| Store | Room/DataStore | IndexedDB | SwiftData | SwiftData |
+| Core algo | Kotlin port, vector-gated | TS port, vector-gated | Swift mirror library only; Rust FFI planned | not implemented; Rust FFI planned |
+| Crypto | BC secp256k1+NIP-44, no NDK | nostr-tools | Swift mirror only; Rust + Keychain planned | not implemented; Rust + Keychain planned |
+| UI | Compose | vanilla DOM | not implemented; SwiftUI planned | not implemented; SwiftUI planned |
+| Keys | Keystore-GCM wrap | storage.local | not implemented; Keychain wrap planned | not implemented; Keychain wrap planned |
+| TTS | Android TTS+Media3 | — | not implemented; AVSpeechSynthesizer planned | not implemented; AVSpeechSynthesizer planned |
+| Store | Room/DataStore | `chrome.storage.local` + IndexedDB outbox | not implemented; SwiftData planned | not implemented; SwiftData planned |
 
-## Binding contract
+## Current implementation boundary
 
-- Rust crate `reader-core` exposes: `canonicalize`, `document_id`,
-  `pack(manifest+chunks)`, `unwrap_verify`, `rsvp_tokens`, `narrate`,
-  `word_count`, `check_limits`. UniFFI generates Kotlin + Swift bindings;
-  TS validates against the same vectors in CI.
+`rust-core` is a tested normative/reference implementation, but it has no
+UniFFI dependency, generated Kotlin/Swift bindings, or runtime integration yet.
+The shipping Chrome and Android paths use independent TypeScript and Kotlin
+ports guarded by the same schemas and vectors. `mac/` is a Swift package with a
+matching core mirror and tests; it is not a runnable Mac application. iOS is
+not present.
+
+## Future binding contract
+
+- Extend `reader-core` from its current canonicalize/hash/gzip/chunk,
+  rolling-window, word-count, narration, and RSVP functions to the complete
+  protocol surface. Add UniFFI deliberately, then generate Kotlin and Swift
+  bindings. TypeScript continues to validate against the same vectors.
 - `shared/test-vectors/pairing-v2.json`, `codec-v2.json`,
   `nip44-official.json`, and `bip340-official.csv` are release gates for every
   applicable platform. The pairing vector fixes the exact Chrome-produced

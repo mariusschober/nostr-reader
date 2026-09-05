@@ -18,6 +18,7 @@ Every item is evidence-based and uses the required status vocabulary.
 | Relay metadata remains visible | IP, timing, recipient routing key, subscription cadence, and size can be correlated | privacy limitation |
 | Remote article images are fetched directly | image host learns reader IP/timing | privacy limitation |
 | Android target/compile SDK remains 34 and lint reports outdated dependency/icon/performance warnings | release maintenance remains; no lint errors | PASS build, warnings retained |
+| The final reproducible APK pair was not installed after the toolchain-only rebuild | the earlier runtime checkpoint passed 10/10 on TCL, S23, and API-26, but that evidence cannot be transferred to the new exact hashes | NOT MEASURED for final-hash physical install/instrumentation; user retained the use test |
 | 16 KiB page-size behavior was not validated on a 16 KiB physical device | third-party native-library compatibility remains a release gate | NOT MEASURED |
 | Tablet/foldable layouts and audible TTS output were not revalidated in this repair | no broad device/UI/audio claim | NOT MEASURED |
 | Mac transport, UniFFI binding, iOS client, and store builds are incomplete | Chrome + Android are the current repaired path | NOT MEASURED/not implemented |
@@ -41,8 +42,8 @@ Every item is evidence-based and uses the required status vocabulary.
   reporting paired or sending; key loss preserves captures but requires
   explicit re-pairing.
 - The pinned Gradle 8.9/AGP 8.7.2/D8 8.7.18 toolchain produced byte-identical
-  app and instrumentation APKs across independent clean builds; exact artifact
-  hashes are still installed and verified on every target.
+  app and instrumentation APKs across independent clean builds. This proves
+  build reproducibility, not the still-unrun final-hash physical install.
 - Relay rejection of an AUTH event is distinct from rejection of the original
   Reader event, and Chrome validates the exact NIP-42 template before signing.
 - Pairing response authentication removes the one-time Chrome bootstrap secret
