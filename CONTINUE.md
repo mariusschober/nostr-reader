@@ -44,6 +44,14 @@ The complete acceptance gate is therefore **NOT MEASURED**, while the executed
 unit, instrumentation, packaging, live-relay, and single-flow checks are
 reported independently in `TEST_REPORT.md`.
 
+The Chrome ZIP is now reproducible on this host: two packages of one dist and a
+third package after a fresh Vite build were byte-identical. Android debug APKs
+are not byte-reproducible under the pinned AGP 8.5.2/D8 8.5.35 toolchain. Four
+clean builds changed only D8's embedded synthetic-class checksum map; Kotlin
+class hashes and normalized full DEX disassembly matched. Treat this as a byte
+reproducibility **FAIL**, not as a runtime-code difference, and always install
+the one exact APK hash named in the generated artifact manifest.
+
 The paired Chrome profile also survived 20/20 distinct post-pair service-worker
 terminations with identical seven-relay and outbox status. This is useful exact
 lifecycle evidence, but it is not substituted for the still-unrun 20/20
@@ -93,6 +101,9 @@ termination-before-Android-reply pairing series.
   its persisted device secret. Missing, malformed, replaced, or non-curve key
   state fails closed instead of showing a ghost connection or sending under a
   wrong identity; never-sent captures remain recoverable after re-pairing.
+- Chrome artifact packaging now stages a symlink-free dist, normalizes ZIP
+  timestamps/order/metadata, and rejects a build unless two packages compare
+  byte-for-byte.
 
 ## Evidence map
 
@@ -114,7 +125,8 @@ termination-before-Android-reply pairing series.
 Run `./scripts/build-audit-artifacts.sh` only from a clean tracked worktree. It
 reinstalls locked Chrome dependencies, runs the Chrome/Android/Rust/Swift
 gates, creates the debug APKs and extension ZIP, generates dependency evidence,
-and writes ignored `artifacts/ARTIFACTS.json` plus `artifacts/SHA256SUMS`.
+verifies Chrome ZIP reproducibility, and writes ignored
+`artifacts/ARTIFACTS.json` plus `artifacts/SHA256SUMS`.
 
 The manifest is the authority for exact source commit, hashes, build commands,
 and post-build install results. The binaries are debug/developer artifacts,

@@ -6,6 +6,8 @@ Receiver ACK durability follow-up: `3c4546bfd8b27fa11ac3d5af576dba2050b5de6e`
 
 Final runtime fix commit: `6ea80ee6f3732a192307661fd9cd5c485a4dd1dc`
 
+Deterministic Chrome packaging commit: `a061ddcb111cf05048828e65fcddc9c797f1a6ec`
+
 Final audited artifact/documentation commit: recorded in generated
 `artifacts/ARTIFACTS.json` because that commit cannot contain its own hash.
 
@@ -29,6 +31,7 @@ documentation-only audited commit, then review and revert this exact repair
 series newest-first with `git revert --no-commit`:
 
 ```text
+a061ddcb111cf05048828e65fcddc9c797f1a6ec
 6ea80ee6f3732a192307661fd9cd5c485a4dd1dc
 b9b812db7b899708948f5e946045fd73e2af3b03
 0a2ac8b4a930ea57f89e33427bef2768b92a961d

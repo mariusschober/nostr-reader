@@ -18,6 +18,7 @@ Every item is evidence-based and uses the required status vocabulary.
 | Relay metadata remains visible | IP, timing, recipient routing key, subscription cadence, and size can be correlated | privacy limitation |
 | Remote article images are fetched directly | image host learns reader IP/timing | privacy limitation |
 | Android target/compile SDK remains 34 and lint reports outdated dependency/icon/performance warnings | release maintenance remains; no lint errors | PASS build, warnings retained |
+| Android debug APK bytes are not reproducible under AGP 8.5.2/D8 8.5.35 | every tested APK must be identified by its exact SHA-256 even though repeat-build Kotlin class hashes and normalized full DEX disassembly match | FAIL for byte reproducibility; semantic comparison PASS |
 | 16 KiB page-size behavior was not validated on a 16 KiB physical device | third-party native-library compatibility remains a release gate | NOT MEASURED |
 | Tablet/foldable layouts and audible TTS output were not revalidated in this repair | no broad device/UI/audio claim | NOT MEASURED |
 | Mac transport, UniFFI binding, iOS client, and store builds are incomplete | Chrome + Android are the current repaired path | NOT MEASURED/not implemented |

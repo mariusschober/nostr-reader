@@ -104,11 +104,13 @@ than claims about an immutable baseline line.
 | Chrome static | TypeScript 5.5.4 | `npm run typecheck` | no errors | no errors | terminal run | PASS |
 | Chrome unit/fault | Vitest 5.0 | `npm test` | all pass | 17 files, 101 tests pass | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
 | Chrome package | Vite 8.2.2/CFT | `npm run build` | valid MV3 package, standalone content script | verifier pass; no module/noncharacter packaging defect | build output | PASS |
+| Chrome package reproducibility | macOS `zip` + fresh Vite rebuild | normalize staged timestamps/order/metadata; package twice; rebuild and package again | all three ZIPs byte-identical | common SHA-256 `01b4d5b7…744c92`; all entries fixed to 1980-01-01 00:00 | `artifact-reproducibility-2026-09-05.txt` | PASS |
 | Chrome secret boundary | CFT 151 | content script reads local storage keys | access denied/hidden | API namespace present in exact current isolated world, but read denied; no values visible | `chrome-content-storage-isolation-*`, `pairing-relay-state-hardening-*` | PASS |
 | Chrome persistence | paired CFT profile | reload/restart + status + device/relay binding integrity | pairing/outbox survive with exact bound state | paired, exact seven relays, device binding present/verified, relay digest present/matched, delivered 1, pending 0 | `chrome-paired-status-*`, `chrome-device-binding-hardening-*` | PASS |
 | Chrome post-pair worker recovery | paired CFT profile | terminate 20 distinct service-worker targets and request read-only status after each | every new worker revalidates the same bound channel without outbox mutation | 20/20 recovered; paired 7, pending 0, delivered 1, failed 0 | `chrome-device-binding-hardening-*` | PASS for post-pair recovery; required before-reply pairing quota NOT MEASURED |
 | Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 86 tests, 0 failures/errors | XML reports + `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
 | Android lint/build | Android SDK 34 | `lintDebug assembleDebug assembleDebugAndroidTest` | 0 errors; APKs | success, 0 lint errors, 17 retained warnings | Gradle/lint report | PASS |
+| Android debug APK reproducibility | AGP 8.5.2 / D8 8.5.35 | four clean same-source builds, including two with `--max-workers=1` | byte-identical APKs | four distinct APK pairs; Kotlin class inventory and normalized full DEX disassembly identical; changing bytes isolated to D8 synthetic-class checksum metadata | `artifact-reproducibility-2026-09-05.txt` | FAIL for byte reproducibility; semantic comparison PASS |
 | shared pairing transcript | Chrome + Android JVM + Android runtime | one fixed request/response/ACK/completion across both implementations | exact field equality and opposite-end validation | unit PASS; runtime PASS | `shared-pairing-vector-2026-09-05.txt` | PASS |
 | Android instrumentation | API-26 emulator | exact APK + test APK, ten current DB/codec/transfer/QR/pairing/recovery cases | all pass | 10/10 | generated `ARTIFACTS.json` + final evidence | PASS |
 | Android instrumentation | physical TCL T807D | byte-matched APK + test APK, ten current cases | all pass | 10/10 | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` + generated manifest | PASS |
@@ -173,6 +175,15 @@ lint, package, SBOM, and dependency-inventory gates. The unchanged lockfile's
 local install reported zero vulnerabilities; a fresh online advisory query is
 explicitly **NOT MEASURED** for this final rebuild.
 
+Chrome packaging now normalizes timestamps and file order and requires two
+independent packages of the same fresh dist to compare byte-for-byte. A third
+package after another Vite build matched as well. Android debug APK
+reproducibility is separately **FAIL** with the pinned AGP/D8 toolchain: repeat
+clean builds change D8's embedded synthetic-class checksum map even though the
+Kotlin class inventory and normalized complete DEX disassembly match. Exact
+final APK hashes therefore remain authoritative and must be installed/tested;
+semantic equivalence is not reported as byte equivalence.
+
 Exact post-commit values belong in `ARTIFACTS.json`; placing a future commit
 hash inside this tracked report would create an impossible self-reference.
 Artifacts are debug/developer builds with no production signing material.
@@ -195,7 +206,8 @@ Only evidence-based residuals are listed in `KNOWN_LIMITATIONS.md`. Decisive
 items are the unexecuted reliability/lifecycle quotas, exact-final-artifact E2E
 transmission, the one-time v4 -> v5 historical-ledger boundary, public relay
 policy drift, no public AUTH challenge, untested live external signers, and
-Android release/16-KiB maintenance.
+Android release/16-KiB maintenance. Debug APK byte reproducibility also remains
+failed under AGP 8.5.2/D8 8.5.35 despite identical normalized DEX semantics.
 
 ## 10. Explicit declarations
 

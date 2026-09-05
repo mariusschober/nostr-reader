@@ -1,0 +1,61 @@
+Reader artifact reproducibility evidence — 2026-09-05
+
+Source commit under test:
+  a061ddcb111cf05048828e65fcddc9c797f1a6ec
+
+Chrome extension ZIP
+--------------------
+Pre-fix observation:
+  artifacts/reader-chrome-extension.zip stored wall-clock entry timestamps
+  (2026-09-05 07:42), so zip -X alone did not make the archive reproducible.
+
+Fix:
+  scripts/package-chrome-extension.sh rejects symlinks, copies dist into an
+  isolated stage, fixes every entry timestamp to 1980-01-01 00:00 UTC, sorts
+  file names, removes extra ZIP attributes, and verifies the archive.
+  scripts/build-audit-artifacts.sh packages twice and requires cmp equality.
+
+Executed checks:
+  package current dist twice -> byte-identical
+  fresh npm run build -> package again -> byte-identical to both prior packages
+  ZIP integrity -> PASS for all three packages
+  common SHA-256:
+    01b4d5b714c385d70c635e0043c6c6f6a55b8223caafd98475f6a79dc8744c92
+
+Status: PASS for same-host Chrome build/package reproducibility.
+
+Android debug APKs
+------------------
+Toolchain:
+  Android Gradle Plugin 8.5.2
+  Gradle 8.7
+  Kotlin 2.0.20
+  D8 marker version 8.5.35
+
+Repeated clean builds of unchanged Android sources produced different bytes:
+
+  build                         app APK SHA-256                                                   androidTest APK SHA-256
+  normal clean build 1          fded07c3cc1af46303089549dc523aa6ee9dcf3f3e1cd241c347a42b65d41e74  e7802b6ff5234d24d0ccfe9286d05165aaad4b2fa6ed83d120512bcb9ac59c31
+  normal clean build 2          e943febdedaab0bfa16275852f14ab0c9a4f4fa112bcf1e858ad04ce4a508dea  9960d3fd1c64e355c1d967802d1cb6736e9dc65c65e13113b5c27bc76ee16113
+  single-worker clean build 1   910b5d15daba027642b8b0601c7429d7abf175d7312e681df338b434cca71bae  1966335c231cb5876993153262ac2feac2a7c70cedeab1085e13fca488c94995
+  single-worker clean build 2   a68be42aad9fba852e122d114a39384393c6ac5b84758ce01637aec3ca75509d  c10c86819e8af7fda3458ae08ebf4aea43c6c81ba22931ad6c5a02138e40681e
+
+Isolation evidence for the app APK:
+  - Kotlin debug class-file SHA-256 inventory was identical across two clean
+    builds.
+  - APK file names, uncompressed sizes, timestamps, and all non-DEX CRCs were
+    identical.
+  - Five DEX files had different raw CRCs.
+  - For every changed DEX, full `dexdump -d` output after removing only its two
+    input-path header lines had an identical SHA-256 across builds.
+  - `dexdump -s` isolated the changing value to D8's debug-only `~~~` map of
+    synthetic-class input checksums; method/class disassembly did not differ.
+  - `--max-workers=1` did not stabilize those checksum-map values.
+
+Status: FAIL for byte-for-byte Android debug APK reproducibility with this
+toolchain. PASS for the executed same-source class inventory and normalized DEX
+semantic comparison. This does not substitute for installing and testing the
+one exact final APK hash recorded in artifacts/ARTIFACTS.json.
+
+No production signing material, public relay traffic, new pairing, or user data
+was used by these checks.
