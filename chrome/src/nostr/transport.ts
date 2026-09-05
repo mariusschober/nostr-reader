@@ -40,6 +40,8 @@ interface AuthController {
   authenticate(): Promise<void>;
   current(): Promise<void> | null;
   authenticated(): boolean;
+  challenges(): readonly string[];
+  failure(): ClientProtocolError | undefined;
 }
 
 class ClientProtocolError extends Error {}
@@ -105,16 +107,31 @@ async function configureRelayAuth(
   let inFlight: Promise<void> | null = null;
   let latest: Promise<void> | null = null;
   let didAuthenticate = false;
+  let selectedChallenge = typeof authRelay.challenge === "string" ? authRelay.challenge : undefined;
+  const sensitiveChallenges = selectedChallenge === undefined ? [] : [selectedChallenge];
+  let protocolFailure: ClientProtocolError | undefined;
   let markChallenge!: () => void;
   const challengeReady = new Promise<void>((resolve) => { markChallenge = resolve; });
-  if (typeof authRelay.challenge === "string" && authRelay.challenge.length > 0) markChallenge();
+  if (selectedChallenge !== undefined) markChallenge();
+  relay.onnotice = (message) => {
+    console.debug(`NOTICE from ${normalizeRelayUrl(url)}: ${sanitizedReason(message, sensitiveChallenges)}`);
+  };
   const authenticate = (): Promise<void> => {
-    if (inFlight) return inFlight;
+    if (protocolFailure) return Promise.reject(protocolFailure);
+    // One Reader operation signs at most one challenge on one connection.
+    // A duplicate/late AUTH frame reuses the original result instead of
+    // becoming an attacker-controlled signing loop.
+    if (latest) return latest;
     const pending = (async () => {
-      if (!(typeof authRelay.challenge === "string" && authRelay.challenge.length > 0)) {
+      if (selectedChallenge === undefined && typeof authRelay.challenge === "string") {
+        selectedChallenge = authRelay.challenge;
+        sensitiveChallenges.push(selectedChallenge);
+        markChallenge();
+      }
+      if (selectedChallenge === undefined) {
         await bounded(challengeReady, 2500, "relay authentication challenge");
       }
-      const challenge = authRelay.challenge;
+      const challenge = selectedChallenge;
       if (typeof challenge !== "string") throw new ClientProtocolError("relay authentication challenge is unavailable");
       try {
         await relay.auth(async (template) => {
@@ -123,8 +140,9 @@ async function configureRelayAuth(
         });
       } catch (error) {
         if (error instanceof ClientProtocolError) throw error;
-        throw new RelayAuthError(error instanceof Error ? error.message : String(error));
+        throw new RelayAuthError(sanitizedReason(error, [challenge]));
       }
+      if (protocolFailure) throw protocolFailure;
       didAuthenticate = true;
     })();
     inFlight = pending;
@@ -134,13 +152,28 @@ async function configureRelayAuth(
     }).catch(() => undefined);
     return pending;
   };
-  authRelay._onauth = () => {
-    markChallenge();
+  authRelay._onauth = (challenge) => {
+    if (selectedChallenge === undefined) {
+      selectedChallenge = challenge;
+      sensitiveChallenges.push(challenge);
+      markChallenge();
+    } else if (challenge !== selectedChallenge) {
+      if (!sensitiveChallenges.includes(challenge)) sensitiveChallenges.push(challenge);
+      protocolFailure ??= new ClientProtocolError("relay authentication challenge changed during one operation");
+      try { relay.close(); } catch { /* test doubles need not implement close */ }
+      return;
+    }
     void authenticate().catch(() => undefined);
   };
   return {
     relay,
-    auth: { authenticate, current: () => inFlight ?? latest, authenticated: () => didAuthenticate },
+    auth: {
+      authenticate,
+      current: () => inFlight ?? latest,
+      authenticated: () => didAuthenticate,
+      challenges: () => [...sensitiveChallenges],
+      failure: () => protocolFailure,
+    },
   };
 }
 
@@ -174,18 +207,35 @@ export async function queryRelayWithAuth(
   maxWait = 5000,
 ): Promise<PoolQueryEvent[]> {
   const controller = await configureRelayAuth(pool, url, authSeckey);
+  const query = async (): Promise<PoolQueryEvent[]> => {
+    try {
+      const events = await pool.querySync([url], filter, { maxWait });
+      const failure = controller.auth.failure();
+      if (failure) throw failure;
+      return events;
+    } catch (error) {
+      throw new Error(sanitizedReason(controller.auth.failure() ?? error, controller.auth.challenges()));
+    }
+  };
   let first: PoolQueryEvent[];
   try {
     first = await pool.querySync([url], filter, { maxWait });
+    const failure = controller.auth.failure();
+    if (failure) throw failure;
   } catch (error) {
-    if (!isAuthRequired(error)) throw error;
+    const surfaced = controller.auth.failure() ?? error;
+    if (!isAuthRequired(surfaced)) {
+      throw new Error(sanitizedReason(surfaced, controller.auth.challenges()));
+    }
     await bounded(controller.auth.authenticate(), 2500, "relay authentication");
-    return boundedRelayEvents(await pool.querySync([url], filter, { maxWait }));
+    return boundedRelayEvents(await query());
   }
   const pending = controller.auth.current();
   if (pending) await bounded(pending, 2500, "relay authentication");
+  const failure = controller.auth.failure();
+  if (failure) throw new Error(sanitizedReason(failure, controller.auth.challenges()));
   if (!controller.auth.authenticated()) return boundedRelayEvents(first);
-  const second = await pool.querySync([url], filter, { maxWait });
+  const second = await query();
   const unique = new Map(first.map((event) => [event.id, event]));
   for (const event of second) unique.set(event.id, event);
   return boundedRelayEvents([...unique.values()]);
@@ -392,9 +442,13 @@ export function normalizeRelayUrl(raw: string): string {
   return `${parsed.protocol}//${parsed.hostname.toLowerCase()}${port}${path}`;
 }
 
-function sanitizedReason(error: unknown): string {
+function sanitizedReason(error: unknown, sensitiveValues: readonly string[] = []): string {
   const raw = error instanceof Error ? error.message : String(error);
-  return raw
+  const withoutChallenge = [...new Set(sensitiveValues)]
+    .filter((sensitive) => sensitive.length > 0)
+    .sort((left, right) => right.length - left.length)
+    .reduce((redacted, sensitive) => redacted.split(sensitive).join("[redacted-challenge]"), raw);
+  return withoutChallenge
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
     .replace(/[0-9a-f]{48,}/gi, "[redacted-hex]")
     .replace(/[A-Za-z0-9_+/=-]{48,}/g, "[redacted-token]")
@@ -425,15 +479,21 @@ export async function publishPerRelay(
 ): Promise<RelayPublishResult[]> {
   const normalized = [...new Set(urls.map(normalizeRelayUrl))];
   return Promise.all(normalized.map(async (url): Promise<RelayPublishResult> => {
+    let auth: AuthController | undefined;
     try {
       if (authSeckey) {
         const controller = await configureRelayAuth(pool, url, authSeckey);
+        auth = controller.auth;
         try {
           await bounded(controller.relay.publish(event as never), timeoutMs, "relay publish");
+          const failure = controller.auth.failure();
+          if (failure) throw failure;
         } catch (error) {
           if (!isAuthRequired(error)) throw error;
           await bounded(controller.auth.authenticate(), 2500, "relay authentication");
           await bounded(controller.relay.publish(event as never), timeoutMs, "relay publish");
+          const failure = controller.auth.failure();
+          if (failure) throw failure;
         }
       } else {
         const publications = pool.publish([url], event as never);
@@ -444,7 +504,13 @@ export async function publishPerRelay(
       }
       return { url, ok: true, state: "OK_TRUE" };
     } catch (error) {
-      return { url, ok: false, state: classifyPublishFailure(error), reasonPrefix: sanitizedReason(error) };
+      const surfaced = auth?.failure() ?? error;
+      return {
+        url,
+        ok: false,
+        state: classifyPublishFailure(surfaced),
+        reasonPrefix: sanitizedReason(surfaced, auth?.challenges()),
+      };
     }
   }));
 }

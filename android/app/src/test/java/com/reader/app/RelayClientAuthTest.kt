@@ -49,6 +49,7 @@ class RelayClientAuthTest {
     val challenge = "test-challenge"
     val authenticated = AtomicBoolean(false)
     val originalEvents = AtomicInteger(0)
+    val authenticationEvents = AtomicInteger(0)
     val authEvent = AtomicReference<NostrEvent?>()
     val callbackError = AtomicReference<Throwable?>()
     server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
@@ -61,12 +62,14 @@ class RelayClientAuthTest {
           val frame = StrictJson.parse(text).jsonArray
           when (frame[0].jsonPrimitive.content) {
             "AUTH" -> {
+              authenticationEvents.incrementAndGet()
               val event = NostrCodec.parseEvent(frame[1].toString())
               authEvent.set(event)
               require(event.kind == AUTH_KIND && NostrCodec.verifyEvent(event))
               require(event.tags.any { it == listOf("challenge", challenge) })
               authenticated.set(true)
               webSocket.send("[\"OK\",\"${event.id}\",true,\"\"]")
+              webSocket.send("[\"AUTH\",\"$challenge\"]")
               webSocket.send("[\"OK\",\"${event.id}\",true,\"duplicate\"]")
             }
             "EVENT" -> {
@@ -102,6 +105,69 @@ class RelayClientAuthTest {
       assertEquals(Secp256k1.bytesToHex(Secp256k1.getPublicKey(authKey)), authEvent.get()!!.pubkey)
       assertTrue(authEvent.get()!!.tags.any { it.firstOrNull() == "relay" && it[1] == url })
       assertEquals(2, originalEvents.get())
+      assertEquals(1, authenticationEvents.get())
+    } finally {
+      server.shutdown()
+    }
+  }
+
+  @Test
+  fun changedLateAuthenticationChallengeFailsWithoutSigningAgainOrLoggingEitherChallenge() {
+    val server = MockWebServer()
+    val firstChallenge = "first-short-challenge"
+    val changedChallenge = "changed-secret-challenge"
+    val authenticated = AtomicBoolean(false)
+    val authenticationEvents = AtomicInteger(0)
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+      override fun onOpen(webSocket: WebSocket, response: Response) {
+        webSocket.send("[\"AUTH\",\"$firstChallenge\"]")
+      }
+
+      override fun onMessage(webSocket: WebSocket, text: String) {
+        val frame = StrictJson.parse(text).jsonArray
+        when (frame[0].jsonPrimitive.content) {
+          "AUTH" -> {
+            authenticationEvents.incrementAndGet()
+            val auth = NostrCodec.parseEvent(frame[1].toString())
+            authenticated.set(true)
+            webSocket.send("[\"OK\",\"${auth.id}\",true,\"accepted\"]")
+          }
+          "EVENT" -> {
+            val event = NostrCodec.parseEvent(frame[1].toString())
+            if (authenticated.get()) {
+              webSocket.send("[\"AUTH\",\"$changedChallenge\"]")
+              webSocket.send("[\"OK\",\"${event.id}\",true,\"saved: $changedChallenge\"]")
+            } else {
+              webSocket.send("[\"OK\",\"${event.id}\",false,\"auth-required: test relay\"]")
+            }
+          }
+        }
+      }
+
+      override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        webSocket.close(code, reason)
+      }
+    }))
+    server.start()
+    try {
+      val url = server.url("/").toString().replaceFirst("http", "ws")
+      val authKey = Secp256k1.randomPrivateKey()
+      val eventKey = Secp256k1.randomPrivateKey()
+      val event = NostrCodec.signEvent(
+        Secp256k1.bytesToHex(Secp256k1.getPublicKey(eventKey)),
+        System.currentTimeMillis() / 1000,
+        1,
+        emptyList(),
+        "test",
+        eventKey,
+      )
+      val result = RelayClient(allowLocalForTests = true).publishDetailed(url, event, 3, authKey)
+      assertFalse(result.accepted)
+      assertEquals(RelayClient.PublishState.PROTOCOL_ERROR, result.terminalState)
+      assertEquals(1, authenticationEvents.get())
+      val retained = (result.trace.mapNotNull { it.detail } + result.reasonPrefix.orEmpty()).joinToString(" ")
+      assertFalse(retained.contains(firstChallenge))
+      assertFalse(retained.contains(changedChallenge))
     } finally {
       server.shutdown()
     }
@@ -144,6 +210,63 @@ class RelayClientAuthTest {
       assertFalse(result.accepted)
       assertEquals(RelayClient.PublishState.AUTH_REJECTED, result.terminalState)
       assertFalse(result.trace.any { it.state == RelayClient.PublishState.OK_FALSE })
+    } finally {
+      server.shutdown()
+    }
+  }
+
+  @Test
+  fun relayCannotEchoCompleteShortAuthenticationChallengeIntoTraceOrReason() {
+    val server = MockWebServer()
+    val challenge = "short-auth-secret"
+    val authenticated = AtomicBoolean(false)
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+      override fun onOpen(webSocket: WebSocket, response: Response) {
+        webSocket.send("[\"AUTH\",\"$challenge\"]")
+      }
+
+      override fun onMessage(webSocket: WebSocket, text: String) {
+        val frame = StrictJson.parse(text).jsonArray
+        when (frame[0].jsonPrimitive.content) {
+          "AUTH" -> {
+            val auth = NostrCodec.parseEvent(frame[1].toString())
+            authenticated.set(true)
+            webSocket.send("[\"OK\",\"${auth.id}\",true,\"accepted\"]")
+          }
+          "EVENT" -> {
+            val event = NostrCodec.parseEvent(frame[1].toString())
+            if (authenticated.get()) {
+              webSocket.send("[\"NOTICE\",\"echo $challenge\"]")
+              webSocket.send("[\"OK\",\"${event.id}\",false,\"blocked: $challenge\"]")
+            } else {
+              webSocket.send("[\"OK\",\"${event.id}\",false,\"auth-required: test relay\"]")
+            }
+          }
+        }
+      }
+
+      override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        webSocket.close(code, reason)
+      }
+    }))
+    server.start()
+    try {
+      val url = server.url("/").toString().replaceFirst("http", "ws")
+      val authKey = Secp256k1.randomPrivateKey()
+      val eventKey = Secp256k1.randomPrivateKey()
+      val event = NostrCodec.signEvent(
+        Secp256k1.bytesToHex(Secp256k1.getPublicKey(eventKey)),
+        System.currentTimeMillis() / 1000,
+        1,
+        emptyList(),
+        "test",
+        eventKey,
+      )
+      val result = RelayClient(allowLocalForTests = true).publishDetailed(url, event, 3, authKey)
+      assertFalse(result.accepted)
+      assertEquals(RelayClient.PublishState.OK_FALSE, result.terminalState)
+      assertTrue(result.reasonPrefix.orEmpty().contains("[redacted-challenge]"))
+      assertTrue(result.trace.mapNotNull { it.detail }.none { it.contains(challenge) })
     } finally {
       server.shutdown()
     }

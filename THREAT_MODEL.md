@@ -15,7 +15,7 @@ fully compromised browser, Android OS, or unlocked user session.
 
 | Adversary/capability | Primary risk | Enforced control | Evidence | Residual |
 |---|---|---|---|---|
-| malicious relay | drop, reorder, replay, correlate, lie about storage, or trick a transport key into signing a chosen AUTH event | exact matching first-terminal OK semantics; independently constrained NIP-42 template; end-device ACK; NIP-44/NIP-59 verification; expiry/dedupe; multi-relay quorum | fault harness + physical seven-relay flow | traffic metadata and denial of service remain |
+| malicious relay | drop, reorder, replay, correlate, lie about storage, echo AUTH challenges into diagnostics, or create a signing loop | exact matching first-terminal OK semantics; independently constrained NIP-42 template; one challenge/signature attempt per operation; exact challenge redaction in reasons/notices/traces; end-device ACK; NIP-44/NIP-59 verification; expiry/dedupe; multi-relay quorum | hostile AUTH/NOTICE/OK fault harness + physical seven-relay flow | traffic metadata and denial of service remain |
 | malicious QR | SSRF/local-network connection, long-lived or attacker-bound channel | 4 KiB cap, exact fields/protocol, near-now expiry, x-only points, nonce/session sizes, 1–8 normalized unique WSS URLs, DNS public-address validation, human review | TS/Kotlin tests + emulator malformed QR | hostname operator may later change DNS; guarded again per connection |
 | DNS rebinding | custom relay resolves public during pairing then private later | resolve and reject private/loopback/link-local/multicast/CGNAT/ULA answers before every Android connection | unit/fault tests and source review | Chrome performs only fixed-default readiness probes before QR |
 | forged/tampered Nostr event | insert/ack false content | outer/seal signature, NIP-44 MAC, canonical rumor ID, sender/recipient/version/schema/hash binding | official vectors, transport tests, instrumentation | endpoint key compromise defeats authenticity |
@@ -47,6 +47,9 @@ fully compromised browser, Android OS, or unlocked user session.
    gates appropriate to the layer.
 9. A relay-supplied AUTH template is validated as an exact, current,
    relay/challenge-bound kind-22242 event before any transport key signs it.
+10. One relay operation signs at most one AUTH challenge. Complete challenges
+    cannot be retained in diagnostics even when a relay repeats them through a
+    short `NOTICE`, rejection, or close reason.
 
 ## Metadata and privacy limits
 

@@ -282,9 +282,12 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     }
   }
 
-  private fun sanitizeReason(value: String?): String? {
+  private fun sanitizeReason(value: String?, sensitiveValues: Collection<String> = emptyList()): String? {
     if (value == null) return null
-    return value
+    val withoutChallenges = sensitiveValues
+      .filter { it.isNotEmpty() }
+      .fold(value) { redacted, sensitive -> redacted.replace(sensitive, "[redacted-challenge]") }
+    return withoutChallenges
       .replace(Regex("[\\u0000-\\u001f\\u007f]+"), " ")
       .replace(Regex("(?i)[0-9a-f]{48,}"), "[redacted-hex]")
       .replace(Regex("[A-Za-z0-9_+/=-]{48,}"), "[redacted-token]")
@@ -363,6 +366,7 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     val relay = normalizedRelayForEvidence(url)
     val startedNanos = System.nanoTime()
     val trace = Collections.synchronizedList(mutableListOf<TracePoint>())
+    val authChallenge = AtomicReference<String?>(null)
     val terminal = AtomicReference<PublishState?>(null)
     val reason = AtomicReference<String?>(null)
     fun record(state: PublishState, detail: String? = null): Boolean {
@@ -380,6 +384,7 @@ class RelayClient private constructor(private val http: OkHttpClient) {
       val recordedState = if (isTerminal && !becameTerminal) PublishState.IGNORED_FRAME else state
       val safeDetail = sanitizeReason(
         if (isTerminal && !becameTerminal) "ignored ${state.name} after ${terminal.get()?.name}" else detail,
+        listOfNotNull(authChallenge.get()),
       )
       val point = TracePoint(
         state = recordedState,
@@ -467,6 +472,15 @@ class RelayClient private constructor(private val http: OkHttpClient) {
                 return
               }
               val challenge = arr.getOrNull(1)?.jsonPrimitive?.content.orEmpty()
+              val selectedChallenge = authChallenge.get()
+              if (selectedChallenge != null && selectedChallenge != challenge) {
+                if (record(PublishState.PROTOCOL_ERROR, "relay authentication challenge changed during one operation")) {
+                  latch.countDown()
+                }
+                webSocket.close(1002, "relay authentication challenge changed")
+                return
+              }
+              authChallenge.compareAndSet(null, challenge)
               record(PublishState.AUTH_CHALLENGE, "challengeSha256=${challengeFingerprint(challenge)}")
               if (authSeckey != null && authPending.compareAndSet(false, true)) {
                 val auth = runCatching { authEvent(url, challenge, authSeckey) }

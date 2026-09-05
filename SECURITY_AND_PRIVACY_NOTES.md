@@ -55,6 +55,10 @@ Evidence: `evidence/raw/final/chrome-content-storage-isolation-2026-09-05.txt`.
 - Only `wss://` is permitted in production relay configuration.
 - NIP-42 uses an anonymous Reader transport key. A real identity/payment
   requirement is incompatible, not an excuse to deanonymize the user.
+- Each operation signs at most one validated AUTH challenge. An identical
+  duplicate reuses that result; a changed challenge fails closed without a
+  second signature. Chrome and Android exact-redact challenge echoes even when
+  they are too short for generic credential-pattern redaction.
 - Relay `OK=true` is shown only as relay acceptance. `Delivered` requires the
   exact authenticated Android ACK.
 - Outer expiry is checked before decryption; application expiry, recipient,
@@ -67,7 +71,9 @@ Evidence: `evidence/raw/final/chrome-content-storage-isolation-2026-09-05.txt`.
 Production diagnostics retain normalized public relay URLs, event IDs or short
 prefixes, counts, state names, wall/monotonic time, and sanitized reason
 prefixes. They do not retain private keys, QR payloads, ciphertext bodies,
-plaintext articles, full AUTH challenges, or signer responses. Source and
+plaintext articles, complete AUTH challenges, or signer responses. Hostile
+local relay tests cover challenge echoes through Chrome `NOTICE`/`OK` and
+Android `NOTICE`/`OK` traces. Source and
 filename-pattern scans found no committed credential-like material. The only
 64-hex source match outside tests/vectors was a deterministic Rust unit-test
 golden hash inside `#[cfg(test)]`.

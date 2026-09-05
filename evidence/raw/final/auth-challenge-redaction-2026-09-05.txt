@@ -1,0 +1,37 @@
+Reader v2 AUTH signing-loop and challenge-retention hardening gate
+UTC recorded: 2026-09-05T03:47:09Z
+
+BOUNDARY
+- Base implementation commit: a40beb55217526eccc84f4673a157a106ad47a54.
+- This evidence contains no complete authentication challenge, secret key,
+  private article, QR bearer value, signer response, or real identity.
+- Tests use generated anonymous transport keys and synthetic local relay data.
+- No public relay payload was sent, app data was not cleared, and the preserved
+  successful pairing was not changed.
+
+CONTROL UNDER TEST
+- One Reader operation signs at most one exact, bounded, relay-bound NIP-42
+  challenge.
+- An identical duplicate cannot cause another signature or retry effect.
+- A changed late challenge is a protocol failure and cannot cause another
+  signature.
+- Complete short challenge echoes are exact-redacted before Chrome NOTICE/error
+  output and before Android trace/reason/log output.
+
+RESULTS
+- Chrome targeted AUTH/fault suite: PASS, 2 files / 23 tests.
+- Chrome full suite: PASS, 16 files / 91 tests.
+- Chrome TypeScript typecheck and extension package verifier: PASS.
+- Android targeted RelayClientAuthTest: PASS.
+- Android full JVM suite: PASS, 85 tests / zero failures or errors.
+- Android lint, debug APK build, and instrumentation APK build: PASS.
+- Rust normative mirror: PASS, 6/6 library tests.
+- Swift mirror: PASS, 7/7 tests.
+
+STATUS BOUNDARY
+- Local hostile-relay AUTH behavior and retained diagnostic redaction: PASS.
+- Public-relay NIP-42 challenge interoperability: NOT MEASURED.
+- Exact post-commit package hashes and install/runtime results are recorded in
+  ignored artifacts/ARTIFACTS.json after the clean artifact build.
+- Production publishing, push, merge, release, force-push, real identities, and
+  backend introduction: NOT PERFORMED.

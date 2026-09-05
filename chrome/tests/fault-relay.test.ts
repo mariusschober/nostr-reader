@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { SimplePool, useWebSocketImplementation } from "nostr-tools/pool";
 import { WebSocket as NodeWebSocket, WebSocketServer } from "ws";
@@ -43,7 +43,9 @@ beforeAll(async () => {
     socket.on("close", () => sockets.delete(socket));
     const mode = new URL(request.url ?? "/", "ws://fault.test").pathname.slice(1);
     let authenticated = false;
-    if (mode === "auth" || mode === "stale-auth") setTimeout(() => send(socket, ["AUTH", "fault-challenge"]), 0);
+    if (["auth", "stale-auth", "auth-echo"].includes(mode)) {
+      setTimeout(() => send(socket, ["AUTH", "fault-challenge"]), 0);
+    }
     if (mode === "close-before") setTimeout(() => socket.close(1000, "closed before send"), 0);
 
     socket.on("message", (data: any, binary: boolean) => {
@@ -53,7 +55,7 @@ beforeAll(async () => {
       if (frame[0] === "AUTH") {
         const authEvent = frame[1] as Event;
         if (mode === "stale-auth") {
-          send(socket, ["OK", authEvent.id, false, "stale: authentication rejected"]);
+          send(socket, ["OK", authEvent.id, false, "stale: fault-challenge"]);
         } else {
           authenticated = true;
           send(socket, ["OK", authEvent.id, true, "authenticated"]);
@@ -91,8 +93,12 @@ beforeAll(async () => {
           send(socket, ["OK", event.id, false, "restricted: message too large"]);
         } else if (mode === "created-at") {
           send(socket, ["OK", event.id, false, "invalid: created_at too old"]);
-        } else if (mode === "auth" || mode === "stale-auth") {
-          send(socket, ["OK", event.id, authenticated, authenticated ? "saved" : "auth-required: sign challenge"]);
+        } else if (["auth", "stale-auth", "auth-echo"].includes(mode)) {
+          const reason = authenticated
+            ? (mode === "auth-echo" ? "blocked: fault-challenge" : "saved")
+            : "auth-required: sign challenge";
+          if (mode === "auth-echo" && authenticated) send(socket, ["NOTICE", "echo fault-challenge"]);
+          send(socket, ["OK", event.id, authenticated && mode !== "auth-echo", reason]);
         }
         return;
       }
@@ -174,9 +180,29 @@ describe("deterministic local Nostr fault relay", () => {
       try {
         const [result] = await publishPerRelay(pool, [url], signedEvent() as never, authKey, 300);
         expect(result?.state, JSON.stringify(result)).toBe(expected);
+        expect(result?.reasonPrefix ?? "").not.toContain("fault-challenge");
       } finally {
         pool.close([url]);
       }
+    }
+  });
+
+  it("redacts a complete short AUTH challenge echoed in an event rejection", async () => {
+    const authKey = generateSecretKey();
+    const pool = new SimplePool();
+    const url = modeUrl("auth-echo");
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    try {
+      const [result] = await publishPerRelay(pool, [url], signedEvent() as never, authKey, 300);
+      expect(result).toMatchObject({ ok: false, state: "OK_FALSE" });
+      expect(result?.reasonPrefix).toContain("[redacted-challenge]");
+      expect(result?.reasonPrefix).not.toContain("fault-challenge");
+      const notices = debug.mock.calls.flat().join(" ");
+      expect(notices).toContain("[redacted-challenge]");
+      expect(notices).not.toContain("fault-challenge");
+    } finally {
+      debug.mockRestore();
+      pool.close([url]);
     }
   });
 

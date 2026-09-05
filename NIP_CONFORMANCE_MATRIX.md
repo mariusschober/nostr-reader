@@ -8,7 +8,7 @@ referenced specification.
 | NIP-01 | canonical event ID, signatures, `#p`, `OK`, REQ/EVENT/EOSE | complete JSON escaping, lowercase fixed-length wire hex, exact event ID/signature validation; baseline regressions and current TS/Kotlin tests | PASS |
 | NIP-11 | relay information document | dated NIP-11 fetches for all six defaults and the tested custom relay; limits/operator metadata retained in `LIVE_RELAY_REPORT.md` | PASS |
 | NIP-40 | wrapper expiration | exactly one integer `expiration` tag; receivers reject missing, duplicate, malformed, and expired wrappers before payload use; inner pairing/transfer expiry also enforced | PASS |
-| NIP-42 | relay authentication | independently validate exact kind-22242 fields, current timestamp, empty content, one exact relay tag, and one exact bounded challenge before the anonymous transport key signs; publish/subscription retry once after AUTH; stale/negative/misbound/duplicate AUTH tests | PASS in local harness; no tested public relay required AUTH |
+| NIP-42 | relay authentication | independently validate exact kind-22242 fields, current timestamp, empty content, one exact relay tag, and one exact bounded challenge before the anonymous transport key signs; one challenge/signature attempt per operation; redact challenge echoes from reasons, notices, traces, and logs; publish/subscription retry once after AUTH | PASS in local harness; no tested public relay required AUTH |
 | NIP-44 v2 | endpoint encryption | exact conversation key, padding boundaries including extended lengths, MAC-before-plaintext, strict Base64/UTF-8/caps; pinned official positive/negative corpus in TS and Kotlin | PASS |
 | NIP-59 | rumors, seals, gift wraps | rumor ID present/no signature; kind-13 seal has empty tags; fresh random wrapper key; kind 1059 has exact `p` and expiration; signatures/sender/recipient/timestamps verified; shared field-exact pairing transcript consumed by Chrome and Android | PASS for Reader v2 tested paths |
 | NIP-07 | optional provenance proof | browser signer signs a bounded `device-auth` proof; returned pubkey/event/content are independently verified before use; no page-world key bridge | PASS unit; live Amber/nos2x browser signer NOT MEASURED |
@@ -49,7 +49,12 @@ signing, it requires exactly `kind`, `created_at`, `tags`, and `content`; kind
 for the connected URL; and one exact 1–512-byte challenge tag. Android builds
 the same constrained event itself. A matching negative AUTH `OK` is never
 reported as rejection of the original Reader event, and duplicate AUTH `OK`s
-cannot cause repeated publication/subscription retries.
+cannot cause repeated publication/subscription retries. A repeated identical
+challenge reuses the one authentication result; a changed challenge during the
+same operation is a protocol failure and cannot trigger another signature.
+Exact received challenges are retained only transiently for signing and
+redaction. If a hostile relay echoes one through `NOTICE`, `OK`, `CLOSED`, or an
+exception, only `[redacted-challenge]` can reach Reader diagnostics.
 
 Local harness evidence covers:
 
@@ -57,8 +62,9 @@ Local harness evidence covers:
 - stale/negative AUTH;
 - misbound, malformed, stale, oversized, and expanded AUTH templates/challenges;
 - contradictory original-event OKs and duplicate AUTH OKs;
+- duplicate and changed late challenges with exactly one signing attempt;
 - CLOSED/auth-required classification;
-- challenge fingerprint logging without retaining the challenge.
+- challenge fingerprint logging and complete short-challenge echo redaction.
 
 No relay in the dated public run challenged the tested operation, so public
 AUTH interoperability is **NOT MEASURED**.

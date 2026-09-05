@@ -53,8 +53,10 @@ reported independently in `TEST_REPORT.md`.
 - The unsafe page-world signing bridge and inert settings controls were
   removed. Chrome key storage is restricted to trusted extension contexts.
 - NIP-42 event rejection is distinct from Reader-event rejection; malformed or
-  misbound Chrome AUTH templates are rejected before signing, and duplicate
-  AUTH/OK frames cannot cause repeated effects.
+  misbound Chrome AUTH templates are rejected before signing. Each operation
+  signs at most one challenge, changed late challenges fail closed, and exact
+  challenge echoes are redacted from notices/reasons/traces; duplicate AUTH/OK
+  frames cannot cause repeated effects.
 - The public-only `shared/test-vectors/pairing-v2.json` fixture makes Chrome's
   request/ACK and Android's response/completion one exact cross-runtime gate.
 
