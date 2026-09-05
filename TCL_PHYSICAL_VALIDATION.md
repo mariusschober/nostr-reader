@@ -103,10 +103,11 @@ revalidated.
 
 ## Instrumentation and UI evidence
 
-The final test APK's six instrumentation cases pass on the physical TCL and on
-an API-26 emulator: v3 database migration, missing-key revocation, sole-active
-replacement, Chrome/normative gzip decode, conflicting sender/duplicate safety,
-and reordered/duplicate chunk atomic commit with bound ACK.
+The six instrumentation cases cover v3 -> v5 database migration, missing-key
+revocation, sole-active replacement, Chrome/normative gzip decode, conflicting
+sender/duplicate safety, and reordered/duplicate chunk atomic commit with a
+durable bound ACK intent. Exact final-APK device results are recorded with the
+artifact manifest; the API-26 emulator remains supplemental evidence.
 
 Emulator screenshots:
 

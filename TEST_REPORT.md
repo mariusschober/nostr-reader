@@ -66,6 +66,7 @@ locations are relative to this branch.
 | MEDIUM M3 `sent` item stranded | Chrome `service-worker.ts:153`, alarm pending-only | no ACK meant permanent nonretry | retryable states/backoff/age ceiling, ACK-only deletion | delivery-state/recovery tests | PASS |
 | MEDIUM M4 “instant” background claim | Android periodic WorkManager | OS makes timing inexact | docs now say catch-up; immediate resume work added | source/emulator; broad physical timing NOT MEASURED | PASS documentation/implementation truth |
 | MEDIUM M5 documentation drift | `PROTOCOL.md`, `SECURITY.md`, old report | claims exceeded implementation/evidence | regenerated v2 documentation set | manual cross-check + tests | PASS |
+| MEDIUM M6 receiver ACK was only deduped in memory | pre-follow-up `SyncWorker` per-run set | a later catch-up could republish a completed ACK; process death after document commit had no durable ACK owner | Room v5 `ack_intents` + `processed_events`; serialized bounded quorum retry | 75 JVM tests + six-case physical instrumentation; installed-state check reported separately | PASS deterministic; physical interruption matrix NOT MEASURED |
 
 ## 3. Test matrix
 
@@ -81,7 +82,7 @@ locations are relative to this branch.
 | Chrome package | Vite 8.2.2/CFT | `npm run build` | valid MV3 package, standalone content script | verifier pass; no module/noncharacter packaging defect | build output | PASS |
 | Chrome secret boundary | CFT 151 | content script reads local storage keys | access denied/hidden | storage API absent in content world; no values visible | `chrome-content-storage-isolation-*` | PASS |
 | Chrome persistence | paired CFT profile | reload/restart + status | pairing/outbox survive | paired, exact seven relays, delivered 1, pending 0 | `chrome-paired-status-*` | PASS |
-| Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 74 tests, 0 failures/errors | XML reports | PASS |
+| Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 75 tests, 0 failures/errors | XML reports | PASS |
 | Android lint/build | Android SDK 34 | `lintDebug assembleDebug assembleDebugAndroidTest` | 0 errors; APKs | success, 0 lint errors, 29 retained warnings | Gradle/lint report | PASS |
 | Android instrumentation | API-26 emulator | six DB/codec/transfer cases | all pass | 6/6 | emulator run/screenshots | PASS |
 | Android instrumentation | physical TCL T807D | same six cases | all pass | 6/6 | instrumentation output | PASS |
@@ -117,6 +118,7 @@ MEASURED**.
 | exact recipient/sender/version/expiry | NIP-59 and payload validators | vectors/unit/instrumentation | PASS |
 | SSRF/private relay rejection | URL + DNS-every-connect policy | TS/Kotlin/fault tests | PASS |
 | exactly-once local effect | document hash + atomic Room commit | instrumentation + physical duplicate | PASS |
+| no completed-ACK restart on retained wrappers | Room v5 wrapper ledger + one bounded ACK lifecycle per transfer | unit/instrumentation; installed-state physical check reported separately | PASS deterministic; broad physical matrix NOT MEASURED |
 | plaintext outbox deletion only on ACK | strict ACK match | Chrome delivery tests + physical state | PASS |
 | secret-free logs/evidence | structural sanitized diagnostics | retained-log/source scan | PASS |
 | no backend/telemetry | direct relay architecture | dependency/source review | PASS |
@@ -153,9 +155,9 @@ Artifacts are debug/developer builds with no production signing material.
 
 Only evidence-based residuals are listed in `KNOWN_LIMITATIONS.md`. Decisive
 items are the unexecuted reliability/lifecycle quotas, exact-final-artifact E2E
-transmission, recurring duplicate ACK traffic during later catch-up, public
-relay policy drift, no public AUTH challenge, untested live external signers,
-and Android release/16-KiB maintenance.
+transmission, the one-time v4 -> v5 historical-ledger boundary, public relay
+policy drift, no public AUTH challenge, untested live external signers, and
+Android release/16-KiB maintenance.
 
 ## 10. Explicit declarations
 

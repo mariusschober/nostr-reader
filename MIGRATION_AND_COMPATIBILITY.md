@@ -18,11 +18,17 @@ disconnect/reset and re-pairing.
 | 1 -> 2 | adds Inbox/Priority/Later/Archive membership | documents and progress preserved; old finished/archived content moves to Archive | PASS historical physical QA |
 | 2 -> 3 | adds protocol/pairing lifecycle fields | documents preserved; old channels retained only as `legacy_repair_required` | PASS TCL/emulator instrumentation |
 | 3 -> 4 | replaces unauthenticated partial chunk staging and adds bound manifest staging | documents/settings/channels preserved; incomplete diagnostic-era chunks discarded | PASS TCL/emulator instrumentation |
+| 4 -> 5 | adds durable receiver ACK intents and a processed-wrapper ledger | documents, settings, channels, and authenticated transfer staging preserved | PASS physical-device instrumentation; installed-state migration reported separately |
 
 The v3 -> v4 path exists because a diagnostic v3 database was installed on the
 physical TCL before final transfer assembly landed. The instrumentation test
-opens a v3-shaped database, migrates it, and verifies that existing documents
-survive.
+opens a v3-shaped database, migrates it through v5, and verifies that existing
+documents survive and both new durable ledgers are usable.
+
+Version 5 starts with no historical processed-wrapper rows. Its first catch-up
+may therefore create one recovery ACK intent for a still-retained, already
+stored v4 transfer. Once that authenticated wrapper and ACK result are written,
+later rolling-window catch-ups do not restart the completed ACK lifecycle.
 
 ## Chrome migration
 
@@ -38,8 +44,8 @@ This prevents relay-set split brain.
 
 ## Downgrade safety
 
-Downgrading the Android app over a Room v4 database is unsupported and must be
-blocked. Older builds do not know the v4 schema or v2 trust states. They must
+Downgrading the Android app over a Room v5 database is unsupported and must be
+blocked. Older builds do not know the v5 schema or v2 trust states. They must
 not be allowed to reinterpret v2 channels.
 
 If an older build is absolutely required:

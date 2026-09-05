@@ -185,6 +185,12 @@ match, UTF-8 and canonicalization are exact, `documentId` and word count match,
 and the Room transaction succeeds. The document hash provides exactly-once
 local effect; exact replays produce a `duplicate` ACK rather than another row.
 
+Authenticated wrapper IDs are persisted in the same transaction as their
+staging/document effect. When a transfer completes, that transaction also
+creates the durable ACK intent. Thus a process crash cannot leave a committed
+document without a recoverable ACK, and later rolling-window reads skip wrappers
+already applied to Room.
+
 ## Endpoint ACK and delivery truth
 
 Only durable document presence permits Android to send an ACK. It binds:
@@ -203,6 +209,12 @@ Android channel and with every field matching the persisted outbox item.
 `duplicate` device ACK. Recent delivery receipts retain only opaque transfer ID
 and time; they carry no article text.
 
+Android persists positive ACK publication results per relay. It attempts every
+configured relay once and requires two unique matching positive results before
+marking the receiver ACK lifecycle complete. Below quorum, only missing relays
+are retried with bounded backoff. A later wrapper for the same immutable
+transfer cannot reset a completed quorum or an exhausted retry ceiling.
+
 User-visible states remain distinct: `queued`, `relay accepted`, `awaiting
 device`, `delivered`, and `failed`.
 
@@ -217,8 +229,9 @@ user discard removes it.
 
 Chrome alarms re-enter pairing, ACK catch-up, and delivery retries after MV3
 suspension or browser restart. Android WorkManager performs rolling-window
-catch-up and activity resume requests an immediate run. Force-stop cannot be
-promised until the user opens the app again.
+catch-up, resumes durable pending ACKs, and activity resume requests an
+immediate run. Periodic and foreground-triggered workers are serialized inside
+the process. Force-stop cannot be promised until the user opens the app again.
 
 ## Compatibility
 

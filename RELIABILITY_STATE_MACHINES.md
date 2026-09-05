@@ -91,21 +91,26 @@ authenticated manifest/chunk
   -> bounded staging
   -> complete bound set
   -> hash + gzip + UTF-8 + canonical checks
-  -> atomic stored | duplicate
-  -> ACK publication
+  -> atomic stored | duplicate + processed-wrapper row + ACK intent
+  -> ACK pending
+  -> quorum complete | bounded retry | failed/expired
 ```
 
 Wrong sender, recipient, version, kind, signature, MAC, expiry, hash, size,
 index, or field set is a no-op/failure before document mutation. Event IDs are
-deduplicated across relays within a worker run; `documentId` provides the
-persistent exactly-once effect. An ACK is built only from a `stored` or
-`duplicate` result after durable document presence.
+deduplicated across relays within a worker run and persisted after every
+authenticated manifest/chunk mutation; `documentId` provides the persistent
+exactly-once document effect. Document commit, processed-wrapper recording, and
+ACK-intent creation share one Room transaction, so process death cannot leave a
+committed document without a recoverable ACK path.
 
-If no relay confirms an ACK, WorkManager retries the run. Once relay-retained
-duplicate transfer wrappers are seen during a later catch-up, the current
-implementation may issue another duplicate ACK batch; it remains
-cryptographically bound and expiry-bounded but is recorded as residual traffic
-in `KNOWN_LIMITATIONS.md`.
+Each ACK is built only from a durable `stored` or `duplicate` intent. All
+configured relays are attempted once, each matching positive result is saved,
+and two accepted relays complete the ACK lifecycle. Below quorum, WorkManager
+retries with deterministic jitter/backoff until 168 attempts or transfer
+expiry. A delayed wrapper or Chrome retry for that immutable transfer cannot
+reset a completed quorum or exhausted ceiling. A process-local mutex serializes
+periodic and foreground-triggered workers.
 
 ## Restart ownership
 
@@ -115,7 +120,8 @@ in `KNOWN_LIMITATIONS.md`.
 | worker terminates before response | Chrome pairing session | worker evaluation/startup/alarm | PASS in deterministic tests; 20/20 physical NOT MEASURED |
 | browser restarts | Chrome storage + alarms | startup ACK/pairing/outbox recovery | one paired-profile restart PASS; 20/20 NOT MEASURED |
 | Android dies during provisioning | Room `provisioning` row | revoke/delete on resumed begin | PASS instrumentation |
-| Android dies awaiting ACK/completion | Room pending row + Keystore | WorkManager `processDue()` | PASS source/unit; physical lifecycle matrix NOT MEASURED |
+| Android dies during pairing ACK/completion | Room pending row + Keystore | WorkManager `processDue()` | PASS source/unit; physical lifecycle matrix NOT MEASURED |
+| Android dies after document commit/before ACK quorum | Room ACK intent + accepted-relay set | next WorkManager run resumes only missing relay attempts | PASS instrumentation/unit; physical interruption scenario NOT MEASURED |
 | Chrome dies during article send | IndexedDB outbox | ACK-first startup then bounded retry | PASS tests; physical scenario NOT MEASURED |
 | Android offline | relays + WorkManager | rolling 10-day query after network returns | PASS local harness; 20/20 physical NOT MEASURED |
 | Android force-stop | OS stopped state | user reopens app; immediate sync scheduled | limitation, not promised |

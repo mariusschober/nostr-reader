@@ -7,7 +7,7 @@ Immutable pre-repair baseline: `982920b4e91dd5af4af6046f56df281c7adfe545`
 Rollback is intentionally not an in-place protocol downgrade. Reader v2
 changes the Android database, trust states, compression framing, pairing
 transcript, and delivery ACK. An older build must never reinterpret a v2
-channel or Room v4 database.
+channel or Room v5 database.
 
 ## Preferred source rollback
 
@@ -22,13 +22,13 @@ and inspect the resulting diff before using its artifacts.
 
 ## Android data boundary
 
-A baseline APK cannot safely open Reader's Room v4 database.
+A baseline APK cannot safely open Reader's Room v5 database.
 
 1. Export or otherwise preserve user-controlled documents with a current build.
 2. Record that all device pairings and queued transport state will be lost.
 3. Disconnect the paired Chrome device if it is still available.
 4. Clear Reader app data or uninstall Reader before installing the older APK.
-5. Import only the user-controlled document export; never copy the v4 database,
+5. Import only the user-controlled document export; never copy the v5 database,
    preferences, or wrapped key files into the older app.
 
 Clearing data or uninstalling is destructive: it removes local Reader

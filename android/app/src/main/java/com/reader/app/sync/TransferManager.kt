@@ -4,9 +4,11 @@ import androidx.room.withTransaction
 import com.reader.app.core.ArticleParser
 import com.reader.app.core.ReaderCore
 import com.reader.app.core.ReaderGzip
+import com.reader.app.data.AckIntentEntity
 import com.reader.app.data.ChunkEntity
 import com.reader.app.data.DocumentEntity
 import com.reader.app.data.ManifestEntity
+import com.reader.app.data.ProcessedEventEntity
 import com.reader.app.data.ReaderDb
 import com.reader.app.nostr.NostrCodec
 import com.reader.app.nostr.NostrEvent
@@ -27,6 +29,7 @@ class TransferManager(
     val documentId: String,
     val manifestId: String,
     val status: String,
+    val expiresAt: Long,
   )
 
   private val hex16 = Regex("^[0-9a-f]{32}$")
@@ -55,6 +58,102 @@ class TransferManager(
       "chunk" -> handleChunk(payload)
       else -> null
     }
+  }
+
+  /**
+   * Sync entrypoint: document mutation, processed-wrapper recording, and ACK
+   * intent creation share one Room transaction. A crash can therefore leave
+   * either all durable effects or none, never a committed document with no
+   * recoverable ACK path.
+   */
+  suspend fun ingestForSync(
+    wrap: NostrEvent,
+    channelId: String,
+    trustedSender: String,
+    receiverSeckey: ByteArray,
+  ): Intake? {
+    require(channelId.isNotBlank()) { "invalid channel" }
+    val envelope = try {
+      NostrCodec.unwrapAndVerifyEnvelope(wrap, receiverSeckey, trustedSender)
+    } catch (_: Exception) {
+      return null
+    }
+    val payload = StrictJson.parseObject(envelope.payloadJson)
+    val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverSeckey))
+    val wrapExpiresAt = wrap.tags.single { it.firstOrNull() == "expiration" }[1].toLong()
+    val nowSecs = System.currentTimeMillis() / 1000
+    val ledgerExpiresAt = minOf(wrapExpiresAt, nowSecs + ReaderCore.SYNC_WINDOW_DAYS * 86400L)
+    return db.withTransaction {
+      if (db.processedEvents().byId(wrap.id) != null) return@withTransaction null
+      val intake = when (payload["type"]?.jsonPrimitive?.content) {
+        "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
+        "chunk" -> handleChunk(payload)
+        else -> return@withTransaction null
+      }
+      // A null intake means the authenticated fragment was durably staged but
+      // did not complete a transfer. Record it too: otherwise the same retained
+      // wrapper would be parsed and staged on every rolling-window catch-up.
+      val transferId = payload["transferId"]!!.jsonPrimitive.content
+      val inserted = db.processedEvents().insert(
+        ProcessedEventEntity(
+          eventId = wrap.id,
+          channelId = channelId,
+          transferId = transferId,
+          processedAt = System.currentTimeMillis(),
+          expiresAt = ledgerExpiresAt,
+        ),
+      )
+      if (inserted != -1L && intake != null) queueAckIntent(channelId, trustedSender, intake, nowSecs)
+      intake
+    }
+  }
+
+  private suspend fun queueAckIntent(
+    channelId: String,
+    recipientDevicePubkey: String,
+    intake: Intake,
+    nowSecs: Long,
+  ) {
+    require(intake.status == "stored" || intake.status == "duplicate") { "invalid ACK status" }
+    require(intake.expiresAt > nowSecs) { "cannot queue expired ACK" }
+    val dao = db.ackIntents()
+    val existing = dao.byTransfer(channelId, intake.transferId)
+    val preferredStatus = if (existing?.status == "stored" || intake.status == "stored") "stored" else "duplicate"
+    if (existing == null) {
+      dao.insert(
+        AckIntentEntity(
+          channelId = channelId,
+          transferId = intake.transferId,
+          manifestId = intake.manifestId,
+          documentId = intake.documentId,
+          recipientDevicePubkey = recipientDevicePubkey,
+          status = preferredStatus,
+          receivedAt = nowSecs,
+          expiresAt = intake.expiresAt,
+          acceptedRelaysJson = "[]",
+          attemptCount = 0,
+          nextAttemptAt = null,
+          completedAt = null,
+          failedAt = null,
+          lastErrorCode = null,
+        ),
+      )
+      return
+    }
+    require(
+      existing.manifestId == intake.manifestId && existing.documentId == intake.documentId &&
+        existing.recipientDevicePubkey == recipientDevicePubkey,
+    ) { "conflicting ACK intent" }
+    // One immutable transfer owns one bounded ACK lifecycle. A Chrome retry or
+    // a delayed wrapper from another relay must not reset a completed quorum or
+    // an exhausted retry ceiling; the accepted ACK remains relay-retained until
+    // the transfer itself expires.
+    dao.update(
+      existing.copy(
+        status = preferredStatus,
+        expiresAt = maxOf(existing.expiresAt, intake.expiresAt),
+      ),
+    )
   }
 
   private fun exactKeys(payload: JsonObject, required: Set<String>, optional: Set<String> = emptySet()) {
@@ -167,7 +266,7 @@ class TransferManager(
         db.chunks().clearTransfer(transferId)
         db.manifests().clearTransfer(transferId)
       }
-      return Intake(transferId, documentId, manifestId, "duplicate")
+      return Intake(transferId, documentId, manifestId, "duplicate", expiresAt)
     }
     val chunks = db.chunks().forTransfer(transferId)
     return if (chunks.size == chunkCount) assemble(manifest, chunks.sortedBy { it.index }) else null
@@ -237,7 +336,7 @@ class TransferManager(
         db.chunks().clearTransfer(manifest.transferId)
         db.manifests().clearTransfer(manifest.transferId)
       }
-      return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "duplicate")
+      return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "duplicate", manifest.expiresAt)
     }
     val compressed = ByteArrayOutputStream()
     var compressedTotal = 0
@@ -289,26 +388,53 @@ class TransferManager(
       db.chunks().clearTransfer(manifest.transferId)
       db.manifests().clearTransfer(manifest.transferId)
     }
-    return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "stored")
+    return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "stored", manifest.expiresAt)
   }
 
   /** Encrypted endpoint-bound ACK, emitted only after durable document presence. */
   fun buildAck(intake: Intake, senderDevicePubkey: String, channelSeckey: ByteArray): NostrEvent {
+    val now = System.currentTimeMillis() / 1000
+    return buildAck(
+      AckIntentEntity(
+        channelId = "direct",
+        transferId = intake.transferId,
+        manifestId = intake.manifestId,
+        documentId = intake.documentId,
+        recipientDevicePubkey = senderDevicePubkey,
+        status = intake.status,
+        receivedAt = now,
+        expiresAt = minOf(intake.expiresAt, now + ReaderCore.TRANSPORT_TTL_DAYS * 86400L),
+        acceptedRelaysJson = "[]",
+        attemptCount = 0,
+        nextAttemptAt = null,
+        completedAt = null,
+        failedAt = null,
+        lastErrorCode = null,
+      ),
+      channelSeckey,
+    )
+  }
+
+  /** Build a fresh NIP-59 wrapper around one stable durable ACK intent. */
+  fun buildAck(intent: AckIntentEntity, channelSeckey: ByteArray): NostrEvent {
+    val senderDevicePubkey = intent.recipientDevicePubkey
     require(hex32.matches(senderDevicePubkey)) { "invalid ACK recipient" }
+    require(intent.status == "stored" || intent.status == "duplicate") { "invalid ACK status" }
     val channelPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(channelSeckey))
     val now = System.currentTimeMillis() / 1000
+    require(intent.receivedAt <= now + 60 && intent.expiresAt > now) { "ACK intent expired or in future" }
     val payload = buildJsonObject {
       put("protocol", ReaderCore.READER_PROTOCOL)
       put("type", "ack")
-      put("transferId", intake.transferId)
-      put("documentId", intake.documentId)
-      put("manifestId", intake.manifestId)
-      put("contentHash", intake.documentId)
+      put("transferId", intent.transferId)
+      put("documentId", intent.documentId)
+      put("manifestId", intent.manifestId)
+      put("contentHash", intent.documentId)
       put("senderChannelPubkey", channelPubkey)
       put("recipientDevicePubkey", senderDevicePubkey)
-      put("status", intake.status)
-      put("receivedAt", now)
-      put("expiresAt", now + 7L * 86400)
+      put("status", intent.status)
+      put("receivedAt", intent.receivedAt)
+      put("expiresAt", intent.expiresAt)
     }.toString()
     return NostrCodec.sealAndWrap(channelSeckey, senderDevicePubkey, payload).second
   }

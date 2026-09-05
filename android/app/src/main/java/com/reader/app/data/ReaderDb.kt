@@ -93,6 +93,33 @@ data class ManifestEntity(
   val receivedAt: Long,
 )
 
+@Entity(tableName = "ack_intents", primaryKeys = ["channelId", "transferId"])
+data class AckIntentEntity(
+  val channelId: String,
+  val transferId: String,
+  val manifestId: String,
+  val documentId: String,
+  val recipientDevicePubkey: String,
+  val status: String,
+  val receivedAt: Long,
+  val expiresAt: Long,
+  val acceptedRelaysJson: String,
+  val attemptCount: Int,
+  val nextAttemptAt: Long?,
+  val completedAt: Long?,
+  val failedAt: Long?,
+  val lastErrorCode: String?,
+)
+
+@Entity(tableName = "processed_events")
+data class ProcessedEventEntity(
+  @PrimaryKey val eventId: String,
+  val channelId: String,
+  val transferId: String,
+  val processedAt: Long,
+  val expiresAt: Long,
+)
+
 @Dao
 interface DocumentDao {
   @Query("SELECT CAST(COUNT(*) AS TEXT) || ':' || CAST(COALESCE(MAX(updatedAt), 0) AS TEXT) FROM documents")
@@ -203,6 +230,39 @@ interface ManifestDao {
   suspend fun purgeExpired(nowSecs: Long)
 }
 
+@Dao
+interface AckIntentDao {
+  @Query("SELECT * FROM ack_intents WHERE channelId = :channelId AND transferId = :transferId LIMIT 1")
+  suspend fun byTransfer(channelId: String, transferId: String): AckIntentEntity?
+
+  @Insert(onConflict = OnConflictStrategy.ABORT)
+  suspend fun insert(intent: AckIntentEntity)
+
+  @Update
+  suspend fun update(intent: AckIntentEntity)
+
+  @Query("SELECT * FROM ack_intents WHERE channelId = :channelId AND completedAt IS NULL AND failedAt IS NULL AND expiresAt > :nowSecs AND (nextAttemptAt IS NULL OR nextAttemptAt <= :nowMillis) ORDER BY receivedAt LIMIT :limit")
+  suspend fun due(channelId: String, nowSecs: Long, nowMillis: Long, limit: Int): List<AckIntentEntity>
+
+  @Query("SELECT COUNT(*) FROM ack_intents WHERE channelId = :channelId AND completedAt IS NULL AND failedAt IS NULL AND expiresAt > :nowSecs")
+  suspend fun pendingCount(channelId: String, nowSecs: Long): Int
+
+  @Query("DELETE FROM ack_intents WHERE expiresAt <= :nowSecs")
+  suspend fun purgeExpired(nowSecs: Long)
+}
+
+@Dao
+interface ProcessedEventDao {
+  @Query("SELECT * FROM processed_events WHERE eventId = :eventId LIMIT 1")
+  suspend fun byId(eventId: String): ProcessedEventEntity?
+
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insert(event: ProcessedEventEntity): Long
+
+  @Query("DELETE FROM processed_events WHERE expiresAt <= :nowSecs")
+  suspend fun purgeExpired(nowSecs: Long)
+}
+
 val MIGRATION_1_2 = object : Migration(1, 2) {
   override fun migrate(db: SupportSQLiteDatabase) {
     db.execSQL("ALTER TABLE documents ADD COLUMN list TEXT NOT NULL DEFAULT 'inbox'")
@@ -287,9 +347,55 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
   }
 }
 
+/**
+ * Persist receiver ACK intent and the wrapper IDs that triggered it. This
+ * closes the commit-before-ACK crash window and prevents a retained relay
+ * wrapper from causing another ACK batch on every rolling-window catch-up.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL(
+      """CREATE TABLE IF NOT EXISTS ack_intents (
+        channelId TEXT NOT NULL,
+        transferId TEXT NOT NULL,
+        manifestId TEXT NOT NULL,
+        documentId TEXT NOT NULL,
+        recipientDevicePubkey TEXT NOT NULL,
+        status TEXT NOT NULL,
+        receivedAt INTEGER NOT NULL,
+        expiresAt INTEGER NOT NULL,
+        acceptedRelaysJson TEXT NOT NULL,
+        attemptCount INTEGER NOT NULL,
+        nextAttemptAt INTEGER,
+        completedAt INTEGER,
+        failedAt INTEGER,
+        lastErrorCode TEXT,
+        PRIMARY KEY(channelId, transferId)
+      )""".trimIndent(),
+    )
+    db.execSQL(
+      """CREATE TABLE IF NOT EXISTS processed_events (
+        eventId TEXT NOT NULL,
+        channelId TEXT NOT NULL,
+        transferId TEXT NOT NULL,
+        processedAt INTEGER NOT NULL,
+        expiresAt INTEGER NOT NULL,
+        PRIMARY KEY(eventId)
+      )""".trimIndent(),
+    )
+  }
+}
+
 @Database(
-  entities = [DocumentEntity::class, ChannelEntity::class, ChunkEntity::class, ManifestEntity::class],
-  version = 4,
+  entities = [
+    DocumentEntity::class,
+    ChannelEntity::class,
+    ChunkEntity::class,
+    ManifestEntity::class,
+    AckIntentEntity::class,
+    ProcessedEventEntity::class,
+  ],
+  version = 5,
   exportSchema = false,
 )
 abstract class ReaderDb : RoomDatabase() {
@@ -297,13 +403,15 @@ abstract class ReaderDb : RoomDatabase() {
   abstract fun channels(): ChannelDao
   abstract fun chunks(): ChunkDao
   abstract fun manifests(): ManifestDao
+  abstract fun ackIntents(): AckIntentDao
+  abstract fun processedEvents(): ProcessedEventDao
 
   companion object {
     @Volatile
     private var instance: ReaderDb? = null
     fun get(ctx: Context): ReaderDb = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(ctx.applicationContext, ReaderDb::class.java, "reader.db")
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
         .build()
         .also { instance = it }
     }

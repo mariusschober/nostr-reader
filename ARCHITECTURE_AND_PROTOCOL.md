@@ -56,9 +56,9 @@ matching positive relay results per payload.
 | Capture article | Chrome | local outbox | full plaintext intent and immutable transfer identity | none | none | local only | stable Chrome device key selected | none | none | `transferId`, `manifestId`, `documentId` | 7 d | Chrome alarm/manual retry |
 | Manifest | Chrome | Android channel | outbox already durable | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Chrome device seal; fresh outer key per relay | two unique relay `OK=true` results => `relay_accepted` | no delivery claim | stable transfer + manifest identity | outer and inner 7 d | Chrome bounded backoff |
 | Chunks | Chrome | Android channel | all compressed bytes retained in outbox | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Chrome device seal; fresh outer key per relay and retry | two unique positive results per chunk | none until full durable assembly | transfer/manifest/hash/index tuple | 7 d | Chrome bounded backoff |
-| Receive/assemble | relays | Android | chunks/manifests staged in Room | subscription filter only | `#p` filter targets channel pubkey | verify outer, decrypt wrap, verify/decrypt seal, validate rumor/payload | trusted Chrome device must own inner sender | relay read is transport evidence only | atomic document insert or existing matching document | event ID + transfer/document identity | reject outer/inner expiry | Android WorkManager and resume sync |
-| Document commit | Android | local Room | one transaction inserts doc and clears staging | none | none | plaintext local at endpoint | n/a | n/a | `stored` or `duplicate` only after durable presence | `documentId` | local document persists until user action | Android transaction |
-| Endpoint ACK | Android | Chrome device | durable document already exists | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Android channel seal; fresh outer per relay | each ACK publication classified; any retained copy can be caught up | none until Chrome validates it | transfer/manifest/document/key tuple | 7 d | Android retries if no relay accepts |
+| Receive/assemble | relays | Android | chunks/manifests staged in Room | subscription filter only | `#p` filter targets channel pubkey | verify outer, decrypt wrap, verify/decrypt seal, validate rumor/payload | trusted Chrome device must own inner sender | relay read is transport evidence only | atomic document insert or existing matching document | persistent wrapper event ID + transfer/document identity | reject outer/inner expiry | Android WorkManager and resume sync |
+| Document commit | Android | local Room | one transaction inserts doc, clears staging, records wrapper, and queues ACK intent | none | none | plaintext local at endpoint | n/a | n/a | `stored` or `duplicate` only after durable presence | `documentId` | local document persists until user action | Android transaction |
+| Endpoint ACK | Android | Chrome device | durable ACK intent and prior accepted-relay results | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Android channel seal; fresh outer per relay | each publication classified; two unique `OK=true` results complete the ACK lifecycle | none until Chrome validates it | transfer/manifest/document/key tuple | transfer expiry, at most 7 d | Android retries missing relays below quorum with bounded backoff |
 | Delivery completion | relays | Chrome | outbox item still present during validation | subscription filter only | `#p` targets Chrome device pubkey | full NIP-59 and exact ACK schema validation | exact paired Android channel signer | relay read does not equal delivery | valid `stored`/`duplicate` ACK deletes outbox and records opaque receipt | transfer + complete ACK binding | reject stale ACK | Chrome startup/alarm/manual check |
 
 ## Pairing ownership and recovery
@@ -90,9 +90,12 @@ Only a verified device ACK enters `delivered` and deletes captured content.
 Relay `OK=true` never does.
 
 Android receives through a rolling kind-1059 `#p` query. It deduplicates relay
-copies by event ID within a run, binds every chunk to the manifest, commits
-exactly one document by `documentId`, and generates an ACK only after durable
-presence. WorkManager provides catch-up; `onResume()` requests an immediate
+copies by event ID within a run and persists authenticated wrapper IDs across
+runs, binds every chunk to the manifest, and commits exactly one document by
+`documentId`. The same transaction creates a durable receiver ACK intent only
+after document presence; accepted relays and retry timing then survive process
+death. A completed two-relay ACK quorum is terminal for that immutable
+transfer. WorkManager provides catch-up; `onResume()` requests an immediate
 run. Force-stop is explicitly not promised until the app is reopened.
 
 ## Source map

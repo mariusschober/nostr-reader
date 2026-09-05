@@ -8,8 +8,11 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.reader.app.data.AckIntentEntity
 import com.reader.app.data.MIGRATION_3_4
+import com.reader.app.data.MIGRATION_4_5
 import com.reader.app.data.ChannelEntity
+import com.reader.app.data.ProcessedEventEntity
 import com.reader.app.data.ReaderDb
 import com.reader.app.security.KeystoreWrap
 import com.reader.app.sync.openActiveChannelKeyOrRevoke
@@ -32,7 +35,7 @@ class ReaderDbMigrationInstrumentedTest {
   )
 
   @Test
-  fun physicalDiagnosticV3AdvancesWithoutLosingDocuments() = runBlocking {
+  fun physicalDiagnosticV3AdvancesToV5WithoutLosingDocuments() = runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val name = "reader-migration-3-4-test.db"
     context.deleteDatabase(name)
@@ -121,7 +124,7 @@ class ReaderDbMigrationInstrumentedTest {
     helper.close()
 
     val migrated = Room.databaseBuilder(context, ReaderDb::class.java, name)
-      .addMigrations(MIGRATION_3_4)
+      .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
       .build()
     try {
       migrated.openHelper.writableDatabase
@@ -134,6 +137,29 @@ class ReaderDbMigrationInstrumentedTest {
         while (cursor.moveToNext()) columns += cursor.getString(nameIndex)
       }
       assertTrue(columns.containsAll(setOf("manifestId", "compressedSha256")))
+      assertTrue(migrated.ackIntents().due("none", Long.MAX_VALUE - 1, Long.MAX_VALUE - 1, 1).isEmpty())
+      assertNull(migrated.processedEvents().byId("none"))
+      val intent = AckIntentEntity(
+        channelId = "channel",
+        transferId = "00".repeat(16),
+        manifestId = "11".repeat(32),
+        documentId = "22".repeat(32),
+        recipientDevicePubkey = "33".repeat(32),
+        status = "stored",
+        receivedAt = 10,
+        expiresAt = 100,
+        acceptedRelaysJson = "[]",
+        attemptCount = 0,
+        nextAttemptAt = null,
+        completedAt = null,
+        failedAt = null,
+        lastErrorCode = null,
+      )
+      migrated.ackIntents().insert(intent)
+      assertEquals(intent, migrated.ackIntents().byTransfer("channel", intent.transferId))
+      val processed = ProcessedEventEntity("44".repeat(32), "channel", intent.transferId, 10, 100)
+      assertTrue(migrated.processedEvents().insert(processed) >= 0)
+      assertEquals(processed, migrated.processedEvents().byId(processed.eventId))
     } finally {
       migrated.close()
       context.deleteDatabase(name)

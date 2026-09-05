@@ -36,7 +36,8 @@ reported independently in `TEST_REPORT.md`.
 - Chrome persists pairing sessions and outbox state across MV3 suspension and
   restart. Relay acceptance and device delivery are separate states.
 - Android stages pairing and transfers transactionally, revokes key-loss
-  channels, performs rolling-window catch-up, and deduplicates by content.
+  channels, performs rolling-window catch-up, and persists both authenticated
+  wrapper IDs and receiver ACK intent/outcomes in Room v5.
 - Reader uses six fixed public relays, a two-relay write quorum, and up to two
   user-added secure relays in Chrome Settings. Relay changes require re-pairing.
 - The unsafe page-world signing bridge and inert settings controls were
@@ -92,10 +93,9 @@ not production releases.
 - Live third-party NIP-07/Amber signer checks, public NIP-42 challenge evidence,
   Android release signing, and a 16 KiB-page device remain unmeasured.
 
-Android can currently republish an authenticated duplicate ACK batch when a
-later catch-up encounters still-retained duplicate wrappers. This is bounded by
-expiry and does not duplicate the document, but it remains an open P2 traffic
-optimization.
+On the first Room v4 -> v5 catch-up, a retained transfer may produce one
+authenticated recovery ACK because no historical v4 ledger exists. After that
+write, repeated wrappers cannot restart a completed two-relay ACK quorum.
 
 ## Safety boundary
 

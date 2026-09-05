@@ -127,18 +127,22 @@ class TransferManagerInstrumentedTest {
     val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverKey))
     val f = fixture(senderKey, receiverKey)
 
-    for (chunk in f.chunks.reversed()) {
-      assertNull(manager.ingestWrap(wrap(chunk, senderKey, receiverKey), "channel", senderPubkey, receiverKey))
+    val chunkWraps = f.chunks.reversed().map { wrap(it, senderKey, receiverKey) }
+    for (chunkWrap in chunkWraps) {
+      assertNull(manager.ingestForSync(chunkWrap, "channel", senderPubkey, receiverKey))
+      assertNotNull(db.processedEvents().byId(chunkWrap.id))
     }
-    // An exact replay is harmless and does not create another chunk.
-    assertNull(manager.ingestWrap(wrap(f.chunks.first(), senderKey, receiverKey), "channel", senderPubkey, receiverKey))
-    val intake = manager.ingestWrap(wrap(f.manifest, senderKey, receiverKey), "channel", senderPubkey, receiverKey)!!
+    // An exact retained-wrapper replay is skipped and does not create another chunk.
+    assertNull(manager.ingestForSync(chunkWraps.first(), "channel", senderPubkey, receiverKey))
+    val manifestWrap = wrap(f.manifest, senderKey, receiverKey)
+    val intake = manager.ingestForSync(manifestWrap, "channel", senderPubkey, receiverKey)!!
     assertEquals("stored", intake.status)
     assertEquals(f.documentId, db.documents().byId(f.documentId)!!.documentId)
     assertTrue(db.chunks().forTransfer(intake.transferId).isEmpty())
     assertNull(db.manifests().byTransfer(intake.transferId))
 
-    val ackWrap = manager.buildAck(intake, senderPubkey, receiverKey)
+    val queuedAck = db.ackIntents().byTransfer("channel", intake.transferId)!!
+    val ackWrap = manager.buildAck(queuedAck, receiverKey)
     val ackEnvelope = NostrCodec.unwrapAndVerifyEnvelope(ackWrap, senderKey, receiverPubkey)
     val ack = StrictJson.parseObject(ackEnvelope.payloadJson)
     assertEquals("ack", ack["type"]!!.jsonPrimitive.content)
@@ -147,8 +151,47 @@ class TransferManagerInstrumentedTest {
     assertEquals(receiverPubkey, ack["senderChannelPubkey"]!!.jsonPrimitive.content)
     assertEquals(senderPubkey, ack["recipientDevicePubkey"]!!.jsonPrimitive.content)
 
-    val duplicate = manager.ingestWrap(wrap(f.manifest, senderKey, receiverKey), "channel", senderPubkey, receiverKey)!!
+    db.ackIntents().update(
+      queuedAck.copy(
+        acceptedRelaysJson = "[\"wss://one.example\",\"wss://two.example\"]",
+        completedAt = System.currentTimeMillis(),
+      ),
+    )
+    assertNull(manager.ingestForSync(manifestWrap, "channel", senderPubkey, receiverKey))
+    assertNotNull(db.ackIntents().byTransfer("channel", intake.transferId)!!.completedAt)
+
+    // A delayed cross-relay copy or fresh Chrome retry has a new outer wrapper
+    // ID but belongs to the same immutable transfer. It must not reset a
+    // completed ACK quorum and cause another batch.
+    val duplicate = manager.ingestForSync(
+      wrap(f.manifest, senderKey, receiverKey),
+      "channel",
+      senderPubkey,
+      receiverKey,
+    )!!
     assertEquals("duplicate", duplicate.status)
+    val stillCompleted = db.ackIntents().byTransfer("channel", intake.transferId)!!
+    assertNotNull(stillCompleted.completedAt)
+    assertEquals("[\"wss://one.example\",\"wss://two.example\"]", stillCompleted.acceptedRelaysJson)
+    assertEquals("stored", stillCompleted.status)
+
+    // An exhausted ACK lifecycle is terminal too; a retry cannot turn an
+    // intentionally bounded sender into unbounded relay traffic.
+    db.ackIntents().update(
+      stillCompleted.copy(completedAt = null, failedAt = System.currentTimeMillis(), attemptCount = 168),
+    )
+    assertEquals(
+      "duplicate",
+      manager.ingestForSync(
+        wrap(f.manifest, senderKey, receiverKey),
+        "channel",
+        senderPubkey,
+        receiverKey,
+      )!!.status,
+    )
+    val stillFailed = db.ackIntents().byTransfer("channel", intake.transferId)!!
+    assertNotNull(stillFailed.failedAt)
+    assertEquals(168, stillFailed.attemptCount)
   }
 
   @Test
