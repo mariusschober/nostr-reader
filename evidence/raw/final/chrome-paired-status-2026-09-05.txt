@@ -1,0 +1,18 @@
+Status: PASS
+Browser: Google Chrome for Testing 151.0.7922.34
+Profile: preserved paired test profile
+Check: service-worker status after rebuilding and reloading the unpacked extension
+
+- paired: true
+- authenticated configured relay count: 7
+- default relays: 6
+- custom relays: 1 (wss://relay.mostr.pub)
+- relay-set change pending: false
+- queued: 0
+- relay accepted: 0
+- awaiting device: 0
+- delivered after authenticated Android ACK: 1
+- failed: 0
+
+The check did not publish, retry, or disclose any stored key or payload.
+Test harness: chrome/scripts/cdp-installed-check.mjs status

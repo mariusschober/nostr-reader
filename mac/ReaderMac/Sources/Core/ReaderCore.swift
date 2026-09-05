@@ -1,20 +1,21 @@
 import CryptoKit
 import Foundation
 
-/// Swift mirror of reader-core + PROTOCOL.md. Golden-v1 gates every release.
+/// Swift mirror of reader-core + PROTOCOL.md. Codec-v2 gates every release.
 /// Full app binds the Rust crate via UniFFI; this package pins the algorithms
 /// and ships the Mac sender + reader UI against the same vectors.
 public enum ReaderCore {
-    public static let protocolVersion = "reader/1"
+    public static let protocolVersion = "reader/2"
     public static let syncWindowDays = 10
     public static let maxCompressedBytes = 5 * 1024 * 1024
+    public static let maxExpandedBytes = 20 * 1024 * 1024
     public static let maxChunks = 512
 
     public static func canonicalize(_ input: String) -> String {
         var s = input.precomposedStringWithCanonicalMapping
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        var lines = s.components(separatedBy: "\n").map {
+        let lines = s.components(separatedBy: "\n").map {
             $0.replacingOccurrences(of: "[ \\t]+$", with: "", options: .regularExpression)
         }
         var collapsed: [String] = []

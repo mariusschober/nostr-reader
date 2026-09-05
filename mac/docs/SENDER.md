@@ -2,7 +2,7 @@
 
 One app, four entries, one pipeline. All entries converge on:
 canonicalize (ReaderCoreSwift) -> gzip -> manifest+chunks ->
-NIP-59 seal+wrap (rust-core via UniFFI) -> 2-of-3 relay quorum ->
+NIP-59 seal+wrap (rust-core via UniFFI) -> 2-of-up-to-8 relay quorum ->
 SwiftData outbox -> E2E ACK clears plaintext.
 
 ## Entries
@@ -16,5 +16,5 @@ SwiftData outbox -> E2E ACK clears plaintext.
 
 Channel private keys in Keychain (kSecClassKey, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`,
 no iCloud sync), wrapped exactly like Android Keystore wrap. Export never
-includes keys. Pairing reuses `reader-pair/1` QR: Mac scans with camera or
+includes keys. Pairing reuses `reader-pair/2` QR: Mac scans with camera or
 pastes the code; nonce-echo reply identical to Android.

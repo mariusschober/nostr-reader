@@ -1,133 +1,314 @@
 package com.reader.app.sync
 
-import android.util.Base64
+import androidx.room.withTransaction
 import com.reader.app.core.ArticleParser
 import com.reader.app.core.ReaderCore
+import com.reader.app.core.ReaderGzip
 import com.reader.app.data.ChunkEntity
 import com.reader.app.data.DocumentEntity
+import com.reader.app.data.ManifestEntity
 import com.reader.app.data.ReaderDb
 import com.reader.app.nostr.NostrCodec
 import com.reader.app.nostr.NostrEvent
-import com.reader.app.nostr.RelayClient
-import com.reader.app.nostr.SEAL_KIND
-import com.reader.app.nostr.WRAP_KIND
-import com.reader.app.nostr.WRAP_KIND_EPHEMERAL
-import com.reader.app.security.KeystoreWrap
+import com.reader.app.nostr.Secp256k1
+import com.reader.app.nostr.StrictJson
 import kotlinx.serialization.json.*
 import java.io.ByteArrayOutputStream
-import java.util.zip.GZIPInputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.util.Base64
 
-/** Incoming transfer assembly: auth first, bounded inflate, verify, commit, ACK. */
+/** Incoming transfer assembly: authenticate, bind manifest/chunks, verify, commit, ACK. */
 class TransferManager(
   private val db: ReaderDb,
-  private val keys: KeystoreWrap,
-  private val relays: RelayClient = RelayClient(),
 ) {
-  data class Intake(val transferId: String, val documentId: String, val status: String)
+  data class Intake(
+    val transferId: String,
+    val documentId: String,
+    val manifestId: String,
+    val status: String,
+  )
 
-  suspend fun ingestWrap(wrap: NostrEvent, channelId: String, trustedSender: String, receiverSeckey: ByteArray): Intake? {
-    val payloadJson = try {
-      NostrCodec.unwrapAndVerify(wrap, receiverSeckey, trustedSender)
-    } catch (e: Exception) {
-      return null // hostile or unrelated: bounded ignore
+  private val hex16 = Regex("^[0-9a-f]{32}$")
+  private val hex32 = Regex("^[0-9a-f]{64}$")
+  private val sourceTypes = setOf(
+    "web", "chatgpt", "claude", "gemini", "perplexity", "selection",
+    "android-share", "android-process-text", "file", "mac-share", "mac-quick-action",
+  )
+
+  suspend fun ingestWrap(
+    wrap: NostrEvent,
+    channelId: String,
+    trustedSender: String,
+    receiverSeckey: ByteArray,
+  ): Intake? {
+    require(channelId.isNotBlank()) { "invalid channel" }
+    val envelope = try {
+      NostrCodec.unwrapAndVerifyEnvelope(wrap, receiverSeckey, trustedSender)
+    } catch (_: Exception) {
+      return null
     }
-    val p = Json.parseToJsonElement(payloadJson).jsonObject
-    return when (p["type"]?.jsonPrimitive?.content) {
-      "manifest" -> {
-        handleManifest(p)
-        null
-      }
-      "chunk" -> handleChunk(p)
+    val payload = StrictJson.parseObject(envelope.payloadJson)
+    val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverSeckey))
+    return when (payload["type"]?.jsonPrimitive?.content) {
+      "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
+      "chunk" -> handleChunk(payload)
       else -> null
     }
   }
 
-  private suspend fun handleManifest(p: JsonObject) {
-    // Manifest is informational in v1; chunk assembly is authoritative.
-    // Hard validation still applies so oversized transfers fail fast.
-    val chunks = p["chunkCount"]?.jsonPrimitive?.int ?: return
-    val comp = p["compressedBytes"]?.jsonPrimitive?.long ?: return
-    ReaderCore.checkLimits(comp.toInt(), p["title"]?.jsonPrimitive?.content?.length ?: 0, 0, chunks)
+  private fun exactKeys(payload: JsonObject, required: Set<String>, optional: Set<String> = emptySet()) {
+    require(payload.keys.containsAll(required)) { "missing message field" }
+    require(payload.keys.all { it in required || it in optional }) { "unknown message field" }
   }
 
-  private suspend fun handleChunk(p: JsonObject): Intake? {
-    val transferId = p["transferId"]!!.jsonPrimitive.content
-    val documentId = p["documentId"]!!.jsonPrimitive.content
-    val index = p["index"]!!.jsonPrimitive.int
-    val count = p["count"]!!.jsonPrimitive.int
-    val data = p["dataBase64"]!!.jsonPrimitive.content
-    require(count in 1..ReaderCore.MAX_CHUNKS) { "bad count" }
-    require(index in 0 until count) { "bad index" }
-    require(data.length <= 200000) { "chunk too large" }
-    val existing = db.chunks().forTransfer(transferId)
-    if (existing.isNotEmpty()) {
-      val e0 = existing.first()
-      require(e0.documentId.equals(documentId, ignoreCase = true)) { "conflicting documentId" }
-      require(e0.count == count) { "conflicting count" }
-      if (existing.any { it.index == index }) return null // duplicate: idempotent
-    }
-    db.chunks().insert(
-      ChunkEntity(transferId, index, documentId, count, data, System.currentTimeMillis(), System.currentTimeMillis() + 7 * 86400_000L),
+  private fun requiredString(payload: JsonObject, key: String, max: Int): String {
+    val element = payload[key] ?: throw IllegalArgumentException("missing $key")
+    require(element is JsonPrimitive && element.isString) { "invalid $key" }
+    return element.content.also { require(it.length in 1..max) { "invalid $key" } }
+  }
+
+  private fun optionalString(payload: JsonObject, key: String, max: Int): String? {
+    val element = payload[key] ?: return null
+    require(element is JsonPrimitive && element.isString) { "invalid $key" }
+    return element.content.also { require(it.length <= max) { "invalid $key" } }
+  }
+
+  private fun manifestIdentity(manifest: ManifestEntity): String {
+    val canonical = buildJsonArray {
+      add(ReaderCore.READER_PROTOCOL)
+      add(manifest.transferId)
+      add(manifest.documentId)
+      add(manifest.compressedSha256)
+      add(manifest.compressedBytes)
+      add(manifest.chunkCount)
+      add(manifest.senderDevicePubkey)
+      add(manifest.recipientChannelPubkey)
+      add(manifest.expiresAt)
+    }.toString()
+    return ReaderCore.sha256Hex(canonical.toByteArray(Charsets.UTF_8))
+  }
+
+  private suspend fun handleManifest(
+    payload: JsonObject,
+    verifiedSenderPubkey: String,
+    receiverPubkey: String,
+  ): Intake? {
+    val required = setOf(
+      "protocol", "type", "transferId", "manifestId", "documentId", "title", "sourceType",
+      "capturedAt", "mime", "compression", "wordCount", "uncompressedBytes", "compressedBytes",
+      "compressedSha256", "documentSha256", "chunkCount", "senderDevicePubkey",
+      "recipientChannelPubkey", "expiresAt",
     )
-    val all = db.chunks().forTransfer(transferId)
-    if (all.size < count) return null // partial: wait, no ACK yet
-    return assemble(transferId, documentId, all.sortedBy { it.index }, count)
-  }
-
-  private suspend fun assemble(transferId: String, documentId: String, chunks: List<ChunkEntity>, count: Int): Intake {
+    val optional = setOf("sourceName", "sourceUrl", "author", "publishedAt", "language")
+    exactKeys(payload, required, optional)
+    require(payload["protocol"]?.jsonPrimitive?.content == ReaderCore.READER_PROTOCOL) { "wrong manifest protocol" }
+    require(payload["type"]?.jsonPrimitive?.content == "manifest") { "wrong manifest type" }
+    val nowSecs = System.currentTimeMillis() / 1000
+    val transferId = requiredString(payload, "transferId", 32).also { require(hex16.matches(it)) { "invalid transferId" } }
+    val manifestId = requiredString(payload, "manifestId", 64).also { require(hex32.matches(it)) { "invalid manifestId" } }
+    val documentId = requiredString(payload, "documentId", 64).also { require(hex32.matches(it)) { "invalid documentId" } }
+    val compressedSha256 = requiredString(payload, "compressedSha256", 64).also { require(hex32.matches(it)) { "invalid compressedSha256" } }
+    val documentSha256 = requiredString(payload, "documentSha256", 64).also { require(hex32.matches(it)) { "invalid documentSha256" } }
+    require(documentSha256 == documentId) { "document hash binding mismatch" }
+    val sender = requiredString(payload, "senderDevicePubkey", 64).also { require(hex32.matches(it)) { "invalid sender key" } }
+    val recipient = requiredString(payload, "recipientChannelPubkey", 64).also { require(hex32.matches(it)) { "invalid recipient key" } }
+    require(sender == verifiedSenderPubkey && recipient == receiverPubkey) { "manifest endpoint binding mismatch" }
+    val title = requiredString(payload, "title", ReaderCore.MAX_TITLE_LEN)
+    val sourceType = requiredString(payload, "sourceType", 32).also { require(it in sourceTypes) { "invalid source type" } }
+    val capturedAt = payload["capturedAt"]!!.jsonPrimitive.long
+    val expiresAt = payload["expiresAt"]!!.jsonPrimitive.long
+    require(capturedAt <= nowSecs + 60 && capturedAt >= nowSecs - 8L * 86400) { "manifest timestamp out of range" }
+    require(expiresAt > nowSecs && expiresAt <= capturedAt + 7L * 86400 + 60) { "manifest expired or overlong" }
+    require(payload["mime"]!!.jsonPrimitive.content == "text/markdown") { "unsupported MIME type" }
+    require(payload["compression"]!!.jsonPrimitive.content == "gzip") { "unsupported compression" }
+    val wordCount = payload["wordCount"]!!.jsonPrimitive.int
+    val uncompressedBytes = payload["uncompressedBytes"]!!.jsonPrimitive.int
+    val compressedBytes = payload["compressedBytes"]!!.jsonPrimitive.int
+    val chunkCount = payload["chunkCount"]!!.jsonPrimitive.int
+    require(wordCount >= 0) { "invalid word count" }
+    require(uncompressedBytes in 1..ReaderCore.MAX_EXPANDED_BYTES) { "invalid expanded size" }
+    val sourceUrl = optionalString(payload, "sourceUrl", ReaderCore.MAX_URL_LEN)
+    ReaderCore.checkLimits(compressedBytes, uncompressedBytes, title.length, sourceUrl?.length ?: 0, chunkCount)
+    val manifest = ManifestEntity(
+      transferId = transferId,
+      manifestId = manifestId,
+      documentId = documentId,
+      title = title,
+      sourceType = sourceType,
+      sourceName = optionalString(payload, "sourceName", 200),
+      sourceUrl = sourceUrl,
+      author = optionalString(payload, "author", 300),
+      publishedAt = payload["publishedAt"]?.jsonPrimitive?.long,
+      capturedAt = capturedAt,
+      language = optionalString(payload, "language", 16),
+      mime = "text/markdown",
+      compression = "gzip",
+      wordCount = wordCount,
+      uncompressedBytes = uncompressedBytes,
+      compressedBytes = compressedBytes,
+      compressedSha256 = compressedSha256,
+      documentSha256 = documentSha256,
+      chunkCount = chunkCount,
+      senderDevicePubkey = sender,
+      recipientChannelPubkey = recipient,
+      expiresAt = expiresAt,
+      receivedAt = System.currentTimeMillis(),
+    )
+    require(manifestIdentity(manifest) == manifestId) { "manifest identity mismatch" }
+    val existing = db.manifests().byTransfer(transferId)
+    if (existing != null) {
+      require(existing.copy(receivedAt = manifest.receivedAt) == manifest) { "conflicting manifest" }
+    } else {
+      require(db.manifests().insert(manifest) != -1L) { "manifest insert conflict" }
+    }
     if (db.documents().byId(documentId) != null) {
-      db.chunks().clearTransfer(transferId)
-      return Intake(transferId, documentId, "duplicate")
-    }
-    val out = ByteArrayOutputStream()
-    var total = 0
-    for (c in chunks) {
-      val b = Base64.decode(c.bytesB64, Base64.DEFAULT)
-      total += b.size
-      require(total <= ReaderCore.MAX_COMPRESSED_BYTES) { "compressed overflow" }
-      out.write(b)
-    }
-    val gz = out.toByteArray()
-    // Bounded streaming inflate: abort past 20 MiB.
-    val inflated = ByteArrayOutputStream()
-    GZIPInputStream(gz.inputStream()).use { gin ->
-      val buf = ByteArray(32768)
-      var n = 0
-      while (true) {
-        val r = gin.read(buf)
-        if (r < 0) break
-        n += r
-        require(n <= ReaderCore.MAX_EXPANDED_BYTES) { "expansion bomb" }
-        inflated.write(buf, 0, r)
+      db.withTransaction {
+        db.chunks().clearTransfer(transferId)
+        db.manifests().clearTransfer(transferId)
       }
+      return Intake(transferId, documentId, manifestId, "duplicate")
     }
-    val canonical = inflated.toByteArray().toString(Charsets.UTF_8)
-    require(ReaderCore.documentId(canonical).equals(documentId, ignoreCase = true)) { "hash mismatch" }
-    val blocks = ArticleParser.parse(canonical)
-    val now = System.currentTimeMillis()
-    val title = canonical.lines().firstOrNull { it.startsWith("# ") }?.removePrefix("# ")?.trim() ?: "Untitled"
-    db.documents().insert(
-      DocumentEntity(
-        documentId = documentId, title = title.take(500), sourceType = "nostr",
-        sourceName = null, sourceUrl = null, author = null, publishedAt = null,
-        capturedAt = now, language = null, canonicalMarkdown = canonical,
-        wordCount = ReaderCore.wordCount(canonical), parserVersion = 1,
-        state = "unread", progressBlockId = blocks.firstOrNull()?.id,
-        progressCharOffset = 0, progressFraction = 0f,
-        lastOpenedAt = 0L, createdAt = now, updatedAt = now,
-      ),
-    )
-    db.chunks().clearTransfer(transferId)
-    return Intake(transferId, documentId, "stored")
+    val chunks = db.chunks().forTransfer(transferId)
+    return if (chunks.size == chunkCount) assemble(manifest, chunks.sortedBy { it.index }) else null
   }
 
-  /** Encrypted ACK back to the sender device pubkey. Sent only after commit. */
+  private suspend fun handleChunk(payload: JsonObject): Intake? {
+    val required = setOf(
+      "protocol", "type", "transferId", "manifestId", "documentId", "compressedSha256",
+      "index", "count", "dataBase64", "expiresAt",
+    )
+    exactKeys(payload, required)
+    require(payload["protocol"]?.jsonPrimitive?.content == ReaderCore.READER_PROTOCOL && payload["type"]?.jsonPrimitive?.content == "chunk") {
+      "wrong chunk protocol or type"
+    }
+    val transferId = requiredString(payload, "transferId", 32).also { require(hex16.matches(it)) { "invalid transferId" } }
+    val manifestId = requiredString(payload, "manifestId", 64).also { require(hex32.matches(it)) { "invalid manifestId" } }
+    val documentId = requiredString(payload, "documentId", 64).also { require(hex32.matches(it)) { "invalid documentId" } }
+    val compressedSha256 = requiredString(payload, "compressedSha256", 64).also { require(hex32.matches(it)) { "invalid compressedSha256" } }
+    val index = payload["index"]!!.jsonPrimitive.int
+    val count = payload["count"]!!.jsonPrimitive.int
+    val expiresAtSecs = payload["expiresAt"]!!.jsonPrimitive.long
+    val nowSecs = System.currentTimeMillis() / 1000
+    require(count in 1..ReaderCore.MAX_CHUNKS && index in 0 until count) { "invalid chunk position" }
+    require(expiresAtSecs > nowSecs && expiresAtSecs <= nowSecs + 7L * 86400 + 60) { "chunk expired or overlong" }
+    val data = requiredString(payload, "dataBase64", 200000)
+    val decoded = runCatching { Base64.getDecoder().decode(data) }
+      .getOrElse { throw IllegalArgumentException("invalid chunk base64") }
+    require(decoded.isNotEmpty() && decoded.size <= 64 * 1024) { "invalid chunk size" }
+    val chunk = ChunkEntity(
+      transferId = transferId,
+      index = index,
+      manifestId = manifestId,
+      documentId = documentId,
+      compressedSha256 = compressedSha256,
+      count = count,
+      bytesB64 = data,
+      receivedAt = System.currentTimeMillis(),
+      expiresAt = expiresAtSecs * 1000,
+    )
+    val existingChunks = db.chunks().forTransfer(transferId)
+    existingChunks.firstOrNull { it.index == index }?.let { existing ->
+      require(existing == chunk.copy(receivedAt = existing.receivedAt)) { "conflicting duplicate chunk" }
+      return null
+    }
+    existingChunks.firstOrNull()?.let { first ->
+      require(
+        first.manifestId == manifestId && first.documentId == documentId &&
+          first.compressedSha256 == compressedSha256 && first.count == count,
+      ) { "conflicting chunk set" }
+    }
+    db.chunks().insert(chunk)
+    val all = db.chunks().forTransfer(transferId)
+    val manifest = db.manifests().byTransfer(transferId) ?: return null
+    return if (all.size == manifest.chunkCount) assemble(manifest, all.sortedBy { it.index }) else null
+  }
+
+  private suspend fun assemble(manifest: ManifestEntity, chunks: List<ChunkEntity>): Intake {
+    require(chunks.size == manifest.chunkCount) { "incomplete chunk set" }
+    require(chunks.map { it.index } == (0 until manifest.chunkCount).toList()) { "chunk index gap" }
+    require(chunks.all {
+      it.transferId == manifest.transferId && it.manifestId == manifest.manifestId &&
+        it.documentId == manifest.documentId && it.compressedSha256 == manifest.compressedSha256 &&
+        it.count == manifest.chunkCount
+    }) { "chunk manifest binding mismatch" }
+    if (db.documents().byId(manifest.documentId) != null) {
+      db.withTransaction {
+        db.chunks().clearTransfer(manifest.transferId)
+        db.manifests().clearTransfer(manifest.transferId)
+      }
+      return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "duplicate")
+    }
+    val compressed = ByteArrayOutputStream()
+    var compressedTotal = 0
+    for (chunk in chunks) {
+      val bytes = Base64.getDecoder().decode(chunk.bytesB64)
+      compressedTotal += bytes.size
+      require(compressedTotal <= ReaderCore.MAX_COMPRESSED_BYTES) { "compressed overflow" }
+      compressed.write(bytes)
+    }
+    val gzipBytes = compressed.toByteArray()
+    require(gzipBytes.size == manifest.compressedBytes) { "compressed size mismatch" }
+    require(ReaderCore.sha256Hex(gzipBytes) == manifest.compressedSha256) { "compressed hash mismatch" }
+    val canonicalBytes = ReaderGzip.decode(gzipBytes)
+    require(canonicalBytes.size == manifest.uncompressedBytes) { "expanded size mismatch" }
+    val canonical = Charsets.UTF_8.newDecoder()
+      .onMalformedInput(CodingErrorAction.REPORT)
+      .onUnmappableCharacter(CodingErrorAction.REPORT)
+      .decode(ByteBuffer.wrap(canonicalBytes))
+      .toString()
+    require(ReaderCore.canonicalize(canonical) == canonical) { "content is not canonical" }
+    require(ReaderCore.documentId(canonical) == manifest.documentId) { "document hash mismatch" }
+    require(ReaderCore.wordCount(canonical) == manifest.wordCount) { "word count mismatch" }
+    val blocks = ArticleParser.parse(canonical)
+    val nowMillis = System.currentTimeMillis()
+    val document = DocumentEntity(
+      documentId = manifest.documentId,
+      title = manifest.title,
+      sourceType = manifest.sourceType,
+      sourceName = manifest.sourceName,
+      sourceUrl = manifest.sourceUrl,
+      author = manifest.author,
+      publishedAt = manifest.publishedAt,
+      capturedAt = manifest.capturedAt * 1000,
+      language = manifest.language,
+      canonicalMarkdown = canonical,
+      wordCount = manifest.wordCount,
+      parserVersion = 2,
+      state = "unread",
+      progressBlockId = blocks.firstOrNull()?.id,
+      progressCharOffset = 0,
+      progressFraction = 0f,
+      lastOpenedAt = 0L,
+      createdAt = nowMillis,
+      updatedAt = nowMillis,
+    )
+    db.withTransaction {
+      val inserted = db.documents().insert(document)
+      require(inserted != -1L || db.documents().byId(manifest.documentId) != null) { "document commit failed" }
+      db.chunks().clearTransfer(manifest.transferId)
+      db.manifests().clearTransfer(manifest.transferId)
+    }
+    return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "stored")
+  }
+
+  /** Encrypted endpoint-bound ACK, emitted only after durable document presence. */
   fun buildAck(intake: Intake, senderDevicePubkey: String, channelSeckey: ByteArray): NostrEvent {
+    require(hex32.matches(senderDevicePubkey)) { "invalid ACK recipient" }
+    val channelPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(channelSeckey))
     val now = System.currentTimeMillis() / 1000
     val payload = buildJsonObject {
-      put("protocol", ReaderCore.READER_PROTOCOL); put("type", "ack")
-      put("transferId", intake.transferId); put("documentId", intake.documentId)
-      put("status", intake.status); put("receivedAt", now)
+      put("protocol", ReaderCore.READER_PROTOCOL)
+      put("type", "ack")
+      put("transferId", intake.transferId)
+      put("documentId", intake.documentId)
+      put("manifestId", intake.manifestId)
+      put("contentHash", intake.documentId)
+      put("senderChannelPubkey", channelPubkey)
+      put("recipientDevicePubkey", senderDevicePubkey)
+      put("status", intake.status)
+      put("receivedAt", now)
+      put("expiresAt", now + 7L * 86400)
     }.toString()
     return NostrCodec.sealAndWrap(channelSeckey, senderDevicePubkey, payload).second
   }

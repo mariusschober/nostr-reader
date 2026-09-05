@@ -1,80 +1,229 @@
-# Reader Protocol v1 (`reader/1`)
+# Reader Protocol v2
 
-Private, zero-server reading transport over ordinary Nostr relays. Nostr carries
-only NIP-44-encrypted, NIP-59 gift-wrapped ciphertext. This file is normative for
-Chrome, Android, Mac, and future iOS. JSON schemas live in `shared/schemas/`;
-the golden vector in `shared/test-vectors/golden-v1.json` is the interop gate.
+This is the authoritative wire contract for the repaired Reader transport. The
+document protocol is `reader/2`; the pairing protocol is `reader-pair/2`.
+Version 1 is intentionally not accepted as version 2.
 
-## Constants
+## Fixed constants
+
+| Item | Value |
+|---|---|
+| Nostr rumor kind | `30078` |
+| NIP-59 seal kind | `13` |
+| NIP-59 wrapper kind | `1059` only |
+| Pairing-code lifetime | 300 seconds |
+| Pairing message lifetime | 600 seconds |
+| Document/outbox lifetime | 7 days |
+| Receiver look-back | rolling 10 days |
+| Compressed maximum | 5 MiB |
+| Expanded maximum | 20 MiB |
+| Chunk maximum | 512 |
+| Chunk payload target | 24 KiB compressed bytes |
+| Relay write quorum | 2 matching positive publication results per payload |
+
+All IDs, hashes, public keys, and signatures use lowercase fixed-length hex.
+JSON decoders reject duplicate object keys. Message validators reject unknown
+fields unless the field is explicitly optional in the matching schema under
+`shared/schemas/`.
+
+## Relay configuration
+
+The ordered default set is:
+
+1. `wss://nos.lol`
+2. `wss://relay.primal.net`
+3. `wss://relay.nostr.net`
+4. `wss://nostr.oxtr.dev`
+5. `wss://offchain.pub`
+6. `wss://nostr-pub.wellorder.net`
+
+Chrome Settings may add at most two custom relays, for a total maximum of
+eight. Defaults cannot be removed. Custom relay URLs must be normalized,
+unique `wss://` URLs without credentials, query, fragment, control characters,
+numeric/localhost/`.local` hosts, ambiguous paths, or default duplicates.
+
+Changing a custom relay preference does not silently mutate an established
+channel. The new ordered set takes effect only after re-pairing, when its digest
+is authenticated by both endpoints. Android resolves every proposed hostname
+before trust and uses a DNS guard on every production WebSocket connection;
+any private, loopback, link-local, multicast, carrier-grade-NAT, or IPv6
+unique-local answer rejects the connection.
+
+`shared/default-relays.json`, Chrome's `protocol/relays.ts`, and Android's
+`PairingProtocol.kt` must stay byte-for-byte equivalent; a contract test checks
+them.
+
+## Pairing state machine
+
+### 1. Chrome creates a request
+
+Chrome creates a fresh pairing private key and stores it only in trusted
+extension storage. The QR contains no private key. Its exact fields are:
+
+- `protocol`, fixed to `reader-pair/2`;
+- random 128-bit `sessionId`;
+- fresh `pairingPubkey`;
+- stable local `chromeDevicePubkey`;
+- random 256-bit `nonce`;
+- ordered `relays` and `relaySetDigest`;
+- `createdAt`, `expiresAt`, and required `capabilities`.
+
+`relaySetDigest = SHA-256(UTF-8(JSON.stringify(relays)))`.
+
+Chrome probes the six fixed bootstrap relays and does not display a QR unless
+at least two can be queried. Custom hostnames are not contacted by Chrome at
+this stage. Because replies use durable kind 1059, the pairing tab and MV3
+worker need not remain alive.
+
+### 2. Android validates and asks for consent
+
+Before network activity Android enforces the exact schema, size, time, point,
+capability, relay-count, URL, uniqueness, and digest rules. It then presents a
+human-readable Chrome fingerprint and full relay list. Only the explicit
+**Connect** action permits DNS resolution and network activity.
+
+Android first persists a `provisioning` intent, wraps a fresh channel private
+key with Android Keystore, then advances to `pending_response`. A process death
+therefore leaves a bounded, revocable row rather than an orphaned credential.
+
+### 3. Android sends `pair-response`
+
+The response binds the request protocol, session, nonce, pairing recipient,
+Chrome device key, fresh Android channel key, relay digest, app version,
+capabilities, and bounded timestamps. The inner NIP-59 sender must own the
+returned Android channel key. Android publishes a freshly wrapped copy to each
+relay and persists exact per-relay outcomes.
+
+No channel is active at this point.
+
+### 4. Chrome sends `pair-ack`
+
+Chrome catches up from the request's rolling window, decrypts the response with
+the pairing key, verifies the seal/rumor chain, and binds the authenticated
+inner sender to `androidChannelPubkey`. It sends `pair-ack` from the stable
+Chrome device key to that Android key.
+
+`acceptedRelays` means the ordered subset Chrome accepts as the channel
+configuration. It is not a claim that every listed relay returned `OK=true` for
+this ACK; per-message transport outcomes remain separate evidence.
+
+### 5. Android sends `pair-complete`
+
+Android accepts an ACK only from the exact Chrome device key and only when all
+session, endpoint, relay-digest, status, and time bindings match. It then sends
+`pair-complete` from the Android channel key. Only after at least one relay
+accepts that completion does Android transactionally promote the channel and
+revoke any previous active channel.
+
+Chrome marks the channel connected only after authenticating the completion.
+It then removes the one-time pairing secret and supersedes other live pairing
+sessions. Cancellation, expiry, disconnect, and replacement also physically
+remove one-time or obsolete key material.
+
+## NIP-59 envelope
+
+Every pairing, manifest, chunk, and endpoint ACK uses a fresh outer key and a
+fresh signed kind-1059 wrapper per relay:
+
+1. Create an unsigned kind-30078 rumor with canonical NIP-01 ID.
+2. Encrypt the rumor with NIP-44 v2 and sign a kind-13 seal from the stable
+   endpoint key. Seal tags are empty.
+3. Encrypt the seal with NIP-44 v2 using a fresh outer key.
+4. Sign kind 1059 with exactly one `p` tag for the intended recipient and one
+   NIP-40 `expiration` tag.
+5. Randomize seal and wrapper timestamps into the recent past per NIP-59.
+
+Receivers verify, in order: wrapper kind, lowercase hex, outer signature,
+single exact recipient tag, expiry, wrapper decryption, exact seal kind and
+empty tags, seal signature, seal timestamp, seal decryption, absent rumor
+signature, canonical rumor ID, rumor/seal sender equality, expected trusted
+sender where already bound, protocol version, then exact payload schema.
+
+NIP-04 fallback is forbidden. Kind 21059 is rejected in v2.
+
+## Document canonicalization and gzip
+
+Canonical Markdown is produced by:
+
+1. NFC normalization;
+2. CRLF/CR to LF;
+3. trailing space/tab removal per line;
+4. collapse runs to at most two blank lines;
+5. remove leading/trailing blank lines;
+6. append exactly one LF.
+
+`documentId = SHA-256(UTF-8(canonicalMarkdown))`.
+
+The only v2 compression is deterministic RFC-1952 gzip: one member, DEFLATE
+level 6, no optional header fields, `mtime=0`, `XFL=0`, and `OS=3`. Decoders
+require this ten-byte header, validate gzip CRC/size through their runtime,
+reject zlib/raw-DEFLATE framing and truncation, and enforce compressed and
+expanded limits. Different conformant DEFLATE implementations may choose
+different blocks, so hashes bind the actual transmitted bytes. Cross-runtime
+fixtures live in `shared/test-vectors/codec-v2.json`.
+
+## Manifest and chunks
+
+Chrome persists the complete outgoing intent before any network send. A random
+128-bit `transferId` remains stable across retries. `manifestId` is:
 
 ```text
-READER_PROTOCOL = "reader/1"
-Rumor kind      = 30078 (private inner rumor, never published in clear)
-Seal kind       = 13
-Wrap kind       = 1059 (async docs), 21059 (live pairing only)
-Outer expiry    = 7 days (NIP-40 `expiration` tag on wrap)
-Sync window     = last 10 days (see below)
-Limits          = 5 MiB compressed / 20 MiB expanded / 512 chunks
+SHA-256(UTF-8(JSON.stringify([
+  "reader/2", transferId, documentId, compressedSha256, compressedBytes,
+  chunkCount, senderDevicePubkey, recipientChannelPubkey, expiresAt
+])))
 ```
 
-## Canonical Markdown
+The manifest carries endpoint keys, content and compressed hashes, exact sizes,
+chunk count, capture metadata, and expiry. Every chunk binds `transferId`,
+`manifestId`, `documentId`, `compressedSha256`, index/count, and the same
+expiry. Chunks may arrive before the manifest, out of order, or more than once.
 
-Before hashing or sending: Unicode NFC, LF endings, trailing-whitespace trim,
-collapse 3+ blank lines to 2, resolve relative links against source URL,
-drop a body H1 that duplicates the title, escape literal plain-text imports.
+Android commits a document only after all authenticated chunks match the
+manifest, contiguous indices are present, gzip size/hash/CRC and expanded size
+match, UTF-8 and canonicalization are exact, `documentId` and word count match,
+and the Room transaction succeeds. The document hash provides exactly-once
+local effect; exact replays produce a `duplicate` ACK rather than another row.
 
-`documentId = hex(sha256(utf8(canonicalMarkdown)))` — exact-content dedupe key.
-`transferId` — random 128-bit hex per send attempt (re-send = new transferId).
+## Endpoint ACK and delivery truth
 
-## Message shapes
+Only durable document presence permits Android to send an ACK. It binds:
 
-- `DocumentManifestV1` (`type="manifest"`): title, sourceType, capturedAt,
-  `mime="text/markdown"`, wordCount, byte counts, `compressedSha256`,
-  `documentSha256`, chunkCount, senderDevicePubkey, optional identityProof,
-  expiresAt. Sent as chunk index -1 (first wrap) or alongside chunk 0.
-- `DocumentChunkV1` (`type="chunk"`): transferId, documentId, index, count,
-  dataBase64 (slice of gzip(canonical)). count <= 512, index < count.
-- `AckV1` (`type="ack"`): transferId, documentId, status
-  `stored|duplicate|rejected`, receivedAt, optional reason. Sent only after
-  full assembly + hash verify + bounded inflate + parse + durable commit.
+- protocol and type;
+- transfer, document, manifest, and content hashes;
+- Android sender-channel and Chrome recipient-device keys;
+- `stored`, `duplicate`, or `rejected` status;
+- bounded receipt and expiry times;
+- a constrained reason code only for `rejected`.
 
-## NIP-59 layering (normative check order)
+Chrome accepts it only inside a fully verified NIP-59 envelope from the paired
+Android channel and with every field matching the persisted outbox item.
+`OK=true` from a relay means only `relay_accepted`. Chrome calls an item
+`delivered` and deletes its captured payload only after a valid `stored` or
+`duplicate` device ACK. Recent delivery receipts retain only opaque transfer ID
+and time; they carry no article text.
 
-```text
-rumor -> NIP-44 -> seal(kind 13, stable device key) -> NIP-44 -> wrap(kind 1059, fresh key) -> relay
-```
+User-visible states remain distinct: `queued`, `relay accepted`, `awaiting
+device`, `delivered`, and `failed`.
 
-Receiver MUST: verify outer id/sig; decrypt wrap; parse seal; verify seal
-id/sig/kind/NIP-59 constraints; decrypt rumor; check rumor.pubkey ==
-seal.pubkey == paired trusted device pubkey; validate schema + limits; then act.
-No high-level unwrap helper may skip a step.
+## Retry and recovery
 
-## CRITICAL sync rule (randomized timestamps)
+Each retry creates new NIP-59 outer randomness but preserves `transferId` and
+manifest identity. Every payload is attempted on every configured relay even
+if an earlier payload misses quorum. Backoff is exponential with jitter, capped
+at one hour, 168 attempts, and seven days. A ceiling marks an item failed but
+does not silently delete its captured text; only authenticated ACK or explicit
+user discard removes it.
 
-NIP-59 randomizes wrap `created_at` into the past. NEVER sync with
-`since = lastSuccessfulSync`. Always query a rolling window (10 days for a 7-day
-TTL) and dedupe locally by transferId+index. A permanent regression test pins
-this: a wrap created after T with `created_at < T` must still be found.
+Chrome alarms re-enter pairing, ACK catch-up, and delivery retries after MV3
+suspension or browser restart. Android WorkManager performs rolling-window
+catch-up and activity resume requests an immediate run. Force-stop cannot be
+promised until the user opens the app again.
 
-## Chunking
+## Compatibility
 
-gzip once, hash, then size REAL serialized `["EVENT",event]` frames against the
-healthiest quorum relays' NIP-11 limits (binary search + safety margin). Re-wrap
-each chunk per relay with fresh outer randomness. Receiver dedupes post-decrypt,
-rejects conflicting count/hash/index, assembles in order, verifies
-`documentSha256`, bounded-inflates, parses, commits, then ACKs.
-
-## Pairing (`reader-pair/1`)
-
-QR: `{pairingPubkey (ephemeral), chromeDevicePubkey, nonce>=128bit,
-relays[], expiresAt~5min}`. Receiver mints a fresh channel keypair, stores the
-sender as trusted, replies NIP-59 (21059 live, else 1059 + short expiry) with
-nonce echo + channel pubkey + app version. Sender verifies nonce, destroys the
-ephemeral key, probes relays bidirectionally, needs 2-of-3 quorum.
-
-## Relay policy
-
-Public relays only in v1. 3 healthy per channel, quorum 2. Health = connect +
-NIP-11 + subscribe + 1059 write + roundtrip read + size probe. NIP-42 AUTH only
-with the anonymous device/channel key, never the user's real identity.
-Payment-gated relays are marked incompatible.
+`reader/1` and `reader-pair/1` channels are not silently upgraded because they
+lacked authenticated two-endpoint completion and used incompatible compression
+and routing behavior. Migration preserves documents, marks old channels
+`legacy_repair_required`, and requires reset/re-pair. The historical v1 vector
+is retained only as migration evidence; it is not a v2 acceptance vector.

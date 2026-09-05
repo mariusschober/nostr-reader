@@ -1,14 +1,42 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "ReaderPairV1",
+  "title": "ReaderPairRequestV2",
   "type": "object",
-  "required": ["protocol", "pairingPubkey", "chromeDevicePubkey", "nonce", "relays", "expiresAt"],
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "sessionId",
+    "pairingPubkey",
+    "chromeDevicePubkey",
+    "nonce",
+    "relays",
+    "relaySetDigest",
+    "createdAt",
+    "expiresAt",
+    "capabilities"
+  ],
   "properties": {
-    "protocol": { "const": "reader-pair/1" },
+    "protocol": { "const": "reader-pair/2" },
+    "sessionId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
     "pairingPubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "chromeDevicePubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "nonce": { "type": "string", "minLength": 32, "maxLength": 64 },
-    "relays": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 8 },
-    "expiresAt": { "type": "integer" }
+    "nonce": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "relays": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^wss://" },
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true
+    },
+    "relaySetDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "createdAt": { "type": "integer" },
+    "expiresAt": { "type": "integer" },
+    "capabilities": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,47}$" }
+    }
   }
 }

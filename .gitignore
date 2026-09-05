@@ -4,6 +4,18 @@
 **/.gradle/
 **/dist/
 mac/.build/
+rust-core/target/
+android/.kotlin/
 android/local.properties
 *.hprof
 .DS_Store
+
+# Post-commit audit artifacts. These are generated from a clean source commit;
+# tracking them would make their declared source commit self-referential.
+/artifacts/reader-debug.apk
+/artifacts/reader-debug-androidTest.apk
+/artifacts/reader-chrome-extension.zip
+/artifacts/ARTIFACTS.json
+/artifacts/SHA256SUMS
+/artifacts/chrome-sbom.cdx.json
+/artifacts/android-debug-runtime-dependencies.txt

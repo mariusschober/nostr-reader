@@ -1,15 +1,33 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "AckV1",
+  "title": "EndpointAckV2",
   "type": "object",
-  "required": ["protocol", "type", "transferId", "documentId", "status", "receivedAt"],
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "type",
+    "transferId",
+    "documentId",
+    "manifestId",
+    "contentHash",
+    "senderChannelPubkey",
+    "recipientDevicePubkey",
+    "status",
+    "receivedAt",
+    "expiresAt"
+  ],
   "properties": {
-    "protocol": { "const": "reader/1" },
+    "protocol": { "const": "reader/2" },
     "type": { "const": "ack" },
-    "transferId": { "type": "string", "minLength": 16, "maxLength": 64 },
+    "transferId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
     "documentId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "manifestId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "senderChannelPubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "recipientDevicePubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "status": { "enum": ["stored", "duplicate", "rejected"] },
     "receivedAt": { "type": "integer" },
-    "reason": { "type": "string", "maxLength": 500 }
+    "expiresAt": { "type": "integer" },
+    "reasonCode": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,47}$" }
   }
 }

@@ -18,12 +18,14 @@ iOS) is a thin native shell over one shared, openly specified protocol.
   `shared/test-vectors/` are the contract every platform implements and proves
   against before release. `rust-core/` is the normative algorithm owner;
   UniFFI bindings will carry it to Swift.
-- **Reading as a calm activity.** Four bundled article typefaces, exactly four
+- **Reading as a calm activity.** Five bundled article typefaces, exactly four
   appearance controls, native rendering, TTS and single-word RSVP sharing one
   semantic reading position.
 
-Status, open bugs, and next steps for agents and contributors: [`CONTINUE.md`](CONTINUE.md).
-Threat model: [`SECURITY.md`](SECURITY.md). Protocol: [`PROTOCOL.md`](PROTOCOL.md).
+Status and evidence boundary: [`TEST_REPORT.md`](TEST_REPORT.md) and
+[`CONTINUE.md`](CONTINUE.md). Protocol: [`PROTOCOL.md`](PROTOCOL.md). Security:
+[`THREAT_MODEL.md`](THREAT_MODEL.md) and
+[`SECURITY_AND_PRIVACY_NOTES.md`](SECURITY_AND_PRIVACY_NOTES.md).
 
 ---
 # Reader — private zero-server reading inbox
@@ -46,13 +48,16 @@ SECURITY.md           threat model (read before claiming anything)
 CROSS_PLATFORM.md     binding contract + iOS checklist
 MAC.md                Mac sender + reader definition
 artifacts/            built APK, extension ZIP, TEST-REPORT.md
+scripts/              clean-tree artifact build + provenance manifest
 ```
 
 ## Build
 
 Chrome: `cd chrome && npm ci && npm run typecheck && npm test && npm run build`
-Android: `cd android && ./gradlew test assembleDebug`
-Vectors gate every release: golden-v1 must pass on all platforms.
+Android: `cd android && ./gradlew test lint assembleDebug assembleDebugAndroidTest`
+Audited artifacts from a clean commit: `./scripts/build-audit-artifacts.sh`
+Vectors gate every release: `codec-v2.json`, the official NIP-44 corpus, and
+the official BIP-340 corpus must pass on every implementing platform.
 
 ## Install
 
@@ -60,3 +65,12 @@ Vectors gate every release: golden-v1 must pass on all platforms.
   not a store release).
 - Chrome: `chrome://extensions` -> Developer mode -> Load unpacked ->
   `chrome/dist`. Or unzip `artifacts/reader-chrome-extension.zip`.
+
+Reader starts with six public relays and a two-relay write quorum. Up to two
+custom secure relays can be added in Chrome Settings; re-pairing authenticates
+the same relay set on Android.
+
+Generated debug artifacts, their SHA-256 values, source commit, build commands,
+and install-test results are recorded in `artifacts/ARTIFACTS.json`. Generated
+binaries are intentionally ignored by Git; they are not production-signed or
+published releases.

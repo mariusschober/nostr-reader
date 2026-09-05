@@ -21,9 +21,8 @@ import com.reader.app.core.ArticleBlock
 import com.reader.app.core.ArticleParser
 import com.reader.app.cursor.SemanticCursor
 import com.reader.app.data.ReaderDb
-import com.reader.app.nostr.NostrCodec
-import com.reader.app.nostr.RelayClient
-import com.reader.app.nostr.Secp256k1
+import com.reader.app.nostr.READER_DEFAULT_RELAYS
+import com.reader.app.nostr.READER_RELAY_WRITE_QUORUM
 import com.reader.app.prefs.Prefs
 import com.reader.app.prefs.ArticleBackground
 import com.reader.app.prefs.ReaderSettings
@@ -31,6 +30,7 @@ import com.reader.app.rsvp.RsvpModel
 import com.reader.app.security.KeystoreWrap
 import com.reader.app.signer.AmberSigner
 import com.reader.app.sync.Ingest
+import com.reader.app.sync.PairingCoordinator
 import com.reader.app.sync.SyncWorker
 import com.reader.app.sync.TransferManager
 import com.reader.app.tts.AndroidTtsEngine
@@ -42,10 +42,10 @@ import com.reader.app.ui.Triage
 import com.reader.app.ui.screens.*
 import com.reader.app.ui.theme.colorsFor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
-import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -79,8 +79,13 @@ class MainActivity : ComponentActivity() {
       var channels by remember { mutableStateOf(listOf<com.reader.app.data.ChannelEntity>()) }
       var minutesByList by remember { mutableStateOf(mapOf<String, Int>()) }
       var pairingError by remember { mutableStateOf<String?>(null) }
+      var pairingStatus by remember { mutableStateOf<String?>(null) }
+      var pairingChannelId by remember { mutableStateOf<String?>(null) }
       var ttsState by remember { mutableStateOf<TtsController.State?>(null) }
       var ttsDocId by remember { mutableStateOf<String?>(null) }
+      // Room invalidation keeps a visible inbox truthful when a background
+      // relay sync commits a document after onResume's initial refresh.
+      val documentRevision by db.documents().observeRevision().collectAsState(initial = "initial")
 
       SideEffect {
         val bg = colorsFor(settings.background).background
@@ -106,7 +111,7 @@ class MainActivity : ComponentActivity() {
         minutesByList = mins
         settings = prefs.load()
       }
-      LaunchedEffect(refreshTick.value) { refresh() }
+      LaunchedEffect(refreshTick.value, documentRevision) { refresh() }
 
       val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -249,28 +254,77 @@ class MainActivity : ComponentActivity() {
             )
           }
         }
-        is Route.Pairing -> PairingScreen(
-          settings = settings,
-          error = pairingError,
-          onCancel = { backToInbox() },
-          onScanned = { qrText ->
-            lifecycleScope.launch {
-              try {
-                completePairing(qrText)
-                pairingError = null
-                Toast.makeText(this@MainActivity, "Connected", Toast.LENGTH_SHORT).show()
-                refresh()
-                backToInbox()
-              } catch (e: Exception) {
-                pairingError = e.message?.take(200) ?: "Pairing failed"
+        is Route.Pairing -> {
+          LaunchedEffect(pairingChannelId) {
+            val channelId = pairingChannelId ?: return@LaunchedEffect
+            while (true) {
+              delay(2000)
+              val channel = withContext(Dispatchers.IO) { db.channels().byId(channelId) }
+              when (channel?.state) {
+                "active" -> {
+                  pairingStatus = null
+                  pairingError = null
+                  Toast.makeText(this@MainActivity, "Connected", Toast.LENGTH_SHORT).show()
+                  refresh()
+                  backToInbox()
+                  break
+                }
+                "revoked" -> {
+                  pairingStatus = null
+                  pairingError = "Pairing expired or was cancelled. Create a new code in Chrome."
+                  break
+                }
+                null -> {
+                  // byId excludes revoked rows, so a missing pending channel is terminal.
+                  pairingStatus = null
+                  pairingError = "Pairing expired or was cancelled. Create a new code in Chrome."
+                  pairingChannelId = null
+                  break
+                }
               }
             }
-          },
-        )
+          }
+          PairingScreen(
+            settings = settings,
+            error = pairingError,
+            status = pairingStatus,
+            onCancel = {
+              val channelId = pairingChannelId
+              if (channelId != null) lifecycleScope.launch { PairingCoordinator(this@MainActivity).cancel(channelId) }
+              pairingChannelId = null
+              pairingStatus = null
+              pairingError = null
+              backToInbox()
+            },
+            onScanned = { qrText ->
+              lifecycleScope.launch {
+                try {
+                  pairingError = null
+                  pairingStatus = "Sending an encrypted response through the agreed relays…"
+                  val result = completePairing(qrText)
+                  pairingChannelId = result.channelId
+                  if (result.connected) {
+                    pairingStatus = null
+                    Toast.makeText(this@MainActivity, "Connected", Toast.LENGTH_SHORT).show()
+                    refresh()
+                    backToInbox()
+                  } else {
+                    pairingStatus = "Reply accepted by ${result.acceptedRelays} relay${if (result.acceptedRelays == 1) "" else "s"}. Waiting for Chrome's authenticated confirmation…"
+                  }
+                } catch (e: Exception) {
+                  pairingStatus = null
+                  pairingError = e.message?.take(200) ?: "Pairing failed"
+                }
+              }
+            },
+          )
+        }
         is Route.Settings -> SettingsScreen(
           settings = settings, channels = channels,
           signerLabel = "Private device key (Recommended). " + AmberSigner(this).status(),
-          relaySummary = channels.firstOrNull()?.relaysJson ?: "Default public relays (2-of-3 quorum).",
+          relaySummary = (channels.firstOrNull()?.relaysJson
+            ?: "${READER_DEFAULT_RELAYS.size} default public relays (${READER_RELAY_WRITE_QUORUM} required per payload).") +
+            "\n\nAdd up to 2 custom relays in Chrome Settings, then re-pair so both devices authenticate the same relay set.",
           onBack = { backToInbox(); lifecycleScope.launch { refresh() } },
           onRevokeChannel = { id ->
             lifecycleScope.launch {
@@ -295,6 +349,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onResume() {
     super.onResume()
+    SyncWorker.runNow(this)
     refreshTick.value++
   }
 
@@ -320,48 +375,8 @@ class MainActivity : ComponentActivity() {
     }
   }
 
-  /** Pairing completion: validate QR, mint channel keypair, encrypted nonce-echo reply. */
-  private suspend fun completePairing(qrText: String) {
-    val o = parsePairingQr(qrText, System.currentTimeMillis() / 1000)
-    val pairingPubkey = o["pairingPubkey"]!!.jsonPrimitive.content
-    val chromePubkey = o["chromeDevicePubkey"]!!.jsonPrimitive.content
-    val nonce = o["nonce"]!!.jsonPrimitive.content
-    val relays = o["relays"]!!.jsonArray.map { it.jsonPrimitive.content }
-    val channelSeckey = Secp256k1.randomPrivateKey()
-    val channelPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(channelSeckey))
-    val channelId = UUID.randomUUID().toString()
-    keys.sealChannelKey(channelId, channelSeckey)
-    withContext(Dispatchers.IO) {
-      db.channels().upsert(
-        com.reader.app.data.ChannelEntity(
-          channelId = channelId, receiverPubkey = channelPubkey,
-          trustedSenderPubkey = chromePubkey, createdAt = System.currentTimeMillis(),
-          revokedAt = null, relaysJson = JsonArray(relays.map { JsonPrimitive(it) }).toString(),
-        ),
-      )
-    }
-    // Encrypted pairing response with nonce echo (prefer ephemeral 21059).
-    val payload = buildJsonObject {
-      put("protocol", "reader/1"); put("type", "pair-response")
-      put("nonce", nonce); put("channelPubkey", channelPubkey)
-      put("appVersion", "0.1.0")
-    }.toString()
-    val wrap = withContext(Dispatchers.IO) {
-      try {
-        NostrCodec.sealAndWrap(channelSeckey, pairingPubkey, payload, com.reader.app.nostr.WRAP_KIND_EPHEMERAL, 600).second
-      } catch (e: Exception) {
-        NostrCodec.sealAndWrap(channelSeckey, pairingPubkey, payload, com.reader.app.nostr.WRAP_KIND, 600).second
-      }
-    }
-    withContext(Dispatchers.IO) {
-      val client = RelayClient()
-      var ok = 0
-      for (r in relays) {
-        if (runCatching { client.publish(r, wrap, 12) }.getOrDefault(false)) ok++
-      }
-      if (ok == 0) throw IllegalStateException("No relay accepted the pairing reply. Check connection and retry.")
-    }
-  }
+  private suspend fun completePairing(qrText: String): PairingCoordinator.BeginResult =
+    PairingCoordinator(this).begin(qrText)
 
   /** Manual archive export: ZIP of md + metadata JSON. Never keys. */
   private suspend fun exportArchive() {

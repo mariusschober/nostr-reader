@@ -6,7 +6,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
     "strict": true,
     "skipLibCheck": true,
-    "types": ["chrome"],
+    "types": ["chrome", "node"],
     "outDir": "dist-tmp"
   },
   "include": ["src", "tests"]

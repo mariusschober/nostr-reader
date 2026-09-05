@@ -27,6 +27,11 @@ android {
   }
   kotlinOptions { jvmTarget = "17" }
   buildFeatures { compose = true }
+  testOptions { unitTests.isReturnDefaultValues = true }
+  sourceSets {
+    getByName("test").resources.srcDir("../../shared/test-vectors")
+    getByName("androidTest").assets.srcDir("../../shared/test-vectors")
+  }
   packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
 
@@ -76,5 +81,10 @@ dependencies {
   testImplementation("junit:junit:4.13.2")
   testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
   testImplementation("androidx.room:room-testing:2.6.1")
+  testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+  androidTestImplementation("androidx.test.ext:junit:1.2.1")
+  androidTestImplementation("androidx.test:core-ktx:1.6.1")
+  androidTestImplementation("androidx.test:runner:1.6.1")
+  androidTestImplementation("androidx.room:room-testing:2.6.1")
   debugImplementation("androidx.compose.ui:ui-tooling")
 }

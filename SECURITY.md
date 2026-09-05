@@ -1,4 +1,4 @@
-# Reader Threat Model v1
+# Reader Threat Model v2
 
 ## Boundary
 
@@ -31,12 +31,13 @@ no keys in backups/exports.
 
 ## Endpoint rules
 
-- Chrome: private key only in service-worker scope, never in content/MAIN
-  world; MAIN-world NIP-07 bridge signs only exact prebuilt proof templates
-  and re-validates kind/content/tags/pubkey/id/sig; strict CSP, no eval,
-  schema-validate all content-script messages, size-cap before crypto.
+- Chrome: private keys are used only in the service worker and key-bearing
+  `storage.local` is restricted to `TRUSTED_CONTEXTS`. No web-accessible or
+  page-world signing bridge exists. CSP forbids remote script/eval; captured
+  input is size-limited before transport crypto.
 - Android: secp256k1 channel key wrapped by Keystore AES-256-GCM; keys, Room
-  DB, and sensitive prefs excluded from auto-backup; every received doc is
+  DB, and sensitive prefs excluded from auto-backup; custom relay DNS is checked
+  against private/local ranges before pairing and again on every connection; every received doc is
   hostile input (auth sender first, enforce limits, bounded inflate, sanitize
   HTML, http(s) images only, no javascript:/embeds).
 - Mac: same contract via Keychain (see MAC.md).
@@ -47,4 +48,4 @@ no keys in backups/exports.
 authors, Base64 bodies / capped concurrent incomplete transfers + transfer age.
 Failures are bounded, deterministic, and tested (see chrome/tests,
 android tests). Remote images are loaded directly and therefore reveal the
-reader IP to the image host — stated in UI-adjacent docs, no proxy in v1.
+reader IP to the image host — stated in UI-adjacent docs, no proxy in v2.

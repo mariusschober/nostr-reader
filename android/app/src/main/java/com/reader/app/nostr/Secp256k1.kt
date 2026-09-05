@@ -44,11 +44,11 @@ object Secp256k1 {
       val b = ByteArray(32)
       random.nextBytes(b)
       val d = BigInteger(1, b)
-      if (d > BigInteger.ZERO && d < N) return to32(b, d)
+      if (d > BigInteger.ZERO && d < N) return to32(d)
     }
   }
 
-  private fun to32(raw: ByteArray, d: BigInteger): ByteArray {
+  private fun to32(d: BigInteger): ByteArray {
     val b = d.toByteArray()
     return when {
       b.size == 32 -> b
@@ -65,7 +65,28 @@ object Secp256k1 {
 
   private fun xBytes(p: ECPoint): ByteArray {
     val x = p.normalize().xCoord.toBigInteger()
-    return to32(ByteArray(0), x)
+    return to32(x)
+  }
+
+  /** BIP-340 lift_x: the unique even-Y curve point for an x coordinate. */
+  private fun liftX(pubkeyX: ByteArray): ECPoint {
+    require(pubkeyX.size == 32) { "pubkey must be 32 bytes" }
+    val x = BigInteger(1, pubkeyX)
+    require(x < P) { "pubkey out of range" }
+    val c = x.modPow(BigInteger.valueOf(3), P).add(BigInteger.valueOf(7)).mod(P)
+    val y = c.modPow(P.add(BigInteger.ONE).divide(BigInteger.valueOf(4)), P)
+    require(y.modPow(BigInteger.valueOf(2L), P) == c) { "pubkey is not on curve" }
+    val evenY = if (y.testBit(0)) P.subtract(y) else y
+    val point = curve.createPoint(x, evenY).normalize()
+    require(!point.isInfinity && point.isValid) { "pubkey is not on curve" }
+    return point
+  }
+
+  fun isValidXOnlyPublicKey(pubkeyX: ByteArray): Boolean = try {
+    liftX(pubkeyX)
+    true
+  } catch (_: Exception) {
+    false
   }
 
   /** BIP-340 x-only pubkey for a private key. */
@@ -79,14 +100,9 @@ object Secp256k1 {
 
   /** ECDH shared x-coordinate (NIP-44 input). */
   fun ecdh(seckey: ByteArray, pubkeyX: ByteArray): ByteArray {
-    // Lift x-only pubkey to the even-Y point.
-    val x = BigInteger(1, pubkeyX)
-    require(x < P) { "pubkey out of range" }
-    val ySq = x.modPow(BigInteger.valueOf(3), P).add(BigInteger.valueOf(7)).mod(P)
-    var y = ySq.modPow(P.add(BigInteger.ONE).divide(BigInteger.valueOf(4)), P)
-    val candidate = curve.createPoint(x, y).normalize()
-    val point = if (hasEvenY(candidate)) candidate else curve.createPoint(x, P.subtract(y)).normalize()
-    val shared = point.multiply(BigInteger(1, seckey)).normalize()
+    val d = BigInteger(1, seckey)
+    require(seckey.size == 32 && d > BigInteger.ZERO && d < N) { "bad seckey" }
+    val shared = liftX(pubkeyX).multiply(d).normalize()
     require(!shared.isInfinity) { "ecdh infinity" }
     return xBytes(shared)
   }
@@ -94,21 +110,26 @@ object Secp256k1 {
   /** BIP-340 sign. Returns 64-byte sig. */
   fun schnorrSign(msg32: ByteArray, seckey: ByteArray, auxRand: ByteArray = ByteArray(32).also { random.nextBytes(it) }): ByteArray {
     require(msg32.size == 32)
+    require(seckey.size == 32)
+    require(auxRand.size == 32)
     val d0 = BigInteger(1, seckey)
     require(d0 > BigInteger.ZERO && d0 < N)
     val p = G.multiply(d0).normalize()
     val d = if (hasEvenY(p)) d0 else N.subtract(d0)
-    val dBytes = to32(ByteArray(0), d)
+    val dBytes = to32(d)
     val aux = taggedHash("BIP0340/aux", auxRand)
     val tBytes = ByteArray(32) { i -> (dBytes[i].toInt() xor aux[i].toInt()).toByte() }
-    val t = BigInteger(1, tBytes).mod(N)
-    val rPoint = G.multiply(t).normalize()
-    val k = if (hasEvenY(rPoint)) t else N.subtract(t)
+    val pub = xBytes(p)
+    val k0 = BigInteger(1, taggedHash("BIP0340/nonce", tBytes, pub, msg32)).mod(N)
+    require(k0 != BigInteger.ZERO) { "derived nonce is zero" }
+    val rPoint = G.multiply(k0).normalize()
+    val k = if (hasEvenY(rPoint)) k0 else N.subtract(k0)
     val r = xBytes(G.multiply(k).normalize())
-    val pub = xBytes(G.multiply(d).normalize())
     val e = BigInteger(1, taggedHash("BIP0340/challenge", r, pub, msg32)).mod(N)
     val s = k.add(e.multiply(d)).mod(N)
-    return r + to32(ByteArray(0), s)
+    val signature = r + to32(s)
+    require(schnorrVerify(msg32, pub, signature)) { "self-verification failed" }
+    return signature
   }
 
   /** BIP-340 verify. */
@@ -116,14 +137,10 @@ object Secp256k1 {
     try {
       require(msg32.size == 32 && pubkeyX.size == 32 && sig.size == 64)
       val r = sig.copyOfRange(0, 32)
+      val rInt = BigInteger(1, r)
       val s = BigInteger(1, sig.copyOfRange(32, 64))
-      if (s >= N) return false
-      val x = BigInteger(1, pubkeyX)
-      if (x >= P) return false
-      val ySq = x.modPow(BigInteger.valueOf(3), P).add(BigInteger.valueOf(7)).mod(P)
-      val y = ySq.modPow(P.add(BigInteger.ONE).divide(BigInteger.valueOf(4)), P)
-      var point = curve.createPoint(x, y).normalize()
-      if (!hasEvenY(point)) point = curve.createPoint(x, P.subtract(y)).normalize()
+      if (rInt >= P || s >= N) return false
+      val point = liftX(pubkeyX)
       val e = BigInteger(1, taggedHash("BIP0340/challenge", r, pubkeyX, msg32)).mod(N)
       val rPoint = G.multiply(s).add(point.multiply(N.subtract(e))).normalize()
       if (rPoint.isInfinity || !hasEvenY(rPoint)) return false

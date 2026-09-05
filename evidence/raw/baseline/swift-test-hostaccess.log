@@ -1,0 +1,23 @@
+[0/1] Planning build
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.17s)
+Test Suite 'All tests' started at 2026-09-04 20:01:19.894.
+Test Suite 'ReaderMacPackageTests.xctest' started at 2026-09-04 20:01:19.896.
+Test Suite 'CoreTests' started at 2026-09-04 20:01:19.896.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testGolden]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testGolden]' passed (0.005 seconds).
+Test Case '-[ReaderCoreSwiftTests.CoreTests testRsvp]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testRsvp]' passed (0.000 seconds).
+Test Case '-[ReaderCoreSwiftTests.CoreTests testSyncWindow]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testSyncWindow]' passed (0.000 seconds).
+Test Suite 'CoreTests' passed at 2026-09-04 20:01:19.902.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds
+Test Suite 'ReaderMacPackageTests.xctest' passed at 2026-09-04 20:01:19.902.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds
+Test Suite 'All tests' passed at 2026-09-04 20:01:19.902.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.008) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

@@ -31,6 +31,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
+import com.reader.app.nostr.PairingProtocol
+import com.reader.app.nostr.ValidatedPairingRequest
 import com.reader.app.prefs.ReaderSettings
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.colorsFor
@@ -46,6 +48,7 @@ fun PairingScreen(
   onScanned: (pairingJson: String) -> Unit,
   onCancel: () -> Unit,
   error: String?,
+  status: String? = null,
 ) {
   BackHandler { onCancel() }
   val c = colorsFor(settings.background)
@@ -53,6 +56,7 @@ fun PairingScreen(
   val lifecycle = LocalLifecycleOwner.current
   var manual by remember { mutableStateOf("") }
   var scanError by remember { mutableStateOf<String?>(null) }
+  var reviewText by rememberSaveable { mutableStateOf<String?>(null) }
   var cameraPermissionGranted by remember {
     mutableStateOf(
       ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) ==
@@ -85,52 +89,116 @@ fun PairingScreen(
     onDispose { lifecycle.lifecycle.removeObserver(observer) }
   }
 
+  fun prepareReview(text: String) {
+    val normalized = text.trim()
+    runCatching {
+      PairingProtocol.validateRequest(normalized, System.currentTimeMillis() / 1000)
+    }.onSuccess {
+      scanError = null
+      reviewText = normalized
+    }.onFailure {
+      scanError = it.message?.take(200) ?: "That pairing code is invalid."
+      reviewText = null
+    }
+  }
+
+  val review = reviewText?.let { text ->
+    runCatching { PairingProtocol.validateRequest(text, System.currentTimeMillis() / 1000) }.getOrNull()
+  }
+
   Scaffold(containerColor = c.background) { pad ->
     Column(Modifier.padding(pad).fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
       Text("Pair Chrome", fontFamily = ReaderFonts.Ui, fontSize = 20.sp, color = c.text)
       Spacer(Modifier.height(4.dp))
-      Text("Point at the code in the Reader extension", fontFamily = ReaderFonts.Ui, fontSize = 14.sp, color = c.secondary)
-      Spacer(Modifier.height(12.dp))
-      Box(Modifier.fillMaxWidth().weight(1f)) {
-        if (cameraPermissionGranted) {
-          CameraScanner(
-            onScanned = onScanned,
-            onError = { scanError = it },
-          )
-        } else {
-          CameraPermissionPrompt(
-            denied = cameraPermissionDenied,
-            onRequest = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
-            onOpenSettings = {
-              ctx.startActivity(
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                  data = Uri.fromParts("package", ctx.packageName, null)
-                },
-              )
-            },
-          )
+      if (review != null && reviewText != null) {
+        PairingReview(
+          request = review,
+          onConfirm = { onScanned(reviewText!!) },
+          onReset = {
+            reviewText = null
+            manual = ""
+          },
+          modifier = Modifier.fillMaxWidth().weight(1f),
+        )
+      } else {
+        Text("Point at the code in the Reader extension", fontFamily = ReaderFonts.Ui, fontSize = 14.sp, color = c.secondary)
+        Spacer(Modifier.height(12.dp))
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+          if (cameraPermissionGranted) {
+            CameraScanner(
+              onScanned = ::prepareReview,
+              onError = { scanError = it },
+            )
+          } else {
+            CameraPermissionPrompt(
+              denied = cameraPermissionDenied,
+              onRequest = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+              onOpenSettings = {
+                ctx.startActivity(
+                  Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", ctx.packageName, null)
+                  },
+                )
+              },
+            )
+          }
+        }
+        (error ?: scanError)?.let {
+          Text(it, fontFamily = ReaderFonts.Ui, color = c.error, fontSize = 13.sp)
+          Spacer(Modifier.height(8.dp))
+        }
+        status?.let {
+          Text(it, fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 13.sp)
+          Spacer(Modifier.height(8.dp))
+        }
+        OutlinedTextField(
+          value = manual, onValueChange = { manual = it },
+          label = { Text("Or paste pairing code", fontFamily = ReaderFonts.Ui) },
+          modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row {
+          TextButton(onClick = onCancel) { Text("Cancel", fontFamily = ReaderFonts.Ui, color = c.text) }
+          Spacer(Modifier.width(8.dp))
+          Button(onClick = { prepareReview(manual) }) { Text("Review") }
         }
       }
-      (error ?: scanError)?.let {
-        Text(it, fontFamily = ReaderFonts.Ui, color = c.error, fontSize = 13.sp)
-        Spacer(Modifier.height(8.dp))
-      }
-      OutlinedTextField(
-        value = manual, onValueChange = { manual = it },
-        label = { Text("Or paste pairing code", fontFamily = ReaderFonts.Ui) },
-        modifier = Modifier.fillMaxWidth(),
-      )
-      Spacer(Modifier.height(8.dp))
-      Row {
-        TextButton(onClick = onCancel) { Text("Cancel", fontFamily = ReaderFonts.Ui, color = c.text) }
-        Spacer(Modifier.width(8.dp))
-        Button(
-          onClick = {
-            if (manual.contains("reader-pair/1")) onScanned(manual.trim())
-            else scanError = "That does not look like a Reader pairing code."
-          },
-        ) { Text("Pair") }
-      }
+    }
+  }
+}
+
+@Composable
+private fun PairingReview(
+  request: ValidatedPairingRequest,
+  onConfirm: () -> Unit,
+  onReset: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Column(modifier.padding(top = 20.dp)) {
+    Text("Review connection", fontFamily = ReaderFonts.Ui, fontSize = 18.sp)
+    Spacer(Modifier.height(8.dp))
+    Text(
+      "Chrome device ${request.chromeDevicePubkey.take(12)}… is asking to create a private Reader channel.",
+      fontFamily = ReaderFonts.Ui,
+      fontSize = 14.sp,
+    )
+    Spacer(Modifier.height(16.dp))
+    Text("Relays (${request.relays.size})", fontFamily = ReaderFonts.Ui, fontSize = 15.sp)
+    Spacer(Modifier.height(4.dp))
+    request.relays.forEach { relay ->
+      Text("• $relay", fontFamily = ReaderFonts.Ui, fontSize = 13.sp)
+    }
+    Spacer(Modifier.height(16.dp))
+    Text(
+      "Only encrypted pairing and article envelopes are sent. Tap Connect to resolve these relay addresses and begin.",
+      fontFamily = ReaderFonts.Ui,
+      fontSize = 13.sp,
+    )
+    Spacer(Modifier.weight(1f))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+      TextButton(onClick = onReset) { Text("Scan another", fontFamily = ReaderFonts.Ui) }
+      Spacer(Modifier.width(8.dp))
+      Button(onClick = onConfirm) { Text("Connect", fontFamily = ReaderFonts.Ui) }
     }
   }
 }
@@ -208,7 +276,7 @@ private fun CameraScanner(
       try {
         val source = image.toLuminanceSource()
         val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
-        if (result.text.contains("reader-pair/1") && delivered.compareAndSet(false, true)) {
+        if (result.text.contains("reader-pair/2") && delivered.compareAndSet(false, true)) {
           mainExecutor.execute {
             if (active.get()) currentOnScanned(result.text)
           }
@@ -305,14 +373,7 @@ internal fun copyLuminancePlane(
 
 /** Validate + parse QR payload (protocol/version/expiry checked by caller too). */
 fun parsePairingQr(text: String, nowSecs: Long): JsonObject {
-  val o = Json.parseToJsonElement(text).jsonObject
-  require(o["protocol"]?.jsonPrimitive?.content == "reader-pair/1") { "unsupported pairing protocol" }
-  val exp = o["expiresAt"]?.jsonPrimitive?.long ?: 0L
-  require(exp > nowSecs) { "pairing code expired; refresh it in Chrome" }
-  o["pairingPubkey"]!!.jsonPrimitive.content
-  o["chromeDevicePubkey"]!!.jsonPrimitive.content
-  o["nonce"]!!.jsonPrimitive.content
-  return o
+  return PairingProtocol.validateRequest(text, nowSecs).json
 }
 
 fun b64decode(s: String): ByteArray = Base64.decode(s, Base64.DEFAULT)

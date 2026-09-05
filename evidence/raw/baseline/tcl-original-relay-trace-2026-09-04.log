@@ -1,0 +1,34 @@
+Capture status: PASS
+Scenario: original reader-pair/1 failure reproduced on physical TCL T807D
+Diagnostic APK SHA-256: 7cdf7f45e7d18efaaededf00376630bf3e827058e9fb013fd02a078cc46b232c
+Device timezone at capture: Atlantic/Canary (UTC+01:00 on 2026-09-04)
+Logcat local window: 2026-09-04 20:43:14.839 through 20:43:25.860
+Derived UTC window: 2026-09-04T19:43:14.839Z through 2026-09-04T19:43:25.860Z
+Event ID: a05f7352ffb510e03a0ce387485c4a1f21974978a039954059230653b8ba9abb
+
+Redacted structural trace (no keys, QR material, ciphertext, plaintext, or full AUTH challenge):
+20:43:14.839 relay=wss://relay.damus.io state=NORMALIZED monotonicMs=1
+20:43:14.840 relay=wss://relay.damus.io state=CONNECTING monotonicMs=2
+20:43:15.290 relay=wss://relay.damus.io state=SOCKET_ERROR monotonicMs=452 detail=ProtocolException
+20:43:15.291 relay=wss://nos.lol state=NORMALIZED monotonicMs=0
+20:43:15.291 relay=wss://nos.lol state=CONNECTING monotonicMs=0
+20:43:15.599 relay=wss://nos.lol state=OPEN monotonicMs=308 detail=http=101
+20:43:15.600 relay=wss://nos.lol state=EVENT_QUEUED monotonicMs=309
+20:43:15.601 relay=wss://nos.lol state=EVENT_SENT monotonicMs=310
+20:43:15.676 relay=wss://nos.lol state=OK_FALSE monotonicMs=385 detail=invalid: ephemeral event expired
+20:43:15.752 relay=wss://nos.lol state=CLOSED monotonicMs=461 detail=code=1000
+20:43:15.678 relay=wss://relay.nostr.band state=NORMALIZED monotonicMs=0
+20:43:15.678 relay=wss://relay.nostr.band state=CONNECTING monotonicMs=0
+20:43:25.860 relay=wss://relay.nostr.band state=SOCKET_ERROR monotonicMs=10182 detail=SocketTimeoutException
+
+Terminal classification:
+- wss://relay.damus.io: SOCKET_ERROR (ProtocolException)
+- wss://nos.lol: OK_FALSE (explicit matching event ID; reason prefix shown above)
+- wss://relay.nostr.band: SOCKET_ERROR (SocketTimeoutException before OPEN/OK)
+- Positive matching OK count: 0 of 3
+- Visible Android result: No relay accepted the pairing reply. Check connection and retry.
+
+Independent source correlation:
+- Android generated kind 21059 and randomized its outer created_at up to 172800 seconds into the past.
+- The only relay to return a matching OK explicitly classified the event as an expired ephemeral event.
+- The event also lacked the recipient p tag required by Chrome's #p subscription, so relay acceptance alone would not have completed delivery.

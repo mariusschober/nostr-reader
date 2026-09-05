@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReaderPairAckV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "type",
+    "sessionId",
+    "chromeDevicePubkey",
+    "androidChannelPubkey",
+    "relaySetDigest",
+    "acceptedRelays",
+    "status",
+    "createdAt",
+    "expiresAt"
+  ],
+  "properties": {
+    "protocol": { "const": "reader-pair/2" },
+    "type": { "const": "pair-ack" },
+    "sessionId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "chromeDevicePubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "androidChannelPubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "relaySetDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "acceptedRelays": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^wss://" },
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true
+    },
+    "status": { "const": "accepted" },
+    "createdAt": { "type": "integer" },
+    "expiresAt": { "type": "integer" }
+  }
+}

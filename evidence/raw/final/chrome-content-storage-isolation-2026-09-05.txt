@@ -1,0 +1,18 @@
+Status: PASS
+Browser: Google Chrome for Testing 151.0.7922.34
+Profile: disposable, unpaired, local test profile
+Scenario: load the production content script in Chrome's isolated world on https://chatgpt.com/ and attempt to access the extension's key-bearing storage area.
+
+Observed execution contexts:
+- page default world: https://chatgpt.com
+- Reader isolated world: chrome-extension://ejcbbnbohfkdppmgjnabmcmmcmihnbaa
+
+Observed result from the Reader isolated world:
+- test executed: true
+- chrome.storage.local exposed: false
+- storage read succeeded: false
+- device secret visible: false
+- pairing session state visible: false
+
+No key, QR value, pairing bearer, stored value, or decrypted content was read or printed.
+Test harness: chrome/scripts/cdp-installed-check.mjs content-storage-static

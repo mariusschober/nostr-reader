@@ -15,31 +15,9 @@
     "alarms",
     "contextMenus"
   ],
-  "optional_host_permissions": [
-    "https://chatgpt.com/*",
-    "https://claude.ai/*",
-    "https://gemini.google.com/*",
-    "https://www.perplexity.ai/*",
-    "https://perplexity.ai/*"
-  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none';"
   },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "bridge.js"
-      ],
-      "matches": [
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*",
-        "https://claude.ai/*",
-        "https://gemini.google.com/*",
-        "https://www.perplexity.ai/*",
-        "https://perplexity.ai/*"
-      ]
-    }
-  ],
   "content_scripts": [
     {
       "matches": [

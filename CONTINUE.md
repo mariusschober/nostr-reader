@@ -1,119 +1,105 @@
-# CONTINUE — agent handover for nostr-reader (2026-09-04, must-list done)
+# CONTINUE — Reader v2 repair handoff
 
-## Vision (why this exists)
+Updated: 2026-09-05
 
-A private, zero-server read-later ecosystem. Capture text/markdown anywhere
-(Chrome, AI chats, Android share, paste), move it encrypted over ordinary
-public Nostr relays (NIP-44 + NIP-59 gift wrap), and read it in a quiet
-native app: Inbox → triage → read → archive. No backend, no accounts, no
-telemetry. Nostr and Markdown are invisible infrastructure, never UI.
-See `README.md`, `PROTOCOL.md`, `SECURITY.md`, `CROSS_PLATFORM.md`, `MAC.md`.
+Immutable baseline: `982920b4e91dd5af4af6046f56df281c7adfe545`
 
-## Where things stand
+Working branch: `fix/pairing-delivery-hardening-982920b4`
 
-- **Chrome MV3 extension** (`chrome/`): builds, 17/17 vitest green, packaged
-  (`artifacts/reader-chrome-extension.zip`). Extraction (Defuddle→Readability),
-  4 AI-provider adapters, outbox + E2E ACK, pairing, NIP-07 bridge.
-- **Android app** (`android/`): builds, **42/42 unit tests green**, lint
-  0 errors, APK in `artifacts/reader-debug.apk` (debug-signed QA).
-- **Interop proven**: `shared/test-vectors/golden-v1.json` passes on
-  TS/Kotlin/Swift; `nip44-v1.json` (real nostr-tools ciphertext) is decrypted
-  by Kotlin and re-encrypted byte-identical. Live relay publishes accepted by
-  `relay.damus.io` and `nos.lol` (2-relay quorum).
-- **Four-list triage landed**: Room v2 (`list` column + `MIGRATION_1_2`),
-  Inbox/Priority/Later/Archive tabs, per-tab attention time, end-of-article
-  "Read Later"/"Archive" (no more "Finished"), system bars follow background,
-  paste-with-autodetect in "+" menu, system back on Reader/RSVP/Pairing/Settings.
-- **Verified on the physical TCL T807D** (`adb -s ZXKRS4VKGQ8PWGEQ`):
-  install, launch, v1→v2 migration (old docs landed in Inbox), 4 tabs,
-  swipe-right→Priority with Undo snackbar, Priority tab contents, share-import,
-  line-break rendering, TTS bar, RSVP play/pause, themed appearance sheet.
-  Screenshots: `artifacts/qa/`.
+## Current truth
 
-## BUG #1 (RESOLVED 2026-09-04): row taps dead — was never gestures
+Reader v2 now has an authenticated, durable Chrome-to-Android path:
 
-- **Symptom was**: tapping an article row in any triage list did nothing.
-  Tab switches, "+" dialog, row swipes all worked. No crash, no log.
-- **Root cause (found by +/⋮ split test)**: NOT the swipe container.
-  `MainActivity` pushed routes and bumped a `tick` state that NO
-  composable read, so Compose scheduled no recomposition and navigation
-  silently never rendered. Touch handling was fine all along — every
-  handler ran, only local-state UI ever visibly updated. One-line fix:
-  `val route = remember(tick) { stack.current() }` (`MainActivity.kt`).
-- **Dead ends verified on-device first** (screenshots): `draggable`
-  `startDragImmediately=false` + `clickable` still dead; hand-rolled
-  `awaitEachGesture` loop saw swipes (DB-proven move) but its tap branch
-  never observably fired. Final SwipeRow is stock `clickable` +
-  `detectHorizontalDragGestures` with a drag-guard.
-- **Also fixed alongside**: Archive rows never invoked `onMenu` (overflow
-  dialog unreachable) — `ArticleRow` is now tap-to-open with a ⋮ button
-  when `onMenu != null`. Debug `Log.d("RowTap")` / `Log.d("ReaderBack")`
-  removed.
-- **Device quirk that burned two sessions**: `Log.d` is INVISIBLE on the
-  TCL (`log -p d` marker never lands). Verify via screenshots + `run-as`
-  DB reads only. Recorded in `artifacts/TEST-REPORT.md` v2.
-- **Known cosmetic**: swipe snackbar can linger when the row leaves
-  composition mid-`showSnackbar` (queue advances on next snackbar
-  event; moves always apply — DB-verified). Not fixed, out of scope.
+```text
+pair request -> Android consent -> pair response -> Chrome ACK
+  -> Android completion -> active channel
+  -> encrypted manifest/chunks -> durable Android document
+  -> authenticated device ACK -> Chrome delivered
+```
 
-## Other known issues
+One fresh Chrome for Testing/TCL pairing completed over the six defaults plus
+one custom relay. One synthetic article was stored exactly once and its bound
+Android ACK moved Chrome from pending to delivered. This proves the complete
+path can work; it is not the unexecuted 20/20 and 50/50 reliability series.
 
-- System-back from article/RSVP/pairing/settings VERIFIED on the TCL
-  2026-09-04 (screenshots/dumps); back on inbox-root exits to launcher
-  (verified earlier, not re-run).
-- Paste dialog (markdown + plain), Later-tab swipes both directions,
-  Archive overflow (Unarchive DB-verified), dark-background system bars
-  (list + article screenshots): all VERIFIED on device 2026-09-04.
-- Debug APK shows Android's 16 KB `.so`-alignment warning naming
-  `libdatastore_shared_counter.so` + `libimage_processing_util_jni.so`
-  (third-party libs; no NDK code of ours). Harmless on 4 KB devices; release
-  track must re-verify on a 16 KB-page device.
-- `rust-core/` is audited source only (no cargo toolchain here); TS/Kotlin/
-  Swift mirrors are the verified implementations. UniFFI bindings still ahead.
-- Chrome `dist/` was loaded by the user far enough to open its pairing QR;
-  provider capture buttons and Chrome-to-Android delivery remain unverified.
-- Pairing camera hotfix installed and targeted-verified on the TCL: native
-  runtime permission prompt, granted app-op, CameraService rear-camera
-  connection, and visibly live preview all PASS. Actual Chrome-QR decode and
-  encrypted pairing reply remain NOT MEASURED.
-- TTS audio never ear-checked; Amber/nos2x signers never live-tested.
+The complete acceptance gate is therefore **NOT MEASURED**, while the executed
+unit, instrumentation, packaging, live-relay, and single-flow checks are
+reported independently in `TEST_REPORT.md`.
 
-## Next: MUST / SHOULD / COULD
+## What changed
 
-**Must (all DONE 2026-09-04, see `artifacts/TEST-REPORT.md` v2)**
-1. ~~Fix OPEN BUG #1~~ FIXED (navigation observability) + verified open
-   by tap on the TCL; debug logs removed.
-2. ~~Verify system back~~ VERIFIED Reader→list, RSVP→Reader,
-   Pairing/Settings→list on device.
-3. ~~Exercise paste, Later swipes, Archive menu, dark bars~~ VERIFIED.
-4. ~~Update TEST-REPORT + hashes~~ DONE (17 chrome / 42 android / 3
-   swift, all re-run; APK `2fc214c5…`).
+- Pairing is `reader-pair/2`, durable kind 1059 only, and requires both
+  endpoints to authenticate the same session before either reports connected.
+- NIP-59 wrapper routing, sender checks, NIP-44 v2 limits, strict JSON,
+  NIP-42, BIP-340 signing, expiry, replay, gzip, hashes, chunk assembly, and
+  endpoint ACK validation have executable regression coverage.
+- Chrome persists pairing sessions and outbox state across MV3 suspension and
+  restart. Relay acceptance and device delivery are separate states.
+- Android stages pairing and transfers transactionally, revokes key-loss
+  channels, performs rolling-window catch-up, and deduplicates by content.
+- Reader uses six fixed public relays, a two-relay write quorum, and up to two
+  user-added secure relays in Chrome Settings. Relay changes require re-pairing.
+- The unsafe page-world signing bridge and inert settings controls were
+  removed. Chrome key storage is restricted to trusted extension contexts.
 
-**Should**
-5. Real Chrome→Android end-to-end (pair, send, receive, ACK clears outbox).
-6. Load the extension unpacked in desktop Chrome; test toolbar + AI buttons.
-7. RSVP focal-anchor screenshot check across fonts; TTS listen-through.
-8. Decide 16 KB story (bump DataStore/Camera deps or document release risk).
+## Evidence map
 
-**Could**
-9. UniFFI bindings for `rust-core`; Mac app build; widget/cover polish;
-   export/import roundtrip; tablet layout proof.
+- Root cause: `PAIRING_ROOT_CAUSE.md`
+- Normative protocol: `PROTOCOL.md`
+- Architecture and state machines: `ARCHITECTURE_AND_PROTOCOL.md`,
+  `RELIABILITY_STATE_MACHINES.md`
+- Conformance: `NIP_CONFORMANCE_MATRIX.md`
+- Security/privacy: `THREAT_MODEL.md`, `SECURITY_AND_PRIVACY_NOTES.md`
+- Migration/rollback: `MIGRATION_AND_COMPATIBILITY.md`, `ROLLBACK.md`
+- Live relays: `LIVE_RELAY_REPORT.md`
+- Physical TCL work: `TCL_PHYSICAL_VALIDATION.md`
+- Consolidated results and residuals: `TEST_REPORT.md`,
+  `KNOWN_LIMITATIONS.md`
+- Redacted raw evidence: `evidence/raw/`
 
-## Working notes (learned the hard way)
+## Reproduce the audited artifacts
 
-- **Always target the TCL explicitly**: `adb -s ZXKRS4VKGQ8PWGEQ`. The
-  emulator died mid-session once and `adb` silently fell through to the TCL.
-- **Background processes die** when the exec session ends — except the Gradle
-  daemon. Keep foreground runs short; poll files (`test-results/*.xml`,
-  APK outputs, screenshots), never sessions.
-- Gradle lives at `/tmp/reader-dl/gradle-8.7/bin/gradle` (no system gradle).
-  `android/local.properties` points at the SDK (gitignored; recreate it).
-- `zsh`: never use bare `===` in `echo`; quote heredocs (`<<'EOF'`) when the
-  payload contains Kotlin/TS regexes.
-- Build: `cd chrome && npm install && npx tsc --noEmit && npx vitest run && npm run build`
-- Build: `cd android && gradle :app:testDebugUnitTest :app:assembleDebug` (+ `:app:lintDebug`)
-- Mac: `cd mac && swift test` (3/3).
-- Install: `adb -s ZXKRS4VKGQ8PWGEQ install -r artifacts/reader-debug.apk`
-- Screenshots: `adb -s … exec-out screencap -p > /tmp/shot.png`, then view.
-  Get tap bounds via `uiautomator dump /sdcard/ui.xml` + grep.
-- Row taps currently suspect — prefer hierarchy bounds over guesses.
+Run `./scripts/build-audit-artifacts.sh` only from a clean tracked worktree. It
+reinstalls locked Chrome dependencies, runs the Chrome/Android/Rust/Swift
+gates, creates the debug APKs and extension ZIP, generates dependency evidence,
+and writes ignored `artifacts/ARTIFACTS.json` plus `artifacts/SHA256SUMS`.
+
+The manifest is the authority for exact source commit, hashes, build commands,
+and post-build install results. The binaries are debug/developer artifacts,
+not production releases.
+
+## Physical devices and browser
+
+- Decisive device: TCL T807D, ADB serial `ZXKRS4VKGQ8PWGEQ`.
+- Secondary device: Samsung Galaxy S23, ADB serial `R3CW404GVBL`.
+- The S23 has a previously confirmed physical OLED fault (bright horizontal
+  line and intermittent lower-screen green illumination). Use ADB hierarchy or
+  screen capture for app assertions and do not classify those panel artifacts
+  as Reader defects.
+- Browser validation uses Google Chrome for Testing, not Brave.
+- Always provide an explicit ADB serial because both phones can be connected.
+
+## Still required before a reliability PASS
+
+- 20/20 clean pairings, 20/20 worker-termination pairings, and 20/20
+  pre-reply Chrome-restart recoveries on the TCL.
+- 50/50 normal deliveries with zero duplicate documents and verified device
+  ACKs, plus 20/20 offline-to-online and 20/20 replay/duplicate attempts.
+- The remaining controlled physical lifecycle/network/failure scenarios listed
+  in `TCL_PHYSICAL_VALIDATION.md`.
+- A public transfer using the exact final artifact only with explicit approval;
+  do not infer authorization from build or device-test permission.
+- Live third-party NIP-07/Amber signer checks, public NIP-42 challenge evidence,
+  Android release signing, and a 16 KiB-page device remain unmeasured.
+
+Android can currently republish an authenticated duplicate ACK batch when a
+later catch-up encounters still-retained duplicate wrappers. This is bounded by
+expiry and does not duplicate the document, but it remains an open P2 traffic
+optimization.
+
+## Safety boundary
+
+Do not push, merge, publish, force-push, introduce a backend, use a real Nostr
+identity, or expose pairing/private-key material. Preserve the immutable
+baseline and the dedicated repair branch. Distinguish `PASS`, `FAIL`,
+`NOT MEASURED`, and `BLOCKED` exactly.

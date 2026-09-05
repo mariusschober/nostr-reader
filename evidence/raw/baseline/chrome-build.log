@@ -1,0 +1,24 @@
+
+> reader-chrome@0.1.0 build
+> vite build
+
+vite v5.4.8 building for production...
+transforming...
+✓ 154 modules transformed.
+rendering chunks...
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) /Users/schober/Projects/Nostr Reader/chrome/src/nostr/transport.ts is dynamically imported by /Users/schober/Projects/Nostr Reader/chrome/src/background/service-worker.ts but also statically imported by /Users/schober/Projects/Nostr Reader/chrome/src/background/service-worker.ts, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/src/ui/pairing.html                     0.61 kB │ gzip:   0.43 kB
+dist/src/ui/popup.html                       0.65 kB │ gzip:   0.43 kB
+dist/src/ui/options.html                     1.14 kB │ gzip:   0.60 kB
+dist/options.js                              0.30 kB │ gzip:   0.23 kB
+dist/popup.js                                0.61 kB │ gzip:   0.36 kB
+dist/bridge.js                               0.80 kB │ gzip:   0.38 kB
+dist/modulepreload-polyfill-DaKOjhqt.js      1.26 kB │ gzip:   0.52 kB
+dist/core-Cc3JHRJF.js                        2.18 kB │ gzip:   0.98 kB
+dist/pairing.js                             53.72 kB │ gzip:  13.28 kB
+dist/background.js                         198.11 kB │ gzip:  50.66 kB
+dist/content.js                          1,061.80 kB │ gzip: 225.76 kB
+✓ built in 1.00s

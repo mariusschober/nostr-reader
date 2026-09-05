@@ -1,0 +1,16 @@
+Capture status: PASS
+Device: TCL T807D (serial redacted in retained report)
+App package: com.reader.app
+Capture source: adb uiautomator hierarchy while Reader was foreground
+UTC capture window: 2026-09-04T19:28Z
+
+Visible screen:
+- Title: Pair Chrome
+- Instruction: Point at the code in the Reader extension
+- Error: No relay accepted the pairing reply. Check connection and retry.
+- Actions still available: Cancel, Pair
+
+Secret-safety notes:
+- The UI hierarchy contained no QR payload, private key, ciphertext, signer response, or decrypted message.
+- The raw hierarchy was not retained because it added only layout coordinates and duplicated the text above.
+- An app-PID-scoped logcat query immediately after reproduction returned no relay-, pairing-, WebSocket-, TLS-, exception-, or failure-related lines. The baseline therefore retained no evidence distinguishing negative OK, timeout, socket failure, TLS failure, or policy/auth rejection.

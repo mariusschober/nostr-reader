@@ -13,6 +13,7 @@
     android:theme="@style/Theme.Reader"
     android:allowBackup="false"
     android:fullBackupOnly="false"
+    android:fullBackupContent="@xml/backup_rules_legacy"
     android:dataExtractionRules="@xml/backup_rules">
     <activity android:name=".ui.MainActivity" android:exported="true">
       <intent-filter>

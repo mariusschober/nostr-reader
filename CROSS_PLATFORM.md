@@ -22,11 +22,14 @@ and key storage.
   `pack(manifest+chunks)`, `unwrap_verify`, `rsvp_tokens`, `narrate`,
   `word_count`, `check_limits`. UniFFI generates Kotlin + Swift bindings;
   TS validates against the same vectors in CI.
-- Golden vector `shared/test-vectors/golden-v1.json` MUST pass on every
-  platform before a release. No platform may "fix" vectors locally.
+- `shared/test-vectors/codec-v2.json`, `nip44-official.json`, and
+  `bip340-official.csv` are release gates for every applicable platform. The
+  historical `golden-v1.json` is migration evidence only. No platform may
+  "fix" vectors locally.
 - Design tokens: one Flexoki table per platform generated from the same hex
   source (`shared/`); article fonts bundled, never fetched.
-- No platform may add protocol fields unilaterally; bump `reader/2` instead.
+- No platform may add protocol fields unilaterally; a breaking change requires
+  a version after `reader/2` and an explicit compatibility decision.
 
 ## iOS readiness checklist
 

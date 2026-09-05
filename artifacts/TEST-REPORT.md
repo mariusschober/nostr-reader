@@ -1,3 +1,17 @@
+# Historical Reader test report — superseded
+
+This file preserves the 2026-09-04 triage/camera evidence below. It is not the
+acceptance report for the pairing/delivery repair. The current authoritative
+report is [`../TEST_REPORT.md`](../TEST_REPORT.md), with live-relay and physical
+boundaries in [`../LIVE_RELAY_REPORT.md`](../LIVE_RELAY_REPORT.md) and
+[`../TCL_PHYSICAL_VALIDATION.md`](../TCL_PHYSICAL_VALIDATION.md).
+
+The historical relay-success claims below are explicitly superseded because
+the old harness did not await the individual `nostr-tools@2.7.1` publication
+promises or perform read-back.
+
+---
+
 # Reader TEST-REPORT v2 — 2026-09-04 (triage build, physical TCL)
 
 ## Chrome packaging hotfix — 2026-09-04

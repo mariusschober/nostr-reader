@@ -47,12 +47,12 @@ class ReaderCoreTest {
   @Test
   fun limitsRejectAbuse() {
     try {
-      ReaderCore.checkLimits(6 * 1024 * 1024, 1, 1, 1)
+      ReaderCore.checkLimits(6 * 1024 * 1024, 1, 1, 1, 1)
       fail("expected")
     } catch (e: IllegalArgumentException) {
     }
     try {
-      ReaderCore.checkLimits(10, 1, 1, 513)
+      ReaderCore.checkLimits(10, 1, 1, 1, 513)
       fail("expected")
     } catch (e: IllegalArgumentException) {
     }

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "writeQuorum": 2,
+  "relays": [
+    "wss://nos.lol",
+    "wss://relay.primal.net",
+    "wss://relay.nostr.net",
+    "wss://nostr.oxtr.dev",
+    "wss://offchain.pub",
+    "wss://nostr-pub.wellorder.net"
+  ]
+}

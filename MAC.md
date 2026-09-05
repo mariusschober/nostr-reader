@@ -8,8 +8,8 @@ read in a quiet window that matches Android.
 1. **Send to Reader** (sender): menu-bar item + Share extension + Finder Quick
    Action + Services entry. Accepts txt/md/selection/HTML, canonicalizes with
    reader-core, encrypts to the paired Android channel (or a paired Mac
-   channel), sends via the same 2-of-3 relay quorum + IndexedDB-equivalent
-   outbox (SwiftData) + E2E ACK clearing. Mirrors Amazon's "Send to Kindle"
+   channel), sends via the same authenticated relay set and two-relay write
+   quorum + IndexedDB-equivalent outbox (SwiftData) + E2E ACK clearing. Mirrors Amazon's "Send to Kindle"
    placement, not its cloud.
 2. **Reader** (minimal reader): SwiftUI article window mirroring Android —
    Inbox (attention time, not counts) / Archive, title+source+time header,

@@ -1,0 +1,659 @@
++zsh:4> adb -s ZXKRS4VKGQ8PWGEQ shell getprop ro.product.manufacturer
+TCL
++zsh:5> adb -s ZXKRS4VKGQ8PWGEQ shell getprop ro.product.model
+T807D
++zsh:6> adb -s ZXKRS4VKGQ8PWGEQ shell getprop ro.build.version.release
+16
++zsh:7> adb -s ZXKRS4VKGQ8PWGEQ shell getprop ro.build.version.security_patch
+2026-07-05
++zsh:8> adb -s ZXKRS4VKGQ8PWGEQ shell getprop ro.build.fingerprint
+TCL/T807D_EEA/Frida:16/BP2A.250605.031.A3/AMD9:user/release-keys
++zsh:9> adb -s ZXKRS4VKGQ8PWGEQ shell dumpsys deviceidle
+  Flags:
+    com.android.server.deviceidle.use_cpu_time_for_temp_allowlist=true
+    com.android.server.deviceidle.remove_idle_location=true
+
+  Settings:
+    flex_time_short=+1m0s0ms
+    light_after_inactive_to=+4m0s0ms
+    light_idle_to=+5m0s0ms
+    light_idle_to_initial_flex=+1m0s0ms
+    light_max_idle_to_flex=+15m0s0ms
+    light_idle_factor=2.0
+    light_idle_increase_linearly=true
+    light_idle_linear_increase_factor_ms=300000
+    light_idle_flex_linear_increase_factor_ms=60000
+    light_max_idle_to=+30m0s0ms
+    light_idle_maintenance_min_budget=+1m0s0ms
+    light_idle_maintenance_max_budget=+5m0s0ms
+    min_light_maintenance_time=+5s0ms
+    min_deep_maintenance_time=+30s0ms
+    inactive_to=+15s0ms
+    sensing_to=+15s0ms
+    locating_to=+15s0ms
+    location_accuracy=20.0m
+    motion_inactive_to=+30s0ms
+    motion_inactive_to_flex=+1m0s0ms
+    idle_after_inactive_to=+15s0ms
+    idle_pending_to=+5m0s0ms
+    max_idle_pending_to=+10m0s0ms
+    idle_pending_factor=2.0
+    quick_doze_delay_to=+1m0s0ms
+    idle_to=+1h0m0s0ms
+    max_idle_to=+6h0m0s0ms
+    idle_factor=2.0
+    min_time_to_alarm=+1h0m0s0ms
+    max_temp_app_allowlist_duration_ms=+5m0s0ms
+    mms_temp_app_allowlist_duration_ms=+1m0s0ms
+    sms_temp_app_allowlist_duration_ms=+20s0ms
+    notification_allowlist_duration_ms=+30s0ms
+    wait_for_unlock=true
+    use_window_alarms=true
+    use_mode_manager=false
+  Idling history:
+         normal: -1d6h31m3s83ms (screen)
+      deep-idle: -1d6h27m24s613ms
+         normal: -1d6h20m12s422ms (charging)
+     light-idle: -1d2h34m42s614ms
+    light-maint: -1d2h28m42s608ms
+     light-idle: -1d2h28m37s571ms
+         normal: -1d2h24m59s944ms (unlocked)
+     light-idle: -1d2h20m0s645ms
+         normal: -1d2h18m32s851ms (screen)
+     light-idle: -1d2h11m5s752ms
+         normal: -1d2h7m38s75ms (screen)
+     light-idle: -1d2h2m51s835ms
+    light-maint: -1d1h57m20s4ms
+     light-idle: -1d1h57m14s978ms
+      deep-idle: -1d1h48m19s966ms
+         normal: -1d1h47m51s943ms (motion)
+     light-idle: -1d1h43m6s259ms
+    light-maint: -1d1h37m6s166ms
+     light-idle: -1d1h37m1s128ms
+    light-maint: -1d1h26m33s118ms
+     light-idle: -1d1h26m28s68ms
+         normal: -1d1h18m49s393ms (unlocked)
+     light-idle: -1d1h9m59s799ms
+      deep-idle: -1d1h8m37s169ms
+         normal: -1d0h59m11s563ms (screen)
+     light-idle: -1d0h54m12s961ms
+         normal: -1d0h54m4s355ms (screen)
+      deep-idle: -1d0h50m30s531ms
+         normal: -1d0h50m6s439ms (unlocked)
+      deep-idle: -1d0h46m34s4ms
+         normal: -1d0h30m43s428ms (motion)
+     light-idle: -1d0h25m18s226ms
+      deep-idle: -1d0h23m55s598ms
+         normal: -1d0h21m34s83ms (unlocked)
+     light-idle: -1d0h8m45s724ms
+    light-maint: -1d0h2m45s723ms
+     light-idle: -1d0h2m40s677ms
+         normal: -23h59m35s814ms (unlocked)
+     light-idle: -23h51m1s109ms
+    light-maint: -23h45m8s436ms
+     light-idle: -23h45m3s237ms
+         normal: -23h35m5s284ms (unlocked)
+     light-idle: -23h20m53s859ms
+    light-maint: -23h14m53s856ms
+     light-idle: -23h14m47s846ms
+         normal: -23h13m28s800ms (unlocked)
+      deep-idle: -20h29m30s35ms
+         normal: -20h0m44s131ms (unlocked)
+     light-idle: -19h29m11s635ms
+    light-maint: -19h12m9s664ms
+     light-idle: -19h12m4s616ms
+    light-maint: -18h43m32s670ms
+     light-idle: -18h43m27s642ms
+      deep-idle: -18h32m3s36ms
+     deep-maint: -17h32m1s674ms
+      deep-idle: -17h31m31s613ms
+     deep-maint: -15h31m30s690ms
+      deep-idle: -15h31m0s643ms
+         normal: -11h45m24s493ms (unlocked)
+      deep-idle: -11h42m42s111ms
+         normal: -11h40m9s307ms (unlocked)
+      deep-idle: -11h34m29s105ms
+         normal: -11h34m7s423ms (unlocked)
+     light-idle: -11h18m12s468ms
+         normal: -11h15m36s630ms (screen)
+      deep-idle: -10h54m26s42ms
+         normal: -10h35m59s43ms (unlocked)
+      deep-idle: -10h16m18s53ms
+         normal: -9h58m29s544ms (unlocked)
+      deep-idle: -9h47m12s621ms
+         normal: -9h43m34s729ms (unlocked)
+      deep-idle: -9h38m38s991ms
+         normal: -9h36m43s644ms (unlocked)
+      deep-idle: -3h55m55s124ms
+         normal: -3h55m35s67ms (unlocked)
+      deep-idle: -3h50m7s58ms
+         normal: -3h43m57s351ms (unlocked)
+      deep-idle: -3h21m56s50ms
+         normal: -3h21m31s332ms (unlocked)
+      deep-idle: -3h14m13s35ms
+         normal: -3h9m35s169ms (unlocked)
+     light-idle: -3h1m30s679ms
+      deep-idle: -3h1m23s45ms
+         normal: -2h56m18s163ms (unlocked)
+      deep-idle: -2h50m27s76ms
+         normal: -2h47m30s744ms (screen)
+      deep-idle: -2h43m39s640ms
+         normal: -2h41m46s367ms (unlocked)
+     light-idle: -2h36m36s675ms
+      deep-idle: -2h35m11s464ms
+         normal: -2h2m41s792ms (unlocked)
+      deep-idle: -1h57m34s41ms
+         normal: -1h57m8s414ms (unlocked)
+      deep-idle: -1h12m12s518ms
+         normal: -1h8m41s218ms (unlocked)
+     light-idle: -55m14s73ms
+      deep-idle: -53m51s435ms
+         normal: -34m10s739ms (unlocked)
+      deep-idle: -30m28s624ms
+         normal: -11m9s407ms (charging)
+  Whitelist (except idle) system apps:
+    com.android.providers.calendar
+    com.tct.smart.aota
+    com.tct.smart.cota
+    com.android.providers.downloads
+    com.ironsource.appcloud.oobe.hutchison
+    com.google.android.apps.safetyhub
+    com.android.vending
+    com.aura.oobe.vodafone
+    com.tcl.fota.system
+    com.facebook.services
+    com.tct.aio
+    com.google.android.devicelockcontroller
+    com.google.ambient.streaming
+    com.orange.update
+    com.android.cellbroadcastreceiver
+    com.google.android.gms
+    com.android.proxyhandler
+    com.android.imsserviceentitlement
+    com.google.android.apps.turbo
+    com.android.shell
+    com.google.android.apps.carrier.carrierwifi
+    com.android.emergency
+    com.dti.bouyguestelecom
+    com.facebook.appmanager
+    com.google.android.cellbroadcastreceiver
+    com.orange.aura.oobe
+    com.android.providers.contacts
+  Whitelist system apps:
+    com.android.providers.calendar
+    com.tct.smart.aota
+    com.tct.smart.cota
+    com.android.providers.downloads
+    com.ironsource.appcloud.oobe.hutchison
+    com.google.android.apps.safetyhub
+    com.aura.oobe.vodafone
+    com.tcl.fota.system
+    com.facebook.services
+    com.tct.aio
+    com.google.android.devicelockcontroller
+    com.google.ambient.streaming
+    com.orange.update
+    com.android.cellbroadcastreceiver
+    com.google.android.gms
+    com.android.imsserviceentitlement
+    com.android.shell
+    com.google.android.apps.carrier.carrierwifi
+    com.android.emergency
+    com.dti.bouyguestelecom
+    com.google.android.cellbroadcastreceiver
+    com.orange.aura.oobe
+  Whitelist user apps:
+    au.com.shiftyjelly.pocketcasts
+    com.tcl.fota.system
+    com.greenart7c3.nostrsigner
+    com.wispr.flowapp
+    com.android.phone
+  Whitelist (except idle) all app ids:
+    1000
+    1001
+    2000
+    2951
+    10078
+    10079
+    10081
+    10084
+    10091
+    10094
+    10157
+    10158
+    10159
+    10160
+    10164
+    10166
+    10171
+    10174
+    10176
+    10178
+    10180
+    10214
+    10246
+    10251
+    10274
+    10275
+    10350
+    10393
+    10456
+    10618
+  Whitelist user app ids:
+    1000
+    1001
+    10393
+    10456
+    10618
+  Whitelist all app ids:
+    1000
+    1001
+    2000
+    2951
+    10079
+    10081
+    10084
+    10091
+    10157
+    10158
+    10159
+    10160
+    10164
+    10166
+    10171
+    10174
+    10176
+    10214
+    10246
+    10251
+    10274
+    10350
+    10393
+    10456
+    10618
+  mLightEnabled=true  mDeepEnabled=true
+  mForceIdle=false
+  mUseMotionSensor=true mMotionSensor={Sensor name="significant", vendor="mtk", version=1, type=17, maxRange=1.0, resolution=1.0, power=0.001, minDelay=-1}
+  mScreenOn=true
+  mScreenLocked=false
+  mNetworkConnected=true
+  mCharging=true
+  activeEmergencyCall=false
+  mMotionActive=false
+  mNotMoving=true
+  mMotionListener.activatedTimeElapsed=542599664
+  mLastMotionEventElapsed=541112337
+  0 stationary listeners registered
+  Location prefetching disabled
+  mState=ACTIVE mLightState=ACTIVE
+  mInactiveTimeout=+15s0ms
+  mNextLightIdleDelay=+5m0s0ms (flex=+1m0s0ms)
+  mCurLightIdleBudget=+1m0s0ms
++zsh:10> adb -s ZXKRS4VKGQ8PWGEQ shell dumpsys deviceidle whitelist
+system-excidle,com.android.providers.calendar,10091
+system-excidle,com.tct.smart.aota,10079
+system-excidle,com.tct.smart.cota,1000
+system-excidle,com.android.providers.downloads,10084
+system-excidle,com.ironsource.appcloud.oobe.hutchison,10160
+system-excidle,com.google.android.apps.safetyhub,10174
+system-excidle,com.android.vending,10180
+system-excidle,com.aura.oobe.vodafone,10159
+system-excidle,com.tcl.fota.system,1000
+system-excidle,com.facebook.services,10274
+system-excidle,com.tct.aio,2951
+system-excidle,com.google.android.devicelockcontroller,10251
+system-excidle,com.google.ambient.streaming,10164
+system-excidle,com.orange.update,10157
+system-excidle,com.android.cellbroadcastreceiver,10081
+system-excidle,com.google.android.gms,10176
+system-excidle,com.android.proxyhandler,10094
+system-excidle,com.android.imsserviceentitlement,10171
+system-excidle,com.google.android.apps.turbo,10178
+system-excidle,com.android.shell,2000
+system-excidle,com.google.android.apps.carrier.carrierwifi,10166
+system-excidle,com.android.emergency,10214
+system-excidle,com.dti.bouyguestelecom,10350
+system-excidle,com.facebook.appmanager,10275
+system-excidle,com.google.android.cellbroadcastreceiver,10246
+system-excidle,com.orange.aura.oobe,10158
+system-excidle,com.android.providers.contacts,10078
+system,com.android.providers.calendar,10091
+system,com.tct.smart.aota,10079
+system,com.tct.smart.cota,1000
+system,com.android.providers.downloads,10084
+system,com.ironsource.appcloud.oobe.hutchison,10160
+system,com.google.android.apps.safetyhub,10174
+system,com.aura.oobe.vodafone,10159
+system,com.tcl.fota.system,1000
+system,com.facebook.services,10274
+system,com.tct.aio,2951
+system,com.google.android.devicelockcontroller,10251
+system,com.google.ambient.streaming,10164
+system,com.orange.update,10157
+system,com.android.cellbroadcastreceiver,10081
+system,com.google.android.gms,10176
+system,com.android.imsserviceentitlement,10171
+system,com.android.shell,2000
+system,com.google.android.apps.carrier.carrierwifi,10166
+system,com.android.emergency,10214
+system,com.dti.bouyguestelecom,10350
+system,com.google.android.cellbroadcastreceiver,10246
+system,com.orange.aura.oobe,10158
+user,au.com.shiftyjelly.pocketcasts,10456
+user,com.tcl.fota.system,1000
+user,com.greenart7c3.nostrsigner,10393
+user,com.wispr.flowapp,10618
+user,com.android.phone,1001
++zsh:11> adb -s ZXKRS4VKGQ8PWGEQ shell dumpsys package com.reader.app
+Activity Resolver Table:
+  Full MIME Types:
+      text/html:
+        8c2eef6 com.reader.app/.ui.MainActivity filter 33c1564
+          Action: "android.intent.action.SEND"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+          StaticType: "text/html"
+      text/plain:
+        8c2eef6 com.reader.app/.ui.MainActivity filter 33c1564
+          Action: "android.intent.action.SEND"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+          StaticType: "text/html"
+        8c2eef6 com.reader.app/.ui.MainActivity filter e71c3cd
+          Action: "android.intent.action.PROCESS_TEXT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+
+  Base MIME Types:
+      text:
+        8c2eef6 com.reader.app/.ui.MainActivity filter 33c1564
+          Action: "android.intent.action.SEND"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+          StaticType: "text/html"
+        8c2eef6 com.reader.app/.ui.MainActivity filter 33c1564
+          Action: "android.intent.action.SEND"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+          StaticType: "text/html"
+        8c2eef6 com.reader.app/.ui.MainActivity filter e71c3cd
+          Action: "android.intent.action.PROCESS_TEXT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        8c2eef6 com.reader.app/.ui.MainActivity filter 812e2f7
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+
+  MIME Typed Actions:
+      android.intent.action.SEND:
+        8c2eef6 com.reader.app/.ui.MainActivity filter 33c1564
+          Action: "android.intent.action.SEND"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+          StaticType: "text/html"
+      android.intent.action.PROCESS_TEXT:
+        8c2eef6 com.reader.app/.ui.MainActivity filter e71c3cd
+          Action: "android.intent.action.PROCESS_TEXT"
+          Category: "android.intent.category.DEFAULT"
+          StaticType: "text/plain"
+
+Receiver Resolver Table:
+  Non-Data Actions:
+      android.intent.action.BATTERY_OKAY:
+        45723d0 com.reader.app/androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryNotLowProxy filter 8e3cfc9
+          Action: "android.intent.action.BATTERY_OKAY"
+          Action: "android.intent.action.BATTERY_LOW"
+      android.intent.action.ACTION_POWER_DISCONNECTED:
+        da70482 com.reader.app/androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy filter 208b793
+          Action: "android.intent.action.ACTION_POWER_DISCONNECTED"
+          Action: "android.intent.action.ACTION_POWER_CONNECTED"
+      androidx.profileinstaller.action.SAVE_PROFILE:
+        7819f94 com.reader.app/androidx.profileinstaller.ProfileInstallReceiver filter 21eab83
+          Action: "androidx.profileinstaller.action.SAVE_PROFILE"
+      android.intent.action.DEVICE_STORAGE_LOW:
+        c4e6ce com.reader.app/androidx.work.impl.background.systemalarm.ConstraintProxy$StorageNotLowProxy filter 37d39ef
+          Action: "android.intent.action.DEVICE_STORAGE_LOW"
+          Action: "android.intent.action.DEVICE_STORAGE_OK"
+      android.net.conn.CONNECTIVITY_CHANGE:
+        1d2acfc com.reader.app/androidx.work.impl.background.systemalarm.ConstraintProxy$NetworkStateProxy filter e509f85
+          Action: "android.net.conn.CONNECTIVITY_CHANGE"
+      android.intent.action.DEVICE_STORAGE_OK:
+        c4e6ce com.reader.app/androidx.work.impl.background.systemalarm.ConstraintProxy$StorageNotLowProxy filter 37d39ef
+          Action: "android.intent.action.DEVICE_STORAGE_LOW"
+          Action: "android.intent.action.DEVICE_STORAGE_OK"
+      androidx.profileinstaller.action.INSTALL_PROFILE:
+        7819f94 com.reader.app/androidx.profileinstaller.ProfileInstallReceiver filter 1483a3d
+          Action: "androidx.profileinstaller.action.INSTALL_PROFILE"
+      android.intent.action.BATTERY_LOW:
+        45723d0 com.reader.app/androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryNotLowProxy filter 8e3cfc9
+          Action: "android.intent.action.BATTERY_OKAY"
+          Action: "android.intent.action.BATTERY_LOW"
+      android.intent.action.TIMEZONE_CHANGED:
+        ecca1da com.reader.app/androidx.work.impl.background.systemalarm.RescheduleReceiver filter f0d860b
+          Action: "android.intent.action.TIMEZONE_CHANGED"
+          Action: "android.intent.action.TIME_SET"
+          Action: "android.intent.action.BOOT_COMPLETED"
+      android.intent.action.TIME_SET:
+        ecca1da com.reader.app/androidx.work.impl.background.systemalarm.RescheduleReceiver filter f0d860b
+          Action: "android.intent.action.TIMEZONE_CHANGED"
+          Action: "android.intent.action.TIME_SET"
+          Action: "android.intent.action.BOOT_COMPLETED"
+      androidx.profileinstaller.action.SKIP_FILE:
+        7819f94 com.reader.app/androidx.profileinstaller.ProfileInstallReceiver filter 5ad9232
+          Action: "androidx.profileinstaller.action.SKIP_FILE"
+      androidx.profileinstaller.action.BENCHMARK_OPERATION:
+        7819f94 com.reader.app/androidx.profileinstaller.ProfileInstallReceiver filter 9a32100
+          Action: "androidx.profileinstaller.action.BENCHMARK_OPERATION"
+      android.intent.action.BOOT_COMPLETED:
+        ecca1da com.reader.app/androidx.work.impl.background.systemalarm.RescheduleReceiver filter f0d860b
+          Action: "android.intent.action.TIMEZONE_CHANGED"
+          Action: "android.intent.action.TIME_SET"
+          Action: "android.intent.action.BOOT_COMPLETED"
+      android.intent.action.ACTION_POWER_CONNECTED:
+        da70482 com.reader.app/androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy filter 208b793
+          Action: "android.intent.action.ACTION_POWER_DISCONNECTED"
+          Action: "android.intent.action.ACTION_POWER_CONNECTED"
+      androidx.work.diagnostics.REQUEST_DIAGNOSTICS:
+        d6301a6 com.reader.app/androidx.work.impl.diagnostics.DiagnosticsReceiver filter a0c77e7
+          Action: "androidx.work.diagnostics.REQUEST_DIAGNOSTICS"
+      androidx.work.impl.background.systemalarm.UpdateProxies:
+        f1b9ce8 com.reader.app/androidx.work.impl.background.systemalarm.ConstraintProxyUpdateReceiver filter c00af01
+          Action: "androidx.work.impl.background.systemalarm.UpdateProxies"
+
+Service Resolver Table:
+  Non-Data Actions:
+      androidx.media3.session.MediaSessionService:
+        4833d39 com.reader.app/.tts.TtsPlaybackService filter b9e9f7e
+          Action: "androidx.media3.session.MediaSessionService"
+
+Domain verification status:
+
+Permissions:
+  Permission [com.reader.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION] (517230e):
+    sourcePackage=com.reader.app
+    uid=10620 gids=[] type=0 prot=signature
+    perm=PermissionInfo{25c612f com.reader.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION}
+    flags=0x0
+
+Registered ContentProviders:
+  com.reader.app/androidx.startup.InitializationProvider:
+    Provider{4be33c com.reader.app/androidx.startup.InitializationProvider}
+
+ContentProvider Authorities:
+  [com.reader.app.androidx-startup]:
+    Provider{4be33c com.reader.app/androidx.startup.InitializationProvider}
+      applicationInfo=ApplicationInfo{bf438c5 com.reader.app}
+
+Key Set Manager:
+  [com.reader.app]
+      Signing KeySets: 265
+
+Packages:
+  Package [com.reader.app] (6517b73):
+    appId=10620
+    pkg=Package{da6621a com.reader.app}
+    codePath=/data/app/~~b1sWHkT-eZ0DtOVNQhd6ew==/com.reader.app-saFzSfqPNKkCFH244tzfTw==
+    resourcePath=/data/app/~~b1sWHkT-eZ0DtOVNQhd6ew==/com.reader.app-saFzSfqPNKkCFH244tzfTw==
+    legacyNativeLibraryDir=/data/app/~~b1sWHkT-eZ0DtOVNQhd6ew==/com.reader.app-saFzSfqPNKkCFH244tzfTw==/lib
+    extractNativeLibs=false
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=1 minSdk=26 targetSdk=34
+    minExtensionVersions=[]
+    versionName=0.1.0
+    hiddenApiEnforcementPolicy=2
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PARTIALLY_DIRECT_BOOT_AWARE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    forceQueryable=false
+    pageSizeCompat=0
+    scannedAsStoppedSystemApp=false
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2026-09-04 15:06:12
+    lastUpdateTime=2026-09-04 15:06:13
+    installerPackageName=null
+    installerPackageUid=-1
+    initiatingPackageName=com.android.shell
+    originatingPackageName=null
+    packageSource=1
+    appMetadataFilePath=null
+    appMetadataSource=0
+    signatures=PackageSignatures{e4807ef version:2, signatures:[9d0bbab0], past signatures:[]}
+    installPermissionsFixed=false
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PARTIALLY_DIRECT_BOOT_AWARE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    apexModuleName=null
+    declared permissions:
+      com.reader.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: prot=signature
+    requested permissions:
+      android.permission.FOREGROUND_SERVICE
+      android.permission.RECEIVE_BOOT_COMPLETED
+      android.permission.INTERNET
+      com.reader.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+      android.permission.ACCESS_NETWORK_STATE
+      android.permission.CAMERA
+      android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK
+      android.permission.WAKE_LOCK
+    install permissions:
+      android.permission.FOREGROUND_SERVICE: granted=true
+      android.permission.RECEIVE_BOOT_COMPLETED: granted=true
+      android.permission.INTERNET: granted=true
+      com.reader.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+      android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK: granted=true
+      android.permission.WAKE_LOCK: granted=true
+    User 0: ceDataInode=160602 deDataInode=234445 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false quarantined=false
+      installReason=0
+      dataDir=/data/user/0/com.reader.app
+      firstInstallTime=2026-09-04 10:33:02
+      uninstallReason=0
+      overlay paths:
+        /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk
+        /vendor/overlay/CotaConfig_Grida_OpenMarket_Europe_22000000.apk
+        /data/resource-cache/com.android.systemui-neutral-8I54.frro
+        /data/resource-cache/com.android.systemui-accent-AAeV.frro
+        /data/resource-cache/com.android.systemui-dynamic-CCJ6.frro
+      legacy overlay paths:
+        /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk
+        /vendor/overlay/CotaConfig_Grida_OpenMarket_Europe_22000000.apk
+      gids=[3003]
+      runtime permissions:
+        android.permission.CAMERA: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+      enabledComponents:
+        androidx.work.impl.background.systemalarm.RescheduleReceiver
+        androidx.work.impl.background.systemjob.SystemJobService
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  queries via package name:
+  queries via component:
+    com.tct.smart.sidebar:
+      com.reader.app
+    com.tcl.ai.note:
+      com.reader.app
+    com.android.settings.intelligence:
+      com.reader.app
+    com.google.android.as:
+      com.reader.app
+    com.google.android.as.oss:
+      com.reader.app
+    com.google.android.apps.maps:
+      com.reader.app
+    com.google.android.apps.photos:
+      com.reader.app
+    com.google.android.youtube:
+      com.reader.app
+    com.whatsapp:
+      com.reader.app
+    com.ichi2.anki:
+      com.reader.app
+    com.amazon.kindle:
+      com.reader.app
+    com.openai.chatgpt:
+      com.reader.app
+    com.audible.application:
+      com.reader.app
+    com.kobil.consors:
+      com.reader.app
+    com.farcaster.mobile:
+      com.reader.app
+    com.spotlightsix.zentimerlite2:
+      com.reader.app
+    com.nordvpn.android:
+      com.reader.app
+    com.revolut.revolut:
+      com.reader.app
+    de.tk.tkapp:
+      com.reader.app
+    com.whatsapp.w4b:
+      com.reader.app
+    com.flyersoft.moonreaderp:
+      com.reader.app
+    com.urbandroid.lux:
+      com.reader.app
+    es.aemet:
+      com.reader.app
+    io.gitlab.libre_librivox_listener:
+      com.reader.app
+    dev.zapstore.app:
+      com.reader.app
+    org.sadhguru.miracleofmind:
+      com.reader.app
+    com.ishafoundation.app:
+      com.reader.app
+    com.movistar.android.mimovistar.es:
+      com.reader.app
+    com.linkedin.android:
+      com.reader.app
+    com.sprich.app:
+      com.reader.app
+  queryable via interaction:
+    User 0:
+      [com.tcl.fmradio,com.tcl.providers.config,com.mediatek.location.lppe.main,com.android.dynsystem,com.wapi.wapicertmanager,com.tcl.apnhotfix,com.tct.smart.cota,com.mediatek.carrierexpress,com.tct.wfcsettingsext,com.tcl.ai.interpret,com.tcl.guard,com.tct.smart.miracastcontrol,com.android.settings,com.android.location.fused,com.android.server.telecom,com.tct.fullscreen.resources,com.android.otaprovisioningclient,com.android.mmitest,com.tct.retaildemo,com.tct.secretCode,com.tct.iris,com.tcl,android,com.mediatek,com.android.providers.settings,com.android.keychain,com.tcl.tctapn,com.jrdcom.Elabel,com.android.localtransport,com.android.mmifm,com.tct.setupwizard,com.tcl.fota.system,com.tct.batterywarning,com.tcl.screenrecorder,com.tcl.themehelper,com.android.DeviceAsWebcam,com.tcl.token,com.tctApp.serviceEntitlement,com.tct.systemservice,com.android.carrierconfig,com.mediatek.atci.service,com.tct.onetouchbooster,com.tcl.ttvs,com.tct.smart.switchphone,com.android.inputdevices]:
+        com.reader.app
+      com.google.android.gms:
+        com.reader.app
+      com.google.android.permissioncontroller:
+        com.reader.app
+      com.sprich.app:
+        com.reader.app
+      com.reader.app:
+        [com.tcl.fmradio,com.tcl.providers.config,com.mediatek.location.lppe.main,com.android.dynsystem,com.wapi.wapicertmanager,com.tcl.apnhotfix,com.tct.smart.cota,com.mediatek.carrierexpress,com.tct.wfcsettingsext,com.tcl.ai.interpret,com.tcl.guard,com.tct.smart.miracastcontrol,com.android.settings,com.android.location.fused,com.android.server.telecom,com.tct.fullscreen.resources,com.android.otaprovisioningclient,com.android.mmitest,com.tct.retaildemo,com.tct.secretCode,com.tct.iris,com.tcl,android,com.mediatek,com.android.providers.settings,com.android.keychain,com.tcl.tctapn,com.jrdcom.Elabel,com.android.localtransport,com.android.mmifm,com.tct.setupwizard,com.tcl.fota.system,com.tct.batterywarning,com.tcl.screenrecorder,com.tcl.themehelper,com.android.DeviceAsWebcam,com.tcl.token,com.tctApp.serviceEntitlement,com.tct.systemservice,com.android.carrierconfig,com.mediatek.atci.service,com.tct.onetouchbooster,com.tcl.ttvs,com.tct.smart.switchphone,com.android.inputdevices]
+  queryable via uses-library:
+
+Dexopt state:
+  [com.reader.app]
+    path: /data/app/~~b1sWHkT-eZ0DtOVNQhd6ew==/com.reader.app-saFzSfqPNKkCFH244tzfTw==/base.apk
+      arm64: [status=run-from-apk] [reason=unknown] [primary-abi]
+        [location is error]
+
+Compiler stats:
+  [com.reader.app]
+    (No recorded stats)

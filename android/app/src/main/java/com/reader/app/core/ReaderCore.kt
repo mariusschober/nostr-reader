@@ -3,9 +3,9 @@ package com.reader.app.core
 import java.security.MessageDigest
 import java.text.Normalizer
 
-/** Kotlin mirror of rust-core + PROTOCOL.md. Golden-v1 gates every release. */
+/** Kotlin mirror of rust-core + PROTOCOL.md. Codec-v2 gates every release. */
 object ReaderCore {
-  const val READER_PROTOCOL = "reader/1"
+  const val READER_PROTOCOL = "reader/2"
   const val RUMOR_KIND = 30078
   const val SYNC_WINDOW_DAYS = 10L
   const val TRANSPORT_TTL_DAYS = 7L
@@ -109,7 +109,9 @@ object ReaderCore {
     }
   }
 
-  fun checkLimits(compressedBytes: Int, titleLen: Int, urlLen: Int, chunkCount: Int) {
+  fun checkLimits(compressedBytes: Int, expandedBytes: Int, titleLen: Int, urlLen: Int, chunkCount: Int) {
+    require(expandedBytes in 1..MAX_EXPANDED_BYTES) { "expanded transfer must be 1 byte to 20 MiB" }
+    require(compressedBytes >= 1) { "compressed transfer must not be empty" }
     require(compressedBytes <= MAX_COMPRESSED_BYTES) { "compressed transfer exceeds 5 MiB" }
     require(chunkCount <= MAX_CHUNKS) { "chunk count exceeds 512" }
     require(titleLen <= MAX_TITLE_LEN) { "title too long" }

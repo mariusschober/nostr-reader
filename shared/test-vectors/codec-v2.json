@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "protocol": "reader/2",
+  "profile": {
+    "format": "gzip",
+    "rfc": 1952,
+    "members": 1,
+    "deflateLevel": 6,
+    "mtime": 0,
+    "flags": 0,
+    "xfl": 0,
+    "operatingSystem": 3,
+    "maxCompressedBytes": 5242880,
+    "maxExpandedBytes": 20971520
+  },
+  "vectors": [
+    {
+      "name": "golden",
+      "source": "Hello Reader\n\nThis is a golden-vector article. It has two paragraphs.\n\n- one\n- two\n",
+      "canonicalMarkdown": "Hello Reader\n\nThis is a golden-vector article. It has two paragraphs.\n\n- one\n- two\n",
+      "uncompressedBytes": 83,
+      "documentSha256": "78dad25a190e768000a895240766cbbcaab76c3d49db0129b5ba703ce5bff2d8",
+      "chromeGzipBytes": 94,
+      "chromeGzipSha256": "b4a6e8f8a8f91c748edda5f2d3a69cf4c2cf56d11faf19cf1fd4a78efd0d0a5a",
+      "chromeGzipHex": "1f8b08000000000000030dc9c109c0200c46e17ba6f817a873b4d7d205820615829118daf52b3cbecb3b45d5700b1771a2a7f5851da39a1619c72b39ccc11e3dab245c81c60bf119263b57e7d956223a6043b67bd00fafc98df853000000",
+      "chromeGzipBase64": "H4sIAAAAAAAAAw3JwQnAIAxG4Xum+Beoc7TX0gWCBhWCkRja9Ss8vss7RdVwCxdxoqf1hR2jmhYZxys5zMEePaskXIHGC/EZJjtX59lWIjpgQ7Z70A+vyY34UwAAAA==",
+      "normativeGzipBytes": 94,
+      "normativeGzipSha256": "48b62ecde436715fa428e3302965e03e96a5405a7cb16cfb7b1648e8d00f84d9",
+      "normativeGzipHex": "1f8b08000000000000030dc9c109c0200c46e17ba6f817a873b4d7d205820615829118daf52b3cdee53b45d5700b1771a2a7f5851da39a1619c72b39ccc11e3dab245c81c60bf119263b57e7d956223a6043f637d00fafc98df853000000",
+      "normativeGzipBase64": "H4sIAAAAAAAAAw3JwQnAIAxG4Xum+Beoc7TX0gWCBhWCkRja9Ss83uU7RdVwCxdxoqf1hR2jmhYZxys5zMEePaskXIHGC/EZJjtX59lWIjpgQ/Y30A+vyY34UwAAAA=="
+    },
+    {
+      "name": "unicode",
+      "source": "Café ☕️ — 你好\r\n\r\nEmoji: 👩🏽‍💻   \r\n",
+      "canonicalMarkdown": "Café ☕️ — 你好\n\nEmoji: 👩🏽‍💻\n",
+      "uncompressedBytes": 48,
+      "documentSha256": "f76403fac57c6fe6f025017e92b8cacc247a6a21ef2196dd00454fa1f7720ac9",
+      "chromeGzipBytes": 71,
+      "chromeGzipSha256": "60d3d90ba375f855753156b8876b5580a7c00ddde3ae9dee138c2500556768a3",
+      "chromeGzipHex": "1f8b0800000000000003013000cfff436166c3a920e29895efb88f20e2809420e4bda0e5a5bd0a0a456d6f6a693a20f09f91a9f09f8fbde2808df09f92bb0a2449141930000000",
+      "chromeGzipBase64": "H4sIAAAAAAAAAwEwAM//Q2Fmw6kg4piV77iPIOKAlCDkvaDlpb0KCkVtb2ppOiDwn5Gp8J+PveKAjfCfkrsKJEkUGTAAAAA=",
+      "normativeGzipBytes": 71,
+      "normativeGzipSha256": "60d3d90ba375f855753156b8876b5580a7c00ddde3ae9dee138c2500556768a3",
+      "normativeGzipHex": "1f8b0800000000000003013000cfff436166c3a920e29895efb88f20e2809420e4bda0e5a5bd0a0a456d6f6a693a20f09f91a9f09f8fbde2808df09f92bb0a2449141930000000",
+      "normativeGzipBase64": "H4sIAAAAAAAAAwEwAM//Q2Fmw6kg4piV77iPIOKAlCDkvaDlpb0KCkVtb2ppOiDwn5Gp8J+PveKAjfCfkrsKJEkUGTAAAAA="
+    },
+    {
+      "name": "empty-input",
+      "source": "",
+      "canonicalMarkdown": "\n",
+      "uncompressedBytes": 1,
+      "documentSha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "chromeGzipBytes": 21,
+      "chromeGzipSha256": "7fa5a93246b84491c51c9c8b4493d30518932a2bb45d67df757bc8a332b1f2d1",
+      "chromeGzipHex": "1f8b0800000000000003e302009306d73201000000",
+      "chromeGzipBase64": "H4sIAAAAAAAAA+MCAJMG1zIBAAAA",
+      "normativeGzipBytes": 21,
+      "normativeGzipSha256": "7fa5a93246b84491c51c9c8b4493d30518932a2bb45d67df757bc8a332b1f2d1",
+      "normativeGzipHex": "1f8b0800000000000003e302009306d73201000000",
+      "normativeGzipBase64": "H4sIAAAAAAAAA+MCAJMG1zIBAAAA"
+    }
+  ]
+}

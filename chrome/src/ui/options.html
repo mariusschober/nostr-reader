@@ -1,19 +1,187 @@
-<!doctype html><html><head><meta charset="utf-8"><style>
-body{font-family:system-ui;background:#FFFCF0;color:#100F0F;max-width:640px;margin:32px auto;padding:20px}
-section{border-top:1px solid #CECDC3;padding:12px 0}
-</style></head><body>
-<h2>Reader settings</h2>
-<section><h3>Connected device</h3><div id="dev">…</div></section>
-<section><h3>AI buttons</h3>
-<label><input type="checkbox" data-p="chatgpt" checked> ChatGPT</label><br>
-<label><input type="checkbox" data-p="claude" checked> Claude</label><br>
-<label><input type="checkbox" data-p="gemini" checked> Gemini</label><br>
-<label><input type="checkbox" data-p="perplexity" checked> Perplexity</label>
-</section>
-<section><h3>Signing</h3><p>Private device key (Recommended) is default. Browser signer lives under Advanced.</p><div id="signer">…</div></section>
-<section><h3>Advanced</h3><div id="adv">Relays and pending transfers are managed automatically. Pending: <span id="pend">…</span></div></section>
-<script type="module">
-const s = await chrome.runtime.sendMessage({kind:"reader-status"});
-document.getElementById("dev").textContent = s.paired ? "Connected · " + s.relays.join(", ") : "Not paired";
-document.getElementById("pend").textContent = String(s.pending);
-</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Reader settings</title>
+  <style>
+    :root{color-scheme:light}
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,sans-serif;background:#fffcf0;color:#100f0f;max-width:680px;margin:32px auto;padding:20px;line-height:1.45}
+    h2{margin:0 0 16px} h3{margin:0 0 8px}
+    section{border-top:1px solid #cecdc3;padding:18px 0}
+    p{margin:6px 0 12px;color:#575653}
+    .relay-list{list-style:none;margin:12px 0;padding:0;border:1px solid #cecdc3;border-radius:10px;overflow:hidden;background:#fff}
+    .relay-list li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #e6e4d9}
+    .relay-list li:last-child{border-bottom:0}
+    .relay-url{min-width:0;flex:1;overflow-wrap:anywhere}
+    .tag{font-size:12px;color:#6f6e69;background:#f2f0e5;border-radius:999px;padding:2px 7px}
+    .row{display:flex;gap:8px;align-items:end}
+    .field{flex:1}
+    label{display:block;font-weight:600;margin-bottom:5px}
+    input[type="url"]{width:100%;font:inherit;padding:9px 10px;border:1px solid #b7b5ac;border-radius:8px;background:#fff;color:#100f0f}
+    button{font:inherit;padding:9px 12px;border:1px solid #b7b5ac;border-radius:8px;background:#fff;color:#100f0f;cursor:pointer}
+    button.primary{background:#100f0f;color:#fffcf0;border-color:#100f0f}
+    button.remove{padding:5px 8px;font-size:13px}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .message{min-height:20px;margin-top:9px;color:#66800b}
+    .message.error{color:#af3029}
+    .notice{border-left:3px solid #d0a215;padding:8px 10px;margin:12px 0;background:#fff7d6;color:#413e32}
+    @media(max-width:560px){body{margin:0}.row{align-items:stretch;flex-direction:column}.row button{align-self:flex-start}}
+  </style>
+</head>
+<body>
+  <h2>Reader settings</h2>
+  <section>
+    <h3>Connected device</h3>
+    <div id="dev">…</div>
+    <button id="disconnect" type="button" hidden>Disconnect device</button>
+  </section>
+  <section>
+    <h3>Relays</h3>
+    <p>Reader starts with six public relays and requires any two to accept each encrypted payload. You can add up to two custom relays.</p>
+    <ul id="relayList" class="relay-list" aria-label="Configured relays"></ul>
+    <div class="row">
+      <div class="field">
+        <label for="customRelay">Custom relay</label>
+        <input id="customRelay" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="wss://relay.example">
+      </div>
+      <button id="addRelay" type="button">Add relay</button>
+    </div>
+    <div id="relayMessage" class="message" role="status" aria-live="polite"></div>
+    <p>Custom addresses must use <code>wss://</code>. Android checks public DNS destinations during pairing and before every sync.</p>
+    <div id="repairNotice" class="notice" hidden>
+      The saved relay list differs from the connected device. Re-pair to authenticate and apply it on both sides.
+      <div><button id="repair" class="primary" type="button">Re-pair to apply</button></div>
+    </div>
+  </section>
+  <section>
+    <h3>Site access</h3>
+    <p>Inline Reader buttons appear on supported AI sites when Chrome grants Reader access. Manage site access from Chrome's Extensions menu.</p>
+  </section>
+  <section>
+    <h3>Signing</h3>
+    <p>Private device key (Recommended) is default. Browser signer lives under Advanced.</p>
+    <div id="signer">…</div>
+  </section>
+  <section>
+    <h3>Advanced</h3>
+    <div>Pending encrypted transfers: <span id="pend">…</span></div>
+    <p id="deliveryStates">Queued … · Relay accepted … · Awaiting device … · Delivered … · Failed …</p>
+    <p>“Delivered” appears only after an authenticated Android storage acknowledgement.</p>
+    <button id="checkDelivery" type="button">Check delivery status</button>
+    <button id="discardFailed" type="button" hidden>Remove failed transfers</button>
+  </section>
+  <script type="module">
+    const dev = document.getElementById("dev");
+    const pend = document.getElementById("pend");
+    const deliveryStates = document.getElementById("deliveryStates");
+    const discardFailed = document.getElementById("discardFailed");
+    const checkDelivery = document.getElementById("checkDelivery");
+    const relayList = document.getElementById("relayList");
+    const relayInput = document.getElementById("customRelay");
+    const relayMessage = document.getElementById("relayMessage");
+    const addRelay = document.getElementById("addRelay");
+    const disconnect = document.getElementById("disconnect");
+    const repairNotice = document.getElementById("repairNotice");
+    let readerStatus = null;
+
+    function message(text, isError = false) {
+      relayMessage.textContent = text;
+      relayMessage.className = isError ? "message error" : "message";
+    }
+
+    function renderRelays() {
+      relayList.replaceChildren();
+      const custom = new Set(readerStatus.customRelays);
+      for (const relay of readerStatus.configuredRelays) {
+        const row = document.createElement("li");
+        const url = document.createElement("span");
+        url.className = "relay-url";
+        url.textContent = relay;
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = custom.has(relay) ? "Custom" : "Default";
+        row.append(url, tag);
+        if (custom.has(relay)) {
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "remove";
+          remove.textContent = "Remove";
+          remove.setAttribute("aria-label", `Remove ${relay}`);
+          remove.addEventListener("click", () => saveCustom(readerStatus.customRelays.filter((item) => item !== relay)));
+          row.append(remove);
+        }
+        relayList.append(row);
+      }
+      repairNotice.hidden = !readerStatus.relayChangePending;
+      addRelay.disabled = readerStatus.customRelays.length >= 2;
+    }
+
+    async function refresh() {
+      const status = await chrome.runtime.sendMessage({kind:"reader-status"});
+      if (!status.ok) throw new Error(status.error || "Reader status is unavailable.");
+      readerStatus = status;
+      dev.textContent = status.paired ? `Connected · ${status.relays.length} relays` : "Not paired";
+      disconnect.hidden = !status.paired;
+      pend.textContent = String(status.pending);
+      const delivery = status.delivery;
+      deliveryStates.textContent = `Queued ${delivery.queued} · Relay accepted ${delivery.relayAccepted} · Awaiting device ${delivery.awaitingDevice} · Delivered ${delivery.delivered} · Failed ${delivery.failed}`;
+      discardFailed.hidden = delivery.failed === 0;
+      renderRelays();
+    }
+
+    async function saveCustom(relays) {
+      addRelay.disabled = true;
+      message("Saving…");
+      const result = await chrome.runtime.sendMessage({kind:"reader-save-custom-relays", relays});
+      if (!result.ok) {
+        message(result.error || "The relay could not be saved.", true);
+        addRelay.disabled = readerStatus.customRelays.length >= 2;
+        return;
+      }
+      readerStatus = {...readerStatus, ...result};
+      relayInput.value = "";
+      renderRelays();
+      message(result.relayChangePending ? "Saved. Re-pair to apply this relay set." : "Saved.");
+    }
+
+    addRelay.addEventListener("click", () => {
+      const relay = relayInput.value.trim();
+      if (!relay) return message("Enter a relay address first.", true);
+      void saveCustom([...readerStatus.customRelays, relay]);
+    });
+    relayInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") addRelay.click();
+    });
+    document.getElementById("repair").addEventListener("click", () => {
+      void chrome.tabs.create({url: chrome.runtime.getURL("src/ui/pairing.html")});
+    });
+    disconnect.addEventListener("click", async () => {
+      if (!confirm("Disconnect this Android device? Queued articles stay local until you pair again.")) return;
+      const result = await chrome.runtime.sendMessage({kind:"reader-disconnect"});
+      if (!result.ok) return message(result.error || "The device could not be disconnected.", true);
+      message("Device disconnected. Pair again when you are ready.");
+      await refresh();
+    });
+    discardFailed.addEventListener("click", async () => {
+      if (!confirm("Permanently remove all failed transfers and their local captured text?")) return;
+      const result = await chrome.runtime.sendMessage({kind:"reader-discard-failed"});
+      if (!result.ok) return message(result.error || "Failed transfers could not be removed.", true);
+      message(`Removed ${result.discarded} failed transfer${result.discarded === 1 ? "" : "s"}.`);
+      await refresh();
+    });
+    checkDelivery.addEventListener("click", async () => {
+      checkDelivery.disabled = true;
+      message("Checking authenticated device acknowledgements…");
+      const result = await chrome.runtime.sendMessage({kind:"reader-check-acks"});
+      if (!result.ok) message(result.error || "Delivery status could not be checked.", true);
+      else message("Delivery status updated.");
+      await refresh();
+      checkDelivery.disabled = false;
+    });
+
+    try { await refresh(); } catch (error) { message(String(error), true); }
+  </script>
+</body>
+</html>

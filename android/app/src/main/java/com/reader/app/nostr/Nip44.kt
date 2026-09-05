@@ -3,6 +3,8 @@ package com.reader.app.nostr
 import org.bouncycastle.crypto.engines.ChaCha7539Engine
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Mac
@@ -12,12 +14,14 @@ import javax.crypto.spec.SecretKeySpec
 object Nip44 {
   const val VERSION: Byte = 0x02
   const val MIN_PLAINTEXT = 1
-  const val MAX_PLAINTEXT = 65535
+  /** Deliberate mobile resource cap; the wire format itself permits u32 lengths. */
+  const val MAX_PLAINTEXT = 1024 * 1024
+  private const val EXTENDED_PREFIX_THRESHOLD = 65536
   private val random = SecureRandom()
 
   /** Byte-exact reference padding (NIP-44): chunked, not power-of-two. */
   fun calcPaddedLen(len: Int): Int {
-    require(len >= MIN_PLAINTEXT) { "plaintext out of range" }
+    require(len in MIN_PLAINTEXT..MAX_PLAINTEXT) { "plaintext out of range" }
     if (len <= 32) return 32
     var nextPower = 1
     while (nextPower < len) nextPower = nextPower shl 1
@@ -58,6 +62,7 @@ object Nip44 {
   }
 
   fun messageKeys(conversationKey: ByteArray, nonce32: ByteArray): Triple<ByteArray, ByteArray, ByteArray> {
+    require(conversationKey.size == 32)
     require(nonce32.size == 32)
     val keys = expand(conversationKey, nonce32, 76)
     return Triple(
@@ -83,10 +88,19 @@ object Nip44 {
     require(nonce.size == 32)
     val (chachaKey, chachaNonce, hmacKey) = messageKeys(conversationKey, nonce)
     val paddedLen = calcPaddedLen(plainBytes.size)
-    val padded = ByteArray(2 + paddedLen)
-    padded[0] = ((plainBytes.size shr 8) and 0xff).toByte()
-    padded[1] = (plainBytes.size and 0xff).toByte()
-    plainBytes.copyInto(padded, 2)
+    val prefixLen = if (plainBytes.size >= EXTENDED_PREFIX_THRESHOLD) 6 else 2
+    val padded = ByteArray(prefixLen + paddedLen)
+    if (prefixLen == 6) {
+      // Two zero bytes signal the extended u32 big-endian prefix.
+      padded[2] = ((plainBytes.size ushr 24) and 0xff).toByte()
+      padded[3] = ((plainBytes.size ushr 16) and 0xff).toByte()
+      padded[4] = ((plainBytes.size ushr 8) and 0xff).toByte()
+      padded[5] = (plainBytes.size and 0xff).toByte()
+    } else {
+      padded[0] = ((plainBytes.size ushr 8) and 0xff).toByte()
+      padded[1] = (plainBytes.size and 0xff).toByte()
+    }
+    plainBytes.copyInto(padded, prefixLen)
     val ciphertext = chacha(chachaKey, chachaNonce, padded)
     val mac = hmac(hmacKey, nonce + ciphertext)
     val payload = byteArrayOf(VERSION) + nonce + ciphertext + mac
@@ -94,12 +108,17 @@ object Nip44 {
   }
 
   fun decrypt(payloadB64: String, conversationKey: ByteArray): String {
+    require(payloadB64.isNotEmpty() && payloadB64.first() != '#') { "unknown version" }
+    val maxRaw = 1 + 32 + 6 + calcPaddedLen(MAX_PLAINTEXT) + 32
+    val maxB64 = 4 * ((maxRaw + 2) / 3)
+    require(payloadB64.length in 132..maxB64 && payloadB64.length % 4 == 0) { "bad payload length" }
+    require(payloadB64.matches(Regex("^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"))) { "bad base64" }
     val payload = try {
       Base64.getDecoder().decode(payloadB64)
     } catch (e: Exception) {
       throw IllegalArgumentException("bad base64")
     }
-    require(payload.size >= 99 && payload.size <= 65603 + 32) { "bad payload length" }
+    require(payload.size in 99..maxRaw) { "bad payload length" }
     require(payload[0] == VERSION) { "unknown version" }
     val nonce = payload.copyOfRange(1, 33)
     val ciphertext = payload.copyOfRange(33, payload.size - 32)
@@ -109,11 +128,27 @@ object Nip44 {
     if (!MessageDigestIsEqual(expected, mac)) throw IllegalArgumentException("bad mac")
     val padded = chacha(chachaKey, chachaNonce, ciphertext)
     require(padded.size >= 2) { "bad padded" }
-    val unpaddedLen = ((padded[0].toInt() and 0xff) shl 8) or (padded[1].toInt() and 0xff)
+    val shortLen = ((padded[0].toInt() and 0xff) shl 8) or (padded[1].toInt() and 0xff)
+    val prefixLen: Int
+    val unpaddedLen: Int
+    if (shortLen == 0) {
+      require(padded.size >= 6) { "bad extended padding" }
+      val longLen = ByteBuffer.wrap(padded, 2, 4).int.toLong() and 0xffffffffL
+      require(longLen in EXTENDED_PREFIX_THRESHOLD.toLong()..MAX_PLAINTEXT.toLong()) { "bad extended padding" }
+      unpaddedLen = longLen.toInt()
+      prefixLen = 6
+    } else {
+      unpaddedLen = shortLen
+      prefixLen = 2
+    }
     require(unpaddedLen in MIN_PLAINTEXT..MAX_PLAINTEXT) { "bad unpadded len" }
-    require(padded.size == 2 + calcPaddedLen(unpaddedLen)) { "bad padding length" }
-    for (i in 2 + unpaddedLen until padded.size) require(padded[i] == 0.toByte()) { "nonzero padding" }
-    return padded.copyOfRange(2, 2 + unpaddedLen).toString(Charsets.UTF_8)
+    require(padded.size == prefixLen + calcPaddedLen(unpaddedLen)) { "bad padding length" }
+    for (i in prefixLen + unpaddedLen until padded.size) require(padded[i] == 0.toByte()) { "nonzero padding" }
+    return Charsets.UTF_8.newDecoder()
+      .onMalformedInput(CodingErrorAction.REPORT)
+      .onUnmappableCharacter(CodingErrorAction.REPORT)
+      .decode(ByteBuffer.wrap(padded, prefixLen, unpaddedLen))
+      .toString()
   }
 
   private fun MessageDigestIsEqual(a: ByteArray, b: ByteArray): Boolean {

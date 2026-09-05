@@ -1,8 +1,9 @@
 // Reader core algorithms (TS mirror of rust-core + PROTOCOL.md).
-export const READER_PROTOCOL = "reader/1";
+export const READER_PROTOCOL = "reader/2";
 export const RUMOR_KIND = 30078;
 export const SYNC_WINDOW_DAYS = 10;
 export const MAX_COMPRESSED_BYTES = 5 * 1024 * 1024;
+export const MAX_EXPANDED_BYTES = 20 * 1024 * 1024;
 export const MAX_CHUNKS = 512;
 export const MAX_TITLE_LEN = 500;
 export const MAX_URL_LEN = 2000;
@@ -84,7 +85,9 @@ export function rsvpFactor(token: string, paragraphBreak: boolean, headingBreak:
   return f;
 }
 
-export function checkLimits(args: { compressedBytes: number; titleLen: number; urlLen: number; chunkCount: number }): void {
+export function checkLimits(args: { compressedBytes: number; expandedBytes: number; titleLen: number; urlLen: number; chunkCount: number }): void {
+  if (args.expandedBytes < 1 || args.expandedBytes > MAX_EXPANDED_BYTES) throw new Error("expanded transfer must be 1 byte to 20 MiB");
+  if (args.compressedBytes < 1) throw new Error("compressed transfer must not be empty");
   if (args.compressedBytes > MAX_COMPRESSED_BYTES) throw new Error("compressed transfer exceeds 5 MiB");
   if (args.chunkCount > MAX_CHUNKS) throw new Error("chunk count exceeds 512");
   if (args.titleLen > MAX_TITLE_LEN) throw new Error("title too long");

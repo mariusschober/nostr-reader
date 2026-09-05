@@ -1,0 +1,26 @@
+Status: PASS for the single observed transfer; this is not the 50/50 reliability gate.
+Device: physical TCL T807D
+Protocol: reader/2 and reader-pair/2
+Payload: synthetic, non-sensitive test article
+Transfer ID retained only as prefix: bbc91e00
+
+Observed on the TCL after restart/catch-up:
+- active channel count: 1
+- authenticated relay count: 7
+- every configured relay returned the encrypted transfer wrappers
+- the document was already present and was classified as duplicate, not inserted again
+- one ACK batch was emitted for the transfer during the run
+- matching ACK publication result was OK_TRUE on all seven relays
+- later copies of the same transfer in that run were suppressed with ack=already_published_this_run
+
+Observed in Chrome after authenticated ACK catch-up:
+- pending outbox count changed from 1 to 0
+- delivered count changed from 0 to 1
+- the synthetic article appeared exactly once in the TCL UI
+
+Secret-safety boundary:
+- retained evidence contains only public relay URLs, counts, terminal states, and short event/transfer prefixes
+- no key, QR bearer, ciphertext, plaintext body, complete challenge, or signer response is retained
+
+Limitation discovered:
+- a later periodic catch-up run can emit another duplicate ACK batch for a relay-retained transfer; this is bounded by event expiry and is recorded in KNOWN_LIMITATIONS.md.

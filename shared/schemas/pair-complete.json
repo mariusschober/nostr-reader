@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReaderPairCompleteV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "type",
+    "sessionId",
+    "chromeDevicePubkey",
+    "androidChannelPubkey",
+    "relaySetDigest",
+    "status",
+    "createdAt",
+    "expiresAt"
+  ],
+  "properties": {
+    "protocol": { "const": "reader-pair/2" },
+    "type": { "const": "pair-complete" },
+    "sessionId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "chromeDevicePubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "androidChannelPubkey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "relaySetDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "status": { "const": "connected" },
+    "createdAt": { "type": "integer" },
+    "expiresAt": { "type": "integer" }
+  }
+}

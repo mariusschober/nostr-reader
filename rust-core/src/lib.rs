@@ -1,10 +1,10 @@
-//! reader-core: normative Reader v1 algorithms (PROTOCOL.md).
-//! Thin shells (Kotlin/TS/Swift) must mirror this file and pass golden-v1.
+//! reader-core: normative Reader v2 algorithms (PROTOCOL.md).
+//! Thin shells (Kotlin/TS/Swift) must mirror this file and pass codec-v2.
 
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
-pub const READER_PROTOCOL: &str = "reader/1";
+pub const READER_PROTOCOL: &str = "reader/2";
 pub const SYNC_WINDOW_DAYS: i64 = 10;
 pub const TRANSPORT_TTL_DAYS: i64 = 7;
 pub const MAX_COMPRESSED_BYTES: usize = 5 * 1024 * 1024;
@@ -75,14 +75,18 @@ pub fn document_id(canonical_markdown: &str) -> String {
 }
 
 /// Gzip the canonical document (mtime=0 for determinism) and split into
-/// `chunk_size`-byte data slices. Caller wraps each slice in DocumentChunkV1.
+/// `chunk_size`-byte data slices. Caller wraps each slice in DocumentChunkV2.
 pub fn pack_chunks(canonical: &str, chunk_size: usize) -> Result<(Vec<u8>, Vec<Vec<u8>>), String> {
     use flate2::{Compression, GzBuilder};
     if chunk_size == 0 {
         return Err("chunk_size must be > 0".into());
     }
+    if canonical.is_empty() || canonical.len() > MAX_EXPANDED_BYTES {
+        return Err("expanded transfer must be 1 byte to 20 MiB".into());
+    }
     let mut enc = GzBuilder::new()
         .mtime(0)
+        .operating_system(3)
         .write(Vec::new(), Compression::default());
     use std::io::Write;
     enc.write_all(canonical.as_bytes()).map_err(|e| e.to_string())?;
@@ -101,6 +105,31 @@ pub fn pack_chunks(canonical: &str, chunk_size: usize) -> Result<(Vec<u8>, Vec<V
         return Err("chunk count exceeds 512".into());
     }
     Ok((gz, chunks))
+}
+
+/// Decode the one-member deterministic Reader v2 gzip profile with strict
+/// compressed and expanded limits. CRC/ISIZE are verified by flate2.
+pub fn unpack_gzip(gzip: &[u8]) -> Result<Vec<u8>, String> {
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+    const HEADER: [u8; 10] = [0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 3];
+    if gzip.len() < 18 || gzip.len() > MAX_COMPRESSED_BYTES {
+        return Err("invalid Reader gzip size".into());
+    }
+    if gzip[..10] != HEADER {
+        return Err("invalid Reader gzip framing".into());
+    }
+    let mut decoder = GzDecoder::new(gzip);
+    let mut decoded = Vec::new();
+    decoder
+        .by_ref()
+        .take((MAX_EXPANDED_BYTES + 1) as u64)
+        .read_to_end(&mut decoded)
+        .map_err(|_| "invalid or truncated Reader gzip stream".to_string())?;
+    if decoded.is_empty() || decoded.len() > MAX_EXPANDED_BYTES {
+        return Err("expanded transfer must be 1 byte to 20 MiB".into());
+    }
+    Ok(decoded)
 }
 
 /// Rolling-window sync: return query `since` for now (unix secs).
@@ -151,7 +180,7 @@ pub fn rsvp_factor(token: &str, paragraph_break: bool, heading_break: bool) -> f
         return 2.7;
     }
     let len = token.chars().count();
-    let mut f = 1.0;
+    let mut f: f64 = 1.0;
     if len > 12 {
         f = 1.2;
     } else if len > 8 {
@@ -209,6 +238,11 @@ pub fn narrate_sentences(blocks: &[(&str, bool)]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
+
+    fn codec_fixture() -> Value {
+        serde_json::from_str(include_str!("../../shared/test-vectors/codec-v2.json")).unwrap()
+    }
 
     #[test]
     fn golden_document_id() {
@@ -218,6 +252,54 @@ mod tests {
             document_id(md),
             "78dad25a190e768000a895240766cbbcaab76c3d49db0129b5ba703ce5bff2d8"
         );
+    }
+
+    #[test]
+    fn codec_v2_vectors_are_exact_and_decodable() {
+        let fixture = codec_fixture();
+        assert_eq!(fixture["protocol"], READER_PROTOCOL);
+        for vector in fixture["vectors"].as_array().unwrap() {
+            let source = vector["source"].as_str().unwrap();
+            let canonical = vector["canonicalMarkdown"].as_str().unwrap();
+            assert_eq!(canonicalize(source), canonical);
+            let (gzip, chunks) = pack_chunks(canonical, 32 * 1024).unwrap();
+            assert_eq!(chunks.len(), 1);
+            assert_eq!(sha256_hex(&gzip), vector["normativeGzipSha256"].as_str().unwrap());
+            assert_eq!(hex_encode(&gzip), vector["normativeGzipHex"].as_str().unwrap());
+            let chrome = vector["chromeGzipHex"].as_str().unwrap();
+            let chrome_bytes = (0..chrome.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&chrome[i..i + 2], 16).unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(unpack_gzip(&chrome_bytes).unwrap(), canonical.as_bytes());
+            assert_eq!(unpack_gzip(&gzip).unwrap(), canonical.as_bytes());
+            assert_eq!(pack_chunks(canonical, 32 * 1024).unwrap().0, gzip);
+        }
+    }
+
+    #[test]
+    fn codec_v2_rejects_wrong_truncated_corrupt_and_oversized_input() {
+        use flate2::{Compression, GzBuilder};
+        use std::io::Write;
+        let (good, _) = pack_chunks("safe\n", 1024).unwrap();
+        let mut zlib = vec![0x78, 0x9c];
+        zlib.extend_from_slice(&good[10..good.len() - 8]);
+        assert!(unpack_gzip(&zlib).is_err());
+        assert!(unpack_gzip(&good[..good.len() - 1]).is_err());
+        let mut corrupt = good.clone();
+        let trailer = corrupt.len() - 8;
+        corrupt[trailer] ^= 1;
+        assert!(unpack_gzip(&corrupt).is_err());
+        assert!(unpack_gzip(&vec![0; MAX_COMPRESSED_BYTES + 1]).is_err());
+        assert!(pack_chunks(&"x".repeat(MAX_EXPANDED_BYTES + 1), 1024).is_err());
+
+        let too_large = vec![0u8; MAX_EXPANDED_BYTES + 1];
+        let mut encoder = GzBuilder::new()
+            .mtime(0)
+            .operating_system(3)
+            .write(Vec::new(), Compression::default());
+        encoder.write_all(&too_large).unwrap();
+        assert!(unpack_gzip(&encoder.finish().unwrap()).is_err());
     }
 
     #[test]

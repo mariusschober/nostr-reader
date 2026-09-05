@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+if [ -n "$(git -C "$repo_dir" status --porcelain --untracked-files=no)" ]; then
+  echo "Refusing artifact build: tracked worktree is dirty." >&2
+  exit 1
+fi
+
+mkdir -p "$repo_dir/artifacts"
+
+cd "$repo_dir/chrome"
+npm ci
+npm audit --omit=dev
+npm audit
+npm run typecheck
+npm test
+npm run build
+npm sbom --package-lock-only --sbom-format cyclonedx --sbom-type application > "$repo_dir/artifacts/chrome-sbom.cdx.json"
+
+cd "$repo_dir"
+rm -f "$repo_dir/artifacts/reader-chrome-extension.zip"
+(cd "$repo_dir/chrome/dist" && zip -X -q -r "$repo_dir/artifacts/reader-chrome-extension.zip" .)
+unzip -t "$repo_dir/artifacts/reader-chrome-extension.zip"
+
+cd "$repo_dir/android"
+./gradlew clean test lint assembleDebug assembleDebugAndroidTest
+./gradlew -q app:dependencies --configuration debugRuntimeClasspath > "$repo_dir/artifacts/android-debug-runtime-dependencies.txt"
+cp "$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk" "$repo_dir/artifacts/reader-debug.apk"
+cp "$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" "$repo_dir/artifacts/reader-debug-androidTest.apk"
+
+cd "$repo_dir/rust-core"
+cargo test
+
+cd "$repo_dir/mac"
+swift test
+
+cd "$repo_dir"
+node scripts/write-artifact-manifest.mjs

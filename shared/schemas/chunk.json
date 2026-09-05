@@ -1,15 +1,30 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "DocumentChunkV1",
+  "title": "DocumentChunkV2",
   "type": "object",
-  "required": ["protocol", "type", "transferId", "documentId", "index", "count", "dataBase64"],
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "type",
+    "transferId",
+    "manifestId",
+    "documentId",
+    "compressedSha256",
+    "index",
+    "count",
+    "dataBase64",
+    "expiresAt"
+  ],
   "properties": {
-    "protocol": { "const": "reader/1" },
+    "protocol": { "const": "reader/2" },
     "type": { "const": "chunk" },
-    "transferId": { "type": "string", "minLength": 16, "maxLength": 64 },
+    "transferId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "manifestId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "documentId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "compressedSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "index": { "type": "integer", "minimum": 0, "maximum": 511 },
     "count": { "type": "integer", "minimum": 1, "maximum": 512 },
-    "dataBase64": { "type": "string", "minLength": 1, "maxLength": 200000 }
+    "dataBase64": { "type": "string", "minLength": 1, "maxLength": 200000 },
+    "expiresAt": { "type": "integer" }
   }
 }

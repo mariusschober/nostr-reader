@@ -2,7 +2,7 @@
 name = "reader-core"
 version = "0.1.0"
 edition = "2021"
-description = "Normative Reader v1 algorithms: canonicalization, hashing, packing, RSVP/TTS models, limits"
+description = "Normative Reader v2 algorithms: canonicalization, hashing, gzip packing, RSVP/TTS models, limits"
 
 [lib]
 name = "reader_core"

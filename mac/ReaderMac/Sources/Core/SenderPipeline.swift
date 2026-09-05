@@ -12,10 +12,10 @@ public enum SenderPipeline {
         public let wordCount: Int
     }
 
-    public static func prepare(title: String, markdown: String) -> Prepared {
+    public static func prepare(title: String, markdown: String) throws -> Prepared {
         let canonical = ReaderCore.canonicalize(markdown)
         let data = Data(canonical.utf8)
-        let gzipped = (try? (data as NSData).compressed(using: .zlib) as Data) ?? data
+        let gzipped = try ReaderGzip.encode(data)
         return Prepared(
             transferId: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
             documentId: ReaderCore.documentId(canonical),
