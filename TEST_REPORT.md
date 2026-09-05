@@ -16,6 +16,12 @@ failure has a matching relay trace and source-linked cause. One real v2
 Chrome/TCL pairing with seven relays completed; one synthetic article was
 stored once; Android's authenticated ACK cleared Chrome's outbox.
 
+The ACK-durability follow-up was installed byte-for-byte on both physical
+phones. Six instrumentation cases passed on each. The preserved TCL then
+migrated to Room v5, emitted one expected historical recovery ACK batch, and an
+immediately serialized second catch-up read the retained events without another
+ACK or document mutation.
+
 The full task is not labeled PASS because the requested 20/20 and 50/50
 physical reliability series, several lifecycle/network scenarios, and a second
 public transfer of the exact final artifact were not executed. See
@@ -66,7 +72,7 @@ locations are relative to this branch.
 | MEDIUM M3 `sent` item stranded | Chrome `service-worker.ts:153`, alarm pending-only | no ACK meant permanent nonretry | retryable states/backoff/age ceiling, ACK-only deletion | delivery-state/recovery tests | PASS |
 | MEDIUM M4 “instant” background claim | Android periodic WorkManager | OS makes timing inexact | docs now say catch-up; immediate resume work added | source/emulator; broad physical timing NOT MEASURED | PASS documentation/implementation truth |
 | MEDIUM M5 documentation drift | `PROTOCOL.md`, `SECURITY.md`, old report | claims exceeded implementation/evidence | regenerated v2 documentation set | manual cross-check + tests | PASS |
-| MEDIUM M6 receiver ACK was only deduped in memory | pre-follow-up `SyncWorker` per-run set | a later catch-up could republish a completed ACK; process death after document commit had no durable ACK owner | Room v5 `ack_intents` + `processed_events`; serialized bounded quorum retry | 75 JVM tests + six-case physical instrumentation; installed-state check reported separately | PASS deterministic; physical interruption matrix NOT MEASURED |
+| MEDIUM M6 receiver ACK was only deduped in memory | pre-follow-up `SyncWorker` per-run set | a later catch-up could republish a completed ACK; process death after document commit had no durable ACK owner | Room v5 `ack_intents` + `processed_events`; serialized bounded quorum retry | 75 JVM tests, six-case tests on both phones, one TCL installed-state repeat | PASS for executed evidence; physical interruption matrix NOT MEASURED |
 
 ## 3. Test matrix
 
@@ -84,8 +90,10 @@ locations are relative to this branch.
 | Chrome persistence | paired CFT profile | reload/restart + status | pairing/outbox survive | paired, exact seven relays, delivered 1, pending 0 | `chrome-paired-status-*` | PASS |
 | Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 75 tests, 0 failures/errors | XML reports | PASS |
 | Android lint/build | Android SDK 34 | `lintDebug assembleDebug assembleDebugAndroidTest` | 0 errors; APKs | success, 0 lint errors, 29 retained warnings | Gradle/lint report | PASS |
-| Android instrumentation | API-26 emulator | six DB/codec/transfer cases | all pass | 6/6 | emulator run/screenshots | PASS |
-| Android instrumentation | physical TCL T807D | same six cases | all pass | 6/6 | instrumentation output | PASS |
+| Android instrumentation | API-26 emulator | earlier six-case DB/codec/transfer suite | all pass | 6/6 before ACK-ledger extension; current v5 suite not rerun there | emulator run/screenshots | PASS historical; latest emulator run NOT MEASURED |
+| Android instrumentation | physical TCL T807D | exact APK + test APK, six current cases | all pass | 6/6 | `exact-artifact-physical-followup-2026-09-05.txt` | PASS |
+| Android instrumentation | physical Samsung S23 | exact APK + test APK, six current cases | all pass | 6/6 | same evidence | PASS |
+| Android installed-state ACK recovery | preserved paired TCL | v4 -> v5 first catch-up then immediate second serialized catch-up | one bounded recovery ACK; no second ACK | observed exactly | same evidence | PASS for observation |
 | Rust normative core | rustc/cargo 1.97.1 | `cargo test` | all pass | 6/6 | terminal run | PASS |
 | Swift core mirror | Swift 6.3.3 | `swift test` | all pass | 7/7 | terminal run | PASS |
 | public relays | disposable keys | six defaults x2 + Mostr probe | matching OK + exact `#p` read-back | all tested relays pass | `LIVE_RELAY_REPORT.md` | PASS |
@@ -104,9 +112,9 @@ and is **NOT MEASURED**.
 ## 5. Physical TCL matrix
 
 See `TCL_PHYSICAL_VALIDATION.md`. The exact executed counts are one v2 pairing,
-one normal synthetic delivery, one logical duplicate/dedupe observation, and
-one verified ACK/outbox-clear flow. Required reliability quotas remain **NOT
-MEASURED**.
+one normal synthetic delivery, one logical duplicate/dedupe observation, one
+verified ACK/outbox-clear flow, and one v4 -> v5 recovery plus immediate-repeat
+check. Required reliability quotas remain **NOT MEASURED**.
 
 ## 6. Security invariants
 
@@ -118,7 +126,7 @@ MEASURED**.
 | exact recipient/sender/version/expiry | NIP-59 and payload validators | vectors/unit/instrumentation | PASS |
 | SSRF/private relay rejection | URL + DNS-every-connect policy | TS/Kotlin/fault tests | PASS |
 | exactly-once local effect | document hash + atomic Room commit | instrumentation + physical duplicate | PASS |
-| no completed-ACK restart on retained wrappers | Room v5 wrapper ledger + one bounded ACK lifecycle per transfer | unit/instrumentation; installed-state physical check reported separately | PASS deterministic; broad physical matrix NOT MEASURED |
+| no completed-ACK restart on retained wrappers | Room v5 wrapper ledger + one bounded ACK lifecycle per transfer | unit/instrumentation + one installed-state TCL immediate repeat | PASS for executed evidence; broad physical matrix NOT MEASURED |
 | plaintext outbox deletion only on ACK | strict ACK match | Chrome delivery tests + physical state | PASS |
 | secret-free logs/evidence | structural sanitized diagnostics | retained-log/source scan | PASS |
 | no backend/telemetry | direct relay architecture | dependency/source review | PASS |

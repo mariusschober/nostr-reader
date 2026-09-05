@@ -21,11 +21,13 @@ flow. The missing scenarios and counts are not inferred from those successes.
 | Protocol | `reader-pair/2`, `reader/2`, durable kind 1059 |
 | Relay set | six defaults plus custom `wss://relay.mostr.pub`; two-relay write quorum |
 | Physical UTC window | original failure 2026-09-04T19:43:14.839Z–19:43:25.860Z; repaired flow 2026-09-05 |
-| E2E APK/ZIP hashes | exact hashes for the earlier live E2E pair were not retained; final artifacts are installed/tested separately after the audited commit |
+| Earlier E2E APK/ZIP hashes | exact hashes for the original live pair/article were not retained |
+| ACK follow-up APK | SHA-256 `7da2e042595b454d29910ad1322bed3d7eb1a447e54ea7eb671a1d12ddaadbac`; installed base APK matched on TCL and S23 |
 
-The absence of exact earlier E2E artifact hashes means the “exact final
-artifact physically tested end-to-end” acceptance item remains **NOT
-MEASURED**, even though the source path and installed state were subsequently
+The exact follow-up artifact was physically installed and its migration/ACK
+behavior was exercised, but no new article was sent. The “exact final artifact
+physically tested end-to-end with a fresh article” item therefore remains **NOT
+MEASURED**, even though installed bytes, pairing persistence, and catch-up were
 revalidated.
 
 ## Original failure
@@ -55,6 +57,8 @@ revalidated.
 | Chrome outbox clearing | only after verified ACK | pending 1→0, delivered 0→1 | 1/1 | Chrome status | PASS |
 | Extension reload/restart after connection | pairing/outbox persists | repeated reload and same-profile restart retained paired 7-relay state | 1 observed profile | Chrome status | PASS |
 | App force-stop/relaunch after connection | one active channel, catch-up safe | one active channel; duplicate doc not reinserted | 1 observed restart | TCL logs | PASS |
+| Room v4 -> v5 preserved-state migration | no data/trust loss; bounded recovery | cold launch retained one active channel and seven relays | 1/1 | `exact-artifact-physical-followup-2026-09-05.txt` | PASS |
+| Repeated catch-up after recovery ACK | retained wrappers do not restart completed ACK | first v5 run sent one recovery batch (7 `OK_TRUE`); immediately serialized second run read the events and sent no ACK | 1/1 repeat | same evidence | PASS for observation |
 
 ## Required physical scenario matrix
 
@@ -71,7 +75,7 @@ revalidated.
 | synthetic article send | 1 | PASS |
 | Android inserts once | 1 | PASS |
 | Android ACK clears Chrome outbox | 1 | PASS |
-| duplicate wrapper -> no duplicate doc | 1 logical transfer across seven relays | PASS |
+| duplicate wrapper -> no duplicate doc or repeated completed ACK | 1 logical transfer across seven relays + 1 immediate v5 repeat | PASS for observations |
 | Android offline then catch-up | 0 | NOT MEASURED |
 | terminate Chrome worker before reply | 0 physical | NOT MEASURED |
 | restart Chrome before reply | 0 physical | NOT MEASURED |
@@ -103,11 +107,12 @@ revalidated.
 
 ## Instrumentation and UI evidence
 
-The six instrumentation cases cover v3 -> v5 database migration, missing-key
+The exact APK/test-APK pair passed all six instrumentation cases on the physical
+TCL and Samsung S23. The cases cover v3 -> v5 database migration, missing-key
 revocation, sole-active replacement, Chrome/normative gzip decode, conflicting
 sender/duplicate safety, and reordered/duplicate chunk atomic commit with a
-durable bound ACK intent. Exact final-APK device results are recorded with the
-artifact manifest; the API-26 emulator remains supplemental evidence.
+durable bound ACK intent and terminal replay behavior. The API-26 emulator
+screenshots remain supplemental evidence from the earlier suite.
 
 Emulator screenshots:
 

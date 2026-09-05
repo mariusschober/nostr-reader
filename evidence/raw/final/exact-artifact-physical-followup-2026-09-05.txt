@@ -1,0 +1,33 @@
+Reader v2 exact-artifact physical follow-up
+UTC recorded: 2026-09-05T01:46:19Z
+
+Artifact byte identities
+- Android APK SHA-256: 7da2e042595b454d29910ad1322bed3d7eb1a447e54ea7eb671a1d12ddaadbac
+- Android test APK SHA-256: 86aaa44b36a923652f6e9ce03e76982cd69fdd00a670337b1645709e3caa17e7
+- Chrome background.js SHA-256: c30c7f1a6a435c1c8a2ed919badf65e67a93a97707036f273ee103345e632ed8
+- The generated ARTIFACTS.json is authoritative for the clean source commit and package hashes.
+
+Physical Android install and instrumentation
+- TCL T807D, serial ZXKRS4VKGQ8PWGEQ: streamed install PASS; installed base.apk SHA-256 matched; instrumentation OK (6 tests).
+- Samsung Galaxy S23, serial R3CW404GVBL: streamed install PASS; installed base.apk SHA-256 matched; instrumentation OK (6 tests).
+- The six cases include v3 -> v5 migration, missing-key revocation, sole-active replacement, normative gzip, conflicting sender/chunk safety, and durable ACK intent/terminal replay behavior.
+
+TCL preserved-state v4 -> v5 observation
+- Cold launch opened the preserved Reader database without crash.
+- First worker reported one active channel and seven authenticated relays.
+- Seven retained wrappers for the previously stored transfer were classified duplicate.
+- The expected one-time recovery ACK reached matching OK_TRUE on all seven relays and recorded quorum_confirmed relays=7.
+- An immediately queued second serialized worker again reported one active channel, queried all seven relays, and received the retained events.
+- After those second-run reads, no document intake or ACK publication appeared during the observation window.
+- Result: PASS for one installed-state migration/repeat observation. The required statistical and interruption matrices remain NOT MEASURED.
+
+Chrome for Testing observation
+- Google Chrome for Testing 151.0.7922.34; Brave was not used.
+- The live reloaded service-worker background.js SHA-256 matched chrome/dist/background.js exactly.
+- Sanitized status: paired=true; relays=7; custom relay=wss://relay.mostr.pub; pending=0; delivered=1; failed=0.
+- No new capture or article-send action was invoked during this follow-up.
+
+Safety boundary
+- No real identity or production signing material was used.
+- No app data was cleared and no pairing was reset.
+- No push, merge, release, production publication, or force-push was performed.
