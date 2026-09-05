@@ -309,7 +309,11 @@ class MainActivity : ComponentActivity() {
                     refresh()
                     backToInbox()
                   } else {
-                    pairingStatus = "Reply accepted by ${result.acceptedRelays} relay${if (result.acceptedRelays == 1) "" else "s"}. Waiting for Chrome's authenticated confirmation…"
+                    pairingStatus = if (result.acceptedRelays == 0) {
+                      "${result.retryReason ?: "No relay confirmed the encrypted response yet."} Reader will retry until this pairing code expires…"
+                    } else {
+                      "Reply accepted by ${result.acceptedRelays} relay${if (result.acceptedRelays == 1) "" else "s"}. Waiting for Chrome's authenticated confirmation…"
+                    }
                   }
                 } catch (e: Exception) {
                   pairingStatus = null

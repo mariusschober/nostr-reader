@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cancelActivePairingSessions,
   isActivePairingState,
+  pairingAckAttemptTransition,
   pairingAckRetryDue,
   PAIR_ACK_RETRY_SECS,
   PAIRED_CHANNEL_STORAGE_KEYS,
@@ -54,5 +55,16 @@ describe("pairing session lifecycle hygiene", () => {
     expect(pairingAckRetryDue(100, 100 + PAIR_ACK_RETRY_SECS)).toBe(true);
     expect(pairingAckRetryDue(10_000, 100)).toBe(true);
     expect(() => pairingAckRetryDue(0, -1)).toThrow("invalid pairing retry clock");
+    expect(pairingAckAttemptTransition(0, 130)).toMatchObject({
+      state: "waiting_completion",
+      lastAckAttemptAt: 130,
+      lastError: expect.stringContaining("No pairing relay accepted"),
+    });
+    expect(pairingAckAttemptTransition(1, 130)).toEqual({
+      state: "waiting_completion",
+      lastAckAttemptAt: 130,
+      lastError: undefined,
+    });
+    expect(() => pairingAckAttemptTransition(-1, 130)).toThrow("invalid pairing ACK relay count");
   });
 });

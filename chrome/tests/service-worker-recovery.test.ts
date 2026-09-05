@@ -133,6 +133,8 @@ describe("durable delivery recovery ordering", () => {
     expect(pairing).toContain("lastAckAttemptAt: now");
     expect(pairing).toContain("...stripPairingSecret(next)");
     expect(pairing).toContain("return {\n          ...stripPairingSecret(next),\n          state: \"response_validated\"");
+    expect(pairing).toContain("pairingAckAttemptTransition(accepted.length, now)");
+    expect(pairing).not.toContain("if (!accepted.length)");
     expect(pairing).not.toContain("next.request.relays.filter");
   });
 

@@ -8,6 +8,7 @@ export type PairingLifecycleState =
   | "superseded";
 
 export const PAIR_ACK_RETRY_SECS = 30;
+const PAIR_ACK_NO_OK_ERROR = "No pairing relay accepted Chrome's authenticated acknowledgement yet.";
 
 export interface SecretBearingPairingSession {
   state: PairingLifecycleState;
@@ -35,6 +36,20 @@ export function pairingAckRetryDue(lastAttemptAt: unknown, nowSecs: number): boo
     return true;
   }
   return nowSecs - Number(lastAttemptAt) >= PAIR_ACK_RETRY_SECS;
+}
+
+/** Endpoint completion remains authoritative even when no relay returned OK. */
+export function pairingAckAttemptTransition(
+  acceptedRelayCount: number,
+  nowSecs: number,
+): { state: "waiting_completion"; lastAckAttemptAt: number; lastError: string | undefined } {
+  if (!Number.isSafeInteger(acceptedRelayCount) || acceptedRelayCount < 0) {
+    throw new Error("invalid pairing ACK relay count");
+  }
+  if (!Number.isSafeInteger(nowSecs) || nowSecs < 0) throw new Error("invalid pairing retry clock");
+  return acceptedRelayCount > 0
+    ? { state: "waiting_completion", lastAckAttemptAt: nowSecs, lastError: undefined }
+    : { state: "waiting_completion", lastAckAttemptAt: nowSecs, lastError: PAIR_ACK_NO_OK_ERROR };
 }
 
 /** Remove—not merely overwrite—the one-time bootstrap secret before persistence. */

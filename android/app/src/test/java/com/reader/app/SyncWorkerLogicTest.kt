@@ -2,6 +2,7 @@ package com.reader.app
 
 import com.reader.app.sync.acceptedAckRelays
 import com.reader.app.sync.ackRetryDelayMillis
+import com.reader.app.sync.pairingResponseState
 import com.reader.app.sync.syncNeedsRetry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,5 +38,7 @@ class SyncWorkerLogicTest {
     assertTrue(syncNeedsRetry(pairingPending = true, ackPending = false))
     assertTrue(syncNeedsRetry(pairingPending = false, ackPending = true))
     assertTrue(syncNeedsRetry(pairingPending = true, ackPending = true))
+    assertEquals("pending_response", pairingResponseState(0))
+    assertEquals("awaiting_ack", pairingResponseState(1))
   }
 }

@@ -33,6 +33,11 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
+internal fun pairingResponseState(acceptedRelayCount: Int): String {
+  require(acceptedRelayCount >= 0) { "invalid accepted relay count" }
+  return if (acceptedRelayCount == 0) "pending_response" else "awaiting_ack"
+}
+
 /** Durable Android half of the reader-pair/2 authenticated handshake. */
 class PairingCoordinator(
   context: Context,
@@ -40,7 +45,12 @@ class PairingCoordinator(
   private val keys: KeystoreWrap = KeystoreWrap(context),
   private val relayClient: RelayClient = RelayClient(),
 ) {
-  data class BeginResult(val channelId: String, val connected: Boolean, val acceptedRelays: Int)
+  data class BeginResult(
+    val channelId: String,
+    val connected: Boolean,
+    val acceptedRelays: Int,
+    val retryReason: String? = null,
+  )
 
   private val appContext = context.applicationContext
   private val random = SecureRandom()
@@ -185,21 +195,21 @@ class PairingCoordinator(
     val payload = PairingProtocol.buildPairResponse(request, channelPubkey, appVersion(), nowSecs).toString()
     val results = publishFresh(request.relays, channelSeckey, request.pairingPubkey, payload, 12)
     val accepted = results.filter { it.accepted }.map { it.relayUrl }
-    if (accepted.isEmpty()) {
-      withContext(Dispatchers.IO) { db.channels().revoke(channelId, System.currentTimeMillis()) }
-      keys.deleteChannelKey(channelId)
-      throw IllegalStateException(failureMessage(results))
-    }
     withContext(Dispatchers.IO) {
       db.channels().updatePairingState(
         id = channelId,
-        state = "awaiting_ack",
-        acceptedRelaysJson = JsonArray(accepted.map(::JsonPrimitive)).toString(),
+        state = pairingResponseState(accepted.size),
+        acceptedRelaysJson = accepted.takeIf { it.isNotEmpty() }
+          ?.let { JsonArray(it.map(::JsonPrimitive)).toString() },
         attemptCount = 1,
-        nextAttemptAt = nowSecs + 3,
-        lastErrorCode = null,
+        nextAttemptAt = if (accepted.isEmpty()) nextAttemptSecs(1, nowSecs) else nowSecs + 3,
+        lastErrorCode = if (accepted.isEmpty()) failureCode(results) else null,
         updatedAt = System.currentTimeMillis(),
       )
+    }
+    if (accepted.isEmpty()) {
+      scheduleNow(appContext)
+      return BeginResult(channelId, connected = false, acceptedRelays = 0, retryReason = failureMessage(results))
     }
     val connected = processLocked(channelId, ackCollectSecs)
     if (!connected) scheduleNow(appContext)
@@ -232,7 +242,7 @@ class PairingCoordinator(
       withContext(Dispatchers.IO) {
         db.channels().updatePairingState(
           channelId,
-          if (accepted.isEmpty()) "pending_response" else "awaiting_ack",
+          pairingResponseState(accepted.size),
           if (accepted.isEmpty()) null else JsonArray(accepted.map(::JsonPrimitive)).toString(),
           channel.attemptCount + 1,
           nextAttemptSecs(channel.attemptCount + 1, nowSecs),

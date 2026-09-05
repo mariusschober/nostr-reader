@@ -38,6 +38,7 @@ import {
 import {
   cancelActivePairingSessions,
   isActivePairingState,
+  pairingAckAttemptTransition,
   pairingAckRetryDue,
   PAIRED_CHANNEL_STORAGE_KEYS,
   stripPairingSecret,
@@ -749,18 +750,12 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
   ) {
     const ack = createPairAck(next.request, next.androidChannelPubkey, requestRelays, now);
     const accepted = await publishFreshPayload(requestRelays, deviceKey.seckey, next.androidChannelPubkey, ack);
-    if (!accepted.length) {
-      return {
-        ...next,
-        lastAckAttemptAt: now,
-        lastError: "No pairing relay accepted Chrome's authenticated acknowledgement yet.",
-      };
-    }
+    // Missing relay OK is not proof that the ACK was not stored. Enter the
+    // completion-reading state after every completed publish attempt so an
+    // authenticated Android completion can win over absent transport evidence.
     next = {
       ...stripPairingSecret(next),
-      state: "waiting_completion",
-      lastAckAttemptAt: now,
-      lastError: undefined,
+      ...pairingAckAttemptTransition(accepted.length, now),
     };
   }
 
