@@ -1,0 +1,27 @@
+{
+  "status": "scoped-trial-feedback-fix-not-beta-ready",
+  "baseCommit": "56b26008e130a6674bcacf8c85edf7e7b85b67bc",
+  "artifact": "reader-chrome-feedback.zip",
+  "sha256": "6cbe353b2a6f9e70a2ae7b70f2caa170e9c7272583b3691c23c9d49d82aa593a",
+  "testedUnpackedMatchesTrialDist": true,
+  "chromeTests": "125/125 PASS; 22 files",
+  "typecheck": "PASS",
+  "androidChanged": false,
+  "liveQA": "Chrome for Testing 151 + TCL T807D Android 16; selection and toolbar authenticated receipt feedback and dismissal observed",
+  "files": {
+    "background.js": "189fe07f251760f44d8b7d3c3b3f5afdc59b0cccad19c1a37ec234fdb96f7084",
+    "content.js": "b277026ae54e0ff0d54b8ffa0059857c75d740c512f0c1b20956c552db98f531",
+    "icons/icon128.png": "8747858d0fde135a7e5614f222cf0d1a8a3874b9e9aaf53ef2d0e22368e87dc4",
+    "icons/icon16.png": "1a55cfa6b68862c72d2a405d3ff1a8cf73348ba91fc9c0e1d4bb6ee7b5792bce",
+    "icons/icon32.png": "1fc5e85cb6c462ce33e89dbd9c1603454fe139b2652d3578ffcc60dc79eba312",
+    "icons/icon48.png": "50919e807eb36869986125939d2ea6862508006fe92abb82e2e08e3c228b9bea",
+    "manifest.json": "d65f31a1d4f9a0eb867a891b550d8b150b6b1a177781559e846c05504fbeba07",
+    "options.js": "a31159d18cb6a3ec221748964b01b37733e975b7690e9f2013513ddc960dc5c7",
+    "pairing.js": "c2a8fa1179e89a810bfdba5a1bc39bcbdb90d81c388bea81c42bf4c8d6229ccb",
+    "popup.js": "2baad146a40583a7f41a22358ca597efee9d7752237bb0189b70b990e5bb01eb",
+    "rolldown-runtime-DC62tzP2.js": "f74ce63fe4684f55be3ea69da3a4528da464f9d5f63cda903b76eb13e92d1954",
+    "src/ui/options.html": "d4ecf267f85a53271a8d8eaf0e8db1adb864972412d9886cef2395c8f7eb2497",
+    "src/ui/pairing.html": "0e39bd2987dd0efd0a6d6f6366fbb0b5c65fc83dfd8be3633179cbc71d7a4c33",
+    "src/ui/popup.html": "bb07c940257a77c6ea917f7fc91b9ad20fbdc4917ed979e8c079b67da852b36d"
+  }
+}

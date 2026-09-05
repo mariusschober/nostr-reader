@@ -1,0 +1,26 @@
+[
+  {
+    "elapsedMs": 5,
+    "status": null
+  },
+  {
+    "elapsedMs": 47060,
+    "status": "Saving…"
+  },
+  {
+    "elapsedMs": 47167,
+    "status": "Saved — waiting for your phone"
+  },
+  {
+    "elapsedMs": 55149,
+    "status": null
+  },
+  {
+    "elapsedMs": 62012,
+    "status": "On your phone"
+  },
+  {
+    "elapsedMs": 67006,
+    "status": null
+  }
+]

@@ -2,57 +2,74 @@
 import { adapterFor, pickResponse } from "../providers/adapters.js";
 import { extractGeneric, meaningfulSelection, selectionDocument } from "../extraction/pipeline.js";
 
-let statusHost: HTMLElement | undefined;
-function feedback(text: string): void {
-  if (!statusHost?.isConnected) {
-    statusHost = document.createElement("div");
-    statusHost.dataset.readerUi = "status";
-    const shadow = statusHost.attachShadow({ mode: "closed" });
-    const status = document.createElement("div");
-    status.setAttribute("role", "status");
-    status.setAttribute("aria-live", "polite");
-    status.style.cssText = "position:fixed;bottom:24px;right:24px;z-index:2147483647;max-width:320px;padding:12px 16px;background:#100f0f;color:#fffcf0;border:1px solid #6f6e69;border-radius:10px;font:14px/1.5 system-ui;box-shadow:0 4px 18px #0003;pointer-events:none";
-    shadow.append(status);
-    Object.defineProperty(statusHost, "readerStatus", { value: status });
-    (document.body ?? document.documentElement).append(statusHost);
-  }
-  (statusHost as HTMLElement & { readerStatus: HTMLElement }).readerStatus.textContent = text;
+import { CaptureFeedback } from "./capture-feedback.js";
+import { isCaptureFeedbackState } from "../protocol/capture-feedback.js";
+
+const feedback = new CaptureFeedback();
+let watchTimer: ReturnType<typeof setTimeout> | undefined;
+let watchedCaptureId: string | undefined;
+
+function beginCapture(captureId: string): void {
+  clearTimeout(watchTimer);
+  watchedCaptureId = undefined;
+  feedback.begin(captureId);
 }
 
-async function sendCapture(doc: unknown): Promise<void> {
-  const captureId = crypto.randomUUID();
+function watchReceipt(captureId: string, transferId: string): void {
+  if (watchedCaptureId === captureId || !feedback.isPending(captureId)) return;
+  clearTimeout(watchTimer);
+  watchedCaptureId = captureId;
+  let attempts = 0;
+  const check = async () => {
+    if (!feedback.isPending(captureId) || watchedCaptureId !== captureId) return;
+    try {
+      // Reads durable local state only; does not query relays or retransmit.
+      // Recovers a missed push or receipt-before-notification worker crash.
+      const result = await chrome.runtime.sendMessage({ kind: "reader-delivery-receipt", transferId });
+      if (result?.ok && result.delivered === true) feedback.update(captureId, "delivered");
+    } catch { /* Keep the truthful saved state; delivery still has durable alarms. */ }
+    if (++attempts < 30 && feedback.isPending(captureId) && watchedCaptureId === captureId) {
+      watchTimer = setTimeout(check, 2000);
+    }
+  };
+  void check();
+}
+
+async function sendCapture(doc: unknown, captureId: string): Promise<void> {
   let response: any;
   // A lost response retries the same capture identity; the worker's atomic
   // capture/outbox transaction prevents duplicate transfer creation.
   try { response = await chrome.runtime.sendMessage({ kind: "reader-capture", captureId, doc }); }
   catch { response = await chrome.runtime.sendMessage({ kind: "reader-capture", captureId, doc }); }
   if (!response?.ok) throw new Error(response?.error || "Storage unavailable. Try again.");
-  feedback(response.queued ? "Saved — connect your phone" : "Saved — waiting for your phone");
+  feedback.update(captureId, response.queued ? "unpaired" : "waiting");
+  watchReceipt(captureId, response.transferId);
 }
 
 async function captureForToolbar(): Promise<void> {
-  feedback("Saving…");
+  const captureId = crypto.randomUUID();
+  beginCapture(captureId);
   try {
     const sel = window.getSelection()?.toString() ?? "";
     if (meaningfulSelection(sel)) {
-      await sendCapture({ ...selectionDocument(sel, location.href, document.title), sourceType: "selection" });
+      await sendCapture({ ...selectionDocument(sel, location.href, document.title), sourceType: "selection" }, captureId);
       return;
     }
     const adapter = adapterFor(location.href);
     if (adapter) {
       const picked = pickResponse(adapter.findAssistantResponses(document));
       if (picked) {
-        await sendCapture({ ...adapter.extractResponse(picked, adapter.extractConversationTitle(document) ?? document.title, location.href), sourceType: adapter.id });
+        await sendCapture({ ...adapter.extractResponse(picked, adapter.extractConversationTitle(document) ?? document.title, location.href), sourceType: adapter.id }, captureId);
         return;
       }
     }
     const doc = await extractGeneric(document, location.href);
     if (doc.confidence === "low") {
-      feedback("Couldn’t identify an article. Select the text you want, then click Reader.");
+      feedback.update(captureId, "error", "Couldn’t identify an article. Select the text you want, then click Reader.");
       return;
     }
-    await sendCapture(doc);
-  } catch (error) { feedback(`Couldn’t save — ${error instanceof Error ? error.message : "try again"}`); }
+    await sendCapture(doc, captureId);
+  } catch (error) { feedback.update(captureId, "error", `Couldn’t save — ${error instanceof Error ? error.message : "try again"}`); }
 }
 
 function mountInlineButtons(): void {
@@ -73,10 +90,11 @@ function mountInlineButtons(): void {
     button.addEventListener("click", async event => {
       if (!event.isTrusted) return;
       event.preventDefault(); event.stopPropagation();
-      feedback("Saving…"); button.disabled = true;
+      const captureId = crypto.randomUUID();
+      beginCapture(captureId); button.disabled = true;
       try {
-        await sendCapture({ ...adapter.extractResponse(response, adapter.extractConversationTitle(document) ?? document.title, location.href), sourceType: adapter.id });
-      } catch (error) { feedback(`Couldn’t save — ${error instanceof Error ? error.message : "try again"}`); }
+        await sendCapture({ ...adapter.extractResponse(response, adapter.extractConversationTitle(document) ?? document.title, location.href), sourceType: adapter.id }, captureId);
+      } catch (error) { feedback.update(captureId, "error", `Couldn’t save — ${error instanceof Error ? error.message : "try again"}`); }
       finally { button.disabled = false; }
     });
     mount.append(button);
@@ -87,8 +105,14 @@ const owner = globalThis as typeof globalThis & { readerCaptureInstalled?: boole
 if (!owner.readerCaptureInstalled) {
   owner.readerCaptureInstalled = true;
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.kind === "reader-capture-feedback" && typeof msg.text === "string") {
-      feedback(msg.text.slice(0, 400));
+    if (msg?.kind === "reader-feedback-begin" && typeof msg.captureId === "string") {
+      beginCapture(msg.captureId);
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (msg?.kind === "reader-capture-feedback" && typeof msg.captureId === "string" && isCaptureFeedbackState(msg.state)) {
+      feedback.update(msg.captureId, msg.state, msg.detail);
+      if ((msg.state === "waiting" || msg.state === "unpaired") && typeof msg.transferId === "string") watchReceipt(msg.captureId, msg.transferId);
       sendResponse({ ok: true });
       return false;
     }

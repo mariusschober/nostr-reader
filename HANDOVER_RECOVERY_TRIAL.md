@@ -1,6 +1,12 @@
 # Recovery trial pause — start here
 
-The owner requested a pause for a 24-hour real-world trial on 5 September 2026. Finish this handoff and push the branch; do not continue feature implementation until the owner resumes. **This is not a completed 0.9 beta.**
+The owner extended the pause on 6 September 2026 for one week of extensive real-world use after confirming the capture-feedback fix appears to work. No further extensive tests or feature implementation until the owner resumes. Finish saving/pushing the scoped fix only. **This is not a completed 0.9 beta.**
+
+## Scoped trial feedback fix — 6 September 2026
+
+The owner explicitly resumed only two capture-feedback defects. Context-menu selection now shows the in-page Saving/Saved confirmation. Toolbar, inline and selection feedback updates to “On your phone” only after an authenticated storage receipt and dismisses after five seconds. Waiting feedback dismisses after eight seconds; a later receipt can display the final confirmation again. Capture/document routing survives worker restart, and a bounded local receipt check recovers a missed UI push without additional relay queries.
+
+Chrome typecheck and **125/125 tests across 22 files PASS**. Real Chrome for Testing + TCL QA selection and toolbar actions showed receipt confirmation and dismissal; timings and artifact hashes are in `evidence/beta/capture-feedback/`. The toolbar probe observed a roughly 15-second receipt delay, with waiting dismissal and later success reappearance. This is scoped UI/delivery evidence, not completion of the full beta campaign. Updated ZIP: `artifacts/recovery-checkpoint/reader-chrome-feedback.zip`; tested bytes also replace `chrome/dist`. Android APK and owner pairing remain unchanged. The broader beta work remains paused.
 
 ## Repository and controlling brief
 
@@ -8,7 +14,7 @@ The owner requested a pause for a 24-hour real-world trial on 5 September 2026. 
 - Branch: `codex/reader-0.9-beta`.
 - Audited starting commit: `0c9884e955558f478d7668b46e9c1411bfe95c5d`.
 - First recovery checkpoint: `627e1da`.
-- Current tested application source: `e322c300e5b623904626812b53e75bf4949fbd8e`. Later commits are documentation/evidence only unless explicitly stated otherwise.
+- Current tested application source: `e322c300e5b623904626812b53e75bf4949fbd8e`. The scoped capture-feedback follow-up below supersedes Chrome only; Android stays at this source.
 - Local workspace: the existing `Nostr Reader` checkout; re-identify its path on another machine.
 - Read [the complete execution brief](docs/beta/EXECUTION_BRIEF.md), [companion audit](docs/beta/RED_TEAM_AUDIT_2026-09-05.md), this handover, and `BETA_EXECUTION_LEDGER.md` before editing. Then read `PROTOCOL.md`, `THREAT_MODEL.md`, `RELIABILITY_STATE_MACHINES.md`, `KNOWN_LIMITATIONS.md`, and `TEST_REPORT.md`.
 - Older `AI_CONTINUATION_CONTEXT.md` describes the audited baseline. This file supersedes its current-status/install claims for this branch. The original brief still governs remaining implementation; the pause overrides its instruction to continue indefinitely.

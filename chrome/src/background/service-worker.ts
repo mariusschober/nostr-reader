@@ -4,6 +4,7 @@
 import { publishFragments, type FragmentOutcome } from "./resumable-publisher.js";
 import { scanHistory, type ScanState } from "../nostr/history-scan.js";
 import { DurableAlarms } from "./durable-alarms.js";
+import { CAPTURE_FEEDBACK_TEXT, type CaptureFeedbackRoute, type CaptureFeedbackState } from "../protocol/capture-feedback.js";
 import { SimplePool } from "nostr-tools/pool";
 import { getPublicKey } from "nostr-tools/pure";
 import {
@@ -73,6 +74,7 @@ interface OutboxItem {
   nextAttemptAt: number;
   lastError?: string;
   fragmentProgress?: Record<string, Record<string, FragmentOutcome>>;
+  feedbackRoute?: CaptureFeedbackRoute;
 }
 
 interface PairingSession {
@@ -295,7 +297,7 @@ async function recordDelivered(transferId: string, deliveredAt: number): Promise
 }
 
 // ---- Send pipeline ----
-export async function queueCapture(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId = randomHex(16)): Promise<{ transferId: string; queued: boolean }> {
+export async function queueCapture(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId = randomHex(16), feedbackRoute?: CaptureFeedbackRoute): Promise<{ transferId: string; queued: boolean }> {
   if (!raw || typeof raw.title !== "string" || typeof raw.markdown !== "string" || !raw.markdown.trim() ||
       raw.markdown.length > 20 * 1024 * 1024 || raw.title.length > 500 ||
       (raw.sourceUrl !== undefined && (typeof raw.sourceUrl !== "string" || raw.sourceUrl.length > 2000)) ||
@@ -308,12 +310,12 @@ export async function queueCapture(raw: { title: string; markdown: string; sourc
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
       if (existing) return { transferId: existing.transferId, queued: !await loadPairedChannelState() };
-      return await queueCaptureInternal(raw, captureId);
+      return await queueCaptureInternal(raw, captureId, feedbackRoute);
     } finally { db.close(); }
   });
 }
 
-async function queueCaptureInternal(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId: string): Promise<{ transferId: string; queued: boolean }> {
+async function queueCaptureInternal(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId: string, feedbackRoute?: CaptureFeedbackRoute): Promise<{ transferId: string; queued: boolean }> {
   const { seckey, pubkey } = await getDeviceKey();
   const canonical = canonicalize(raw.markdown);
   const canonicalBytes = new TextEncoder().encode(canonical);
@@ -371,6 +373,7 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
     status: "queued",
     attemptCount: 0,
     nextAttemptAt: now,
+    feedbackRoute,
   };
   const captureDb = await idb();
   try {
@@ -473,6 +476,7 @@ async function publishTransfer(
       if (!durable) return;
       // Recover the receipt-before-cleanup crash without republishing.
       if ((await loadDeliveryReceipts()).some(receipt => receipt.transferId === item.transferId)) {
+        void notifyCapture(durable.feedbackRoute, "delivered", durable.transferId);
         await outboxDelete(item.transferId);
         return;
       }
@@ -486,6 +490,7 @@ async function publishTransfer(
         durable.status = "failed";
         durable.lastError = safePairingError(error);
         await outboxPut(durable);
+        void notifyCapture(durable.feedbackRoute, "error", durable.transferId);
         return;
       }
       durable.attemptCount++;
@@ -590,12 +595,17 @@ async function pollForAcksInternal(): Promise<void> {
           // outbox copy. If receipt storage fails, retain the item so the same
           // authenticated ACK can safely settle it on a later poll.
           await recordDelivered(item.transferId, now);
+          // A receipt, not relay acceptance, authorizes the visible confirmation.
+          // Route survives worker restarts; document targeting prevents updates
+          // from leaking into a different page that later occupies the tab.
+          void notifyCapture(item.feedbackRoute, "delivered", item.transferId);
           activePublicationStops.get(item.transferId)?.();
           await outboxDelete(item.transferId); // Only this strict E2E ACK clears captured content.
         } else {
           item.status = "failed";
           item.lastError = ack.reasonCode ?? "device-rejected";
           await outboxPut(item);
+          void notifyCapture(item.feedbackRoute, "error", item.transferId);
         }
       });
     } catch (error) {
@@ -1009,10 +1019,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     const trustedPage = _sender.id === chrome.runtime.id &&
       ["src/ui/options.html", "src/ui/pairing.html", "src/ui/popup.html"].some(path => _sender.url === chrome.runtime.getURL(path));
-    if (!trustedPage && (msg?.kind !== "reader-capture" || _sender.id !== chrome.runtime.id || !_sender.tab)) throw new Error("Untrusted extension request");
+    const captureRequest = msg?.kind === "reader-capture" || msg?.kind === "reader-delivery-receipt";
+    if (!trustedPage && (!captureRequest || _sender.id !== chrome.runtime.id || !_sender.tab)) throw new Error("Untrusted extension request");
     if (msg?.kind === "reader-capture") {
-      const r = await queueCapture(msg.doc, msg.captureId);
+      const captureId = msg.captureId ?? randomHex(16);
+      const route = _sender.tab?.id === undefined ? undefined : {
+        captureId, tabId: _sender.tab.id, frameId: _sender.frameId ?? 0, documentId: _sender.documentId,
+      };
+      const r = await queueCapture(msg.doc, captureId, route);
       sendResponse({ ok: true, ...r });
+    } else if (msg?.kind === "reader-delivery-receipt") {
+      if (typeof msg.transferId !== "string" || !/^[0-9a-f]{32}$/.test(msg.transferId)) throw new Error("Invalid transfer identity");
+      // Opaque transfer capability reveals only its local receipt bit, never
+      // retained text, keys, titles or other items. No network IO in this path.
+      sendResponse({ ok: true, delivered: (await loadDeliveryReceipts()).some(receipt => receipt.transferId === msg.transferId) });
     } else if (msg?.kind === "reader-start-pairing") {
       sendResponse({ ok: true, ...(await startPairing()) });
     } else if (msg?.kind === "reader-pairing-status") {
@@ -1168,22 +1188,55 @@ chrome.runtime.onStartup.addListener(() => {
   // already have gone idle; it never republishes the captured article.
   scheduleAckCheck();
 });
-async function captureFeedback(tabId: number | undefined, text: string, failed = false): Promise<void> {
+async function captureBadge(tabId: number | undefined, text: string, badge: string): Promise<void> {
   if (tabId === undefined) return;
-  await chrome.action.setBadgeText({ tabId, text: failed ? "!" : text === "Saving…" ? "…" : "✓" });
+  await chrome.action.setBadgeText({ tabId, text: badge });
   await chrome.action.setTitle({ tabId, title: text });
-  await chrome.tabs.sendMessage(tabId, { kind: "reader-capture-feedback", text }).catch(() => undefined);
+}
+
+function feedbackTarget(route: CaptureFeedbackRoute): chrome.tabs.MessageSendOptions {
+  return route.documentId ? { documentId: route.documentId } : { frameId: route.frameId };
+}
+
+async function notifyCapture(route: CaptureFeedbackRoute | undefined, state: CaptureFeedbackState, transferId?: string, detail?: string): Promise<boolean> {
+  if (!route) return false;
+  try {
+    await chrome.tabs.sendMessage(route.tabId, { kind: "reader-capture-feedback", captureId: route.captureId, state, transferId, detail }, feedbackTarget(route));
+    return true;
+  } catch { return false; } // Closed/navigated pages must not affect delivery.
+}
+
+async function prepareSelectionFeedback(tabId: number | undefined, frameId: number, captureId: string): Promise<CaptureFeedbackRoute | undefined> {
+  if (tabId === undefined) return undefined;
+  try {
+    // A context-menu invocation grants activeTab but does not load a content
+    // script on generic articles. Install its idempotent listener before use.
+    const [injected] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ["content.js"] });
+    const route = { tabId, frameId, captureId, documentId: injected?.documentId };
+    await chrome.tabs.sendMessage(tabId, { kind: "reader-feedback-begin", captureId }, feedbackTarget(route));
+    return route;
+  } catch {
+    // Cross-origin frames may not be injectable with activeTab. The capture is
+    // still the exact selected text; use the visible main page for its notice.
+    return frameId === 0 ? undefined : prepareSelectionFeedback(tabId, 0, captureId);
+  }
 }
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "reader-options") { await chrome.runtime.openOptionsPage(); return; }
   if (info.menuItemId !== "reader-send-selection" || !info.selectionText) return;
   if (!info.selectionText.trim()) return;
-  await captureFeedback(tab?.id, "Saving…").catch(() => undefined);
+  const captureId = randomHex(16);
+  await captureBadge(tab?.id, CAPTURE_FEEDBACK_TEXT.saving, "…").catch(() => undefined);
+  const route = await prepareSelectionFeedback(tab?.id, info.frameId ?? 0, captureId);
   try {
-    const result = await queueCapture({ title: "Selection", markdown: escapePlainText(info.selectionText.trim()) + "\n", sourceUrl: info.pageUrl, sourceType: "selection" });
-    await captureFeedback(tab?.id, result.queued ? "Saved — connect your phone" : "Saved — waiting for your phone");
+    const result = await queueCapture({ title: "Selection", markdown: escapePlainText(info.selectionText.trim()) + "\n", sourceUrl: info.frameUrl ?? info.pageUrl, sourceType: "selection" }, captureId, route);
+    const state = result.queued ? "unpaired" : "waiting";
+    const shown = await notifyCapture(route, state, result.transferId);
+    await captureBadge(tab?.id, CAPTURE_FEEDBACK_TEXT[state], shown ? "" : "✓").catch(() => undefined);
   } catch {
-    await captureFeedback(tab?.id, "Couldn’t save — storage unavailable or content too large. Try again.", true).catch(() => undefined);
+    const detail = "Couldn’t save — storage unavailable or content too large. Try again.";
+    await notifyCapture(route, "error", undefined, detail);
+    await captureBadge(tab?.id, detail, "!").catch(() => undefined);
   }
 });

@@ -1,0 +1,13 @@
+
+> reader-chrome@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.0 <checkout>/chrome
+
+
+ Test Files  22 passed (22)
+      Tests  125 passed (125)
+   Start at  00:23:01
+   Duration  1.37s (tests 54%, environment 21%, transform 14%, import 9%, worker 2%)
+

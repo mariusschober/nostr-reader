@@ -25,7 +25,10 @@ async function boot() {
     } },
     alarms: { get: async (name: string) => alarms.get(name), create: async (name: string, value: any) => { alarms.set(name, { name, scheduledTime: value.when }); },
       clear: async (name: string) => alarms.delete(name), onAlarm: event("alarm") },
-    action: { onClicked: event("action") }, commands: { onCommand: event("command") },
+    action: { onClicked: event("action"), setBadgeText: vi.fn(async () => {}), setTitle: vi.fn(async () => {}) },
+    tabs: { sendMessage: vi.fn(async () => ({ ok: true })) },
+    scripting: { executeScript: vi.fn(async () => [{ frameId: 0, documentId: "document-1" }]) },
+    commands: { onCommand: event("command") },
     contextMenus: { onClicked: event("menu"), create: vi.fn() },
   });
   return import("../src/background/service-worker.js");
@@ -112,6 +115,30 @@ describe("production worker persistence and request boundaries", () => {
   });
 });
 
+describe("context-menu capture feedback", () => {
+  it("installs feedback on a generic page before saving, without losing the selected scope", async () => {
+    await boot();
+    await listeners.menu({ menuItemId: "reader-send-selection", selectionText: "Constellation", pageUrl: "https://example.org/article", frameId: 0 }, { id: 7 });
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith({ target: { tabId: 7, frameIds: [0] }, files: ["content.js"] });
+    const messages = vi.mocked(chrome.tabs.sendMessage).mock.calls;
+    expect(messages[0]).toEqual([7, expect.objectContaining({ kind: "reader-feedback-begin" }), { documentId: "document-1" }]);
+    expect(messages[1]).toEqual([7, expect.objectContaining({ kind: "reader-capture-feedback", state: "unpaired" }), { documentId: "document-1" }]);
+    expect(await records("captures")).toMatchObject([{ markdown: "Constellation\n" }]);
+  });
+  it("blocked page injection does not discard selected text or prevent badge feedback", async () => {
+    await boot();
+    vi.mocked(chrome.scripting.executeScript).mockRejectedValue(new Error("Restricted page"));
+    await listeners.menu({ menuItemId: "reader-send-selection", selectionText: "Constellation", pageUrl: "https://example.org/article" }, { id: 7 });
+    expect(await records("captures")).toHaveLength(1);
+    expect(chrome.action.setTitle).toHaveBeenCalledWith({ tabId: 7, title: "Saved — connect your phone" });
+  });
+  it("receipt status never exposes capture text and never guesses delivered for an unknown ID", async () => {
+    await boot();
+    expect(await message({ kind: "reader-delivery-receipt", transferId: "f".repeat(32) })).toEqual({ ok: true, delivered: false });
+    expect(await message({ kind: "reader-delivery-receipt", transferId: "not-an-id" })).toMatchObject({ ok: false });
+  });
+});
+
 // Transport boundary can delay/lose a relay's response while production key,
 // wrapping, ACK authentication, generation guards, scan and database paths run.
 describe("production publication and ACK interleavings", () => {
@@ -162,13 +189,17 @@ describe("production publication and ACK interleavings", () => {
 
   it("authenticated phone receipt settles while a redundant relay is slow; late publication cannot resurrect it", async () => {
     const worker = await boot();
-    await worker.queueCapture(doc, captureId);
+    await message({ kind: "reader-capture", doc, captureId, feedbackRoute: { tabId: 999 } }, { ...sender, frameId: 2, documentId: "document-1" } as any);
     await vi.waitFor(() => expect(published).toBeGreaterThan(0));
     const [item] = await records("items");
+    expect(item.feedbackRoute).toEqual({ captureId, tabId: 1, frameId: 2, documentId: "document-1" });
+    await boot(); // Route survives a new worker; do not trust a page-supplied tab.
     incoming = [await signedAck(item)];
     expect(await message({ kind: "reader-check-acks" }, trusted)).toMatchObject({ ok: true });
     expect(await records("items")).toHaveLength(0);
     expect(storage.recentDeliveryReceipts).toMatchObject([{ transferId: item.transferId }]);
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ kind: "reader-capture-feedback", captureId, state: "delivered" }), { documentId: "document-1" });
+    expect(await message({ kind: "reader-delivery-receipt", transferId: item.transferId })).toEqual({ ok: true, delivered: true });
     release();
     await new Promise(resolve => setTimeout(resolve, 30));
     expect(await records("items")).toHaveLength(0);
