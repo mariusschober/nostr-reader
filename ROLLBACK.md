@@ -1,6 +1,8 @@
 # Reader v2 rollback and recovery
 
-Implementation commit: `91aa1c49ebc98cb68ef0df1c9c0608d8b3c1791b`
+Primary v2 implementation commit: `91aa1c49ebc98cb68ef0df1c9c0608d8b3c1791b`
+
+Receiver ACK durability follow-up: `3c4546bfd8b27fa11ac3d5af576dba2050b5de6e`
 
 Immutable pre-repair baseline: `982920b4e91dd5af4af6046f56df281c7adfe545`
 
@@ -15,10 +17,12 @@ Create a separate branch/worktree at the immutable baseline and build there.
 This preserves the repaired branch and its evidence and avoids history
 rewrites. Do not force-push or reset the repair branch.
 
-If a normal forward-moving Git rollback is required, review and revert
-`91aa1c49ebc98cb68ef0df1c9c0608d8b3c1791b` with `git revert`. Resolve any
-later documentation-only commit separately. Re-run the baseline build/tests
-and inspect the resulting diff before using its artifacts.
+If a normal forward-moving Git rollback is required, review and revert the
+implementation commits in reverse order: first
+`3c4546bfd8b27fa11ac3d5af576dba2050b5de6e`, then
+`91aa1c49ebc98cb68ef0df1c9c0608d8b3c1791b`. Resolve later documentation-only
+commits separately. Re-run the baseline build/tests and inspect the resulting
+diff before using its artifacts.
 
 ## Android data boundary
 
