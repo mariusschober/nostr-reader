@@ -114,8 +114,8 @@ revocation, sole-active replacement, Chrome/normative gzip decode, conflicting
 sender/duplicate safety, and reordered/duplicate chunk atomic commit with a
 durable bound ACK intent and terminal replay behavior. The seventh case runs
 the strict hostile pairing-code and prohibited-DNS boundary in the Android
-runtime without contacting those destinations. The current API-26 run
-is retained in `evidence/raw/final/exact-artifact-api26-2026-09-05.txt`; the
+runtime without contacting those destinations. The current three-target run
+is retained in `evidence/raw/final/exact-artifact-state-race-auth-2026-09-05.txt`; the
 earlier screenshots remain supplemental UI evidence.
 
 Emulator screenshots:

@@ -1,0 +1,70 @@
+Reader v2 exact-artifact state-race/authentication hardening validation
+UTC recorded: 2026-09-05T02:55:46Z
+
+Evidence boundary
+- Implementation commit under test: 0df5baf43d67cd42ec13e91d7a72bf759821c7b2
+- Final artifact source commit is recorded by the generated ARTIFACTS.json
+  after this tracked evidence record; the evidence-only commit does not alter
+  executable source.
+- Google Chrome for Testing was used. Brave was not used.
+- No app data was cleared, pairing was not reset, and no article or other new
+  public relay payload was sent.
+
+Clean build gates
+- Chrome: typecheck PASS; Vitest 16 files / 87 tests PASS; package verifier
+  PASS; npm production and full audits reported 0 vulnerabilities.
+- Android: clean test/lint/assembleDebug/assembleDebugAndroidTest PASS; 82 JVM
+  tests PASS; lint 0 errors with 29 retained warnings.
+- Rust mirror: 6/6 PASS.
+- Swift mirror: 7/7 PASS.
+
+Built package byte identities
+- Android APK SHA-256:
+  520232416c0c105905319c7ba41ef9b6fd0060387d8fb0015d02fe171d26a0ab
+- Android test APK SHA-256:
+  82aa49bb7af01391fd3898a3c06321fb7b313062bbc1762a821e7413e910070e
+- Chrome extension ZIP SHA-256:
+  158dcbfdd143fa9e034dc1a1ed7f2d433a7a30fdca483714d8bd8591d3beb7d2
+- Chrome dist/background.js SHA-256:
+  0d0bf2544d36e2c53bcdf89c2f91929111d215bb1146745aae0b4be9f9860ebe
+
+Exact Android installation and instrumentation
+- TCL T807D / ZXKRS4VKGQ8PWGEQ: upgrade-in-place main and test installs PASS;
+  installed APK hashes matched both files; OK (7 tests), 1.749 seconds.
+- Samsung Galaxy S23 / R3CW404GVBL: upgrade-in-place main and test installs
+  PASS; installed APK hashes matched both files; OK (7 tests), 1.818 seconds.
+- API-26 AVD sprich_review_api26 / emulator-5554: no-snapshot launch; main and
+  test installs PASS; installed APK hashes matched both files; OK (7 tests),
+  2.945 seconds.
+- The added physical-runtime case accepts the valid fixture and rejects a bad
+  relay digest, invalid x-only key, expired request, numeric relay host, and
+  carrier-grade-NAT DNS answer before network use.
+- The other six cases cover v3 -> v5 migration, missing-key revocation,
+  sole-active replacement, normative gzip, conflicting sender/chunk safety,
+  and atomic commit with a durable bound ACK and terminal replay behavior.
+
+Chrome for Testing installed-state verification
+- Browser: Chrome/151.0.7922.34, paired disposable profile.
+- Extension source: /Users/schober/Projects/Nostr Reader/chrome/dist
+- chrome.runtime.reload() completed, and the settings page was reopened.
+- SHA-256 fetched from the loaded extension's background.js matched the local
+  exact dist hash above.
+- Sanitized status: paired=true; relayCount=7; custom relay
+  wss://relay.mostr.pub; relayChangePending=false; pending=0; queued=0;
+  relayAccepted=0; awaitingDevice=0; delivered=1; failed=0.
+- Visible settings state: "Queued 0 · Relay accepted 0 · Awaiting device 0 ·
+  Delivered 1 · Failed 0".
+
+Acceptance boundary
+- PASS for the exact build, install, instrumentation, loaded Chrome bytes, and
+  preserved paired/outbox state described above.
+- The mandatory 20/20 and 50/50 physical reliability quotas, remaining
+  lifecycle matrix, public NIP-42 challenge, and a new exact-final-build public
+  article transfer remain NOT MEASURED.
+
+Safety declarations
+- Production publishing: NOT AUTHORIZED AND NOT PERFORMED
+- Force-push: NOT AUTHORIZED AND NOT PERFORMED
+- Real user identities/keys: NOT USED
+- Secret exposure: NOT DETECTED
+- Backend introduced: NO

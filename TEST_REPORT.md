@@ -97,8 +97,8 @@ than claims about an immutable baseline line.
 | Chrome persistence | paired CFT profile | reload/restart + status | pairing/outbox survive | paired, exact seven relays, delivered 1, pending 0 | `chrome-paired-status-*` | PASS |
 | Android unit | JDK 17/Gradle 8.7 | `./gradlew testDebugUnitTest` | all pass | 82 tests, 0 failures/errors | XML reports | PASS |
 | Android lint/build | Android SDK 34 | `lintDebug assembleDebug assembleDebugAndroidTest` | 0 errors; APKs | success, 0 lint errors, 29 retained warnings | Gradle/lint report | PASS |
-| Android instrumentation | API-26 emulator | exact APK + test APK, seven current DB/codec/transfer/hostile-QR cases | all pass | 7/7 | `exact-artifact-api26-2026-09-05.txt` | PASS |
-| Android instrumentation | physical TCL T807D | exact APK + test APK, seven current cases | all pass | 7/7 | `exact-artifact-physical-followup-2026-09-05.txt` | PASS |
+| Android instrumentation | API-26 emulator | exact APK + test APK, seven current DB/codec/transfer/hostile-QR cases | all pass | 7/7 | `exact-artifact-state-race-auth-2026-09-05.txt` | PASS |
+| Android instrumentation | physical TCL T807D | exact APK + test APK, seven current cases | all pass | 7/7 | `exact-artifact-state-race-auth-2026-09-05.txt` | PASS |
 | Android instrumentation | physical Samsung S23 | exact APK + test APK, seven current cases | all pass | 7/7 | same evidence | PASS |
 | Android installed-state ACK recovery | preserved paired TCL | v4 -> v5 first catch-up then immediate second serialized catch-up | one bounded recovery ACK; no second ACK | observed exactly | same evidence | PASS for observation |
 | Rust normative core | rustc/cargo 1.97.1 | `cargo test` | all pass | 6/6 | terminal run | PASS |
