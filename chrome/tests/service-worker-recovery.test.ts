@@ -146,10 +146,40 @@ describe("durable delivery recovery ordering", () => {
     expect(bind).toContain("sameRelayOrder(item.relays, paired.relays)");
     expect(source).toContain("storedDigest !== expectedDigest");
     expect(source).toContain("channelRelaySetDigest: winner.request.relaySetDigest");
-    expect(publish.indexOf("await bindOutboxItem(item, channelPubkey)")).toBeLessThan(
-      publish.indexOf("const required = Math.min(RELAY_WRITE_QUORUM, item.relays.length)"),
-    );
+    expect(source).toContain("channelDevicePubkey: winner.request.chromeDevicePubkey");
+    expect(source).toContain('inspectDeviceBinding(st["deviceSeckey"], st["channelDevicePubkey"], true)');
+    const bindIndex = publish.indexOf("await bindOutboxItem(item, channelPubkey, getPublicKey(seckey))");
+    expect(bindIndex).toBeGreaterThanOrEqual(0);
+    expect(bindIndex).toBeLessThan(publish.indexOf("const required = Math.min(RELAY_WRITE_QUORUM, item.relays.length)"));
     expect(publish).toMatch(/catch \(error\) \{[\s\S]*item\.status = "failed";[\s\S]*await outboxPut\(item\);[\s\S]*return;/);
+  });
+
+  it("fails closed when the Chrome device key no longer owns the paired channel", () => {
+    const keyLoader = source.slice(
+      source.indexOf("async function getDeviceKey"),
+      source.indexOf("/** Keep private key material"),
+    );
+    const pairing = source.slice(
+      source.indexOf("async function processPairingSession"),
+      source.indexOf("async function recoverPairingSessionsInternal"),
+    );
+    expect(keyLoader).toContain('identity.state === "invalid" || identity.state === "mismatch"');
+    expect(keyLoader).toContain("chrome.storage.local.remove([...PAIRED_CHANNEL_STORAGE_KEYS])");
+    expect(pairing).toContain("deviceKey.pubkey !== next.request.chromeDevicePubkey");
+    expect(pairing).toContain("...stripPairingSecret(next)");
+  });
+
+  it("rebinds only never-sent captures after an identity repair", () => {
+    const bind = source.slice(
+      source.indexOf("async function bindOutboxItem"),
+      source.indexOf("async function publishTransferInternal"),
+    );
+    expect(bind).toContain('manifest["senderDevicePubkey"] = senderDevicePubkey');
+    expect(bind).toContain('manifest["senderDevicePubkey"] !== senderDevicePubkey');
+    expect(bind).toContain("paired.devicePubkey !== senderDevicePubkey");
+    expect(bind.indexOf('manifest["senderDevicePubkey"] = senderDevicePubkey')).toBeLessThan(
+      bind.indexOf("await manifestIdentity"),
+    );
   });
 
   it("never deletes captured payload merely because a retry ceiling was reached", () => {

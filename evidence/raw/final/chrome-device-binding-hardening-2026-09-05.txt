@@ -1,0 +1,74 @@
+Reader v2 Chrome device/channel binding hardening gate
+UTC recorded: 2026-09-05
+
+BOUNDARY
+- Base implementation commit: 4d8211f3ce7d51a0c37f99e74af53b015332a83b.
+- Tests used fixed public test vectors, the pinned local fault relay, the
+  existing isolated paired Chrome-for-Testing profile, and one disposable
+  headless Chrome-for-Testing profile.
+- No public relay payload, new article, new pairing, QR scan, private article,
+  real identity, authentication challenge, or secret value was retained.
+- Existing Chrome and Android data were not cleared or mutated by the fault
+  probe. Its disposable profile was removed after the run.
+
+DEFECT CLOSED
+- Completed Chrome state retained the Android channel, protocol version,
+  relays, and relay digest but not the public identity derived from the exact
+  Chrome device secret that completed pairing.
+- A missing/malformed secret could leave a false connected UI. A replacement
+  valid secret could sign under stale Android trust. A never-sent capture made
+  before identity repair could also retain the wrong sender public key.
+
+CONTROLS
+- Completed state now persists the authenticated Chrome device public key.
+- Paired-state reads require a valid private scalar, its exact derived public
+  binding, a valid Android x-only channel point, protocol v2, the canonical
+  six-default-plus-custom relay set, and its exact digest.
+- Compatible earlier-v2 state receives a public binding marker only when its
+  existing private key is valid. Missing, malformed, or mismatched state fails
+  closed and removes only the unusable channel binding; preferences, device
+  identity where still valid, and durable captures remain local.
+- In-flight sessions are cancelled and stripped of their one-time key if the
+  current device identity no longer matches their request.
+- A never-sent unbound capture can adopt the repaired identity before its
+  manifest ID is computed. An already-bound sender mismatch is retained as a
+  local failure before network use.
+
+PRE-COMMIT RESULTS
+- Chrome TypeScript typecheck: PASS.
+- Targeted binding/pairing/recovery suite: PASS, 3 files / 22 tests.
+- Chrome full suite including the local WebSocket fault relay: PASS,
+  17 files / 100 tests.
+- Chrome extension build and package verifier: PASS.
+- Existing Chrome for Testing 151 profile migration: PASS. Paired remained
+  true with seven exact relays, custom Mostr, relayChangePending false,
+  pending 0, delivered 1, failed 0.
+- Secret-safe paired integrity: PASS. Protocol v2, device-secret shape,
+  Android-channel point shape, public device binding presence/verification,
+  seven relays, and relay digest presence/recomputation all reported true. No
+  key or digest value was printed.
+- Active service-worker SHA-256 exactly matched the rebuilt local
+  background.js: 80987af1813d1c4d700f123df2ad1f7175123943ebd6a19f8474dbb3947aad2f.
+- Post-pair service-worker termination/recovery: PASS, 20 distinct targets
+  terminated and 20 recovered with paired 7, pending 0, delivered 1, failed 0.
+- Content-script isolation: PASS. One isolated context exposed the storage API
+  namespace, but its read failed and neither device secret nor pairing state
+  was visible.
+- Disposable-profile legacy migration and replacement-key fault probe: PASS.
+  Public marker added; replacement key changed status to unpaired; a synthetic
+  capture remained queued locally; relay-accepted count stayed zero; old
+  channel fields were removed. The profile started empty and was deleted.
+
+STATUS BOUNDARY
+- Device/channel identity binding and fail-closed recovery: PASS in unit,
+  source-state, existing-profile migration, and disposable-browser evidence.
+- Deliberate corruption of the user's paired profile: NOT PERFORMED.
+- The 20/20 post-pair worker run is not the requested 20/20 worker-termination
+  pairing-before-reply gate; that mandatory physical series remains
+  NOT MEASURED.
+- Required clean-pairing, restart-before-reply, delivery, offline, replay, and
+  broader Android physical quotas remain NOT MEASURED.
+- Exact post-commit hashes/install checks belong in ignored
+  artifacts/ARTIFACTS.json after the clean commit build.
+- Push, merge, publication, release, force-push, app-data clear, real identity,
+  and backend introduction: NOT PERFORMED.

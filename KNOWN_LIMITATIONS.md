@@ -36,5 +36,8 @@ Every item is evidence-based and uses the required status vocabulary.
   same transfer.
 - Chrome serializes all mutations for one outbox transfer and persists a
   delivered receipt before deleting its durable payload.
+- Chrome validates the private-device-key/public-channel binding before
+  reporting paired or sending; key loss preserves captures but requires
+  explicit re-pairing.
 - Relay rejection of an AUTH event is distinct from rejection of the original
   Reader event, and Chrome validates the exact NIP-42 template before signing.

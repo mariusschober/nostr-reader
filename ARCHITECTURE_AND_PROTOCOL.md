@@ -52,7 +52,7 @@ matching positive relay results per payload.
 | Provision channel | Android | local Android state | `provisioning` row, then Keystore-wrapped fresh key | none | none | Android Keystore AES-GCM wrapping | new Android channel key | none | not connected | channel/session IDs | request + 600 s cleanup window | Android coordinator |
 | Pair response | Android | Chrome pairing key | pending state before network send | 1059 | one exact `p`, one `expiration` | NIP-44 rumor -> signed seal -> NIP-44 wrap | Android channel key signs seal; fresh outer key signs wrap | per-relay matching `OK=true`; at least one advances to awaiting ACK | Chrome decrypts and validates full transcript | session, nonce, rumor/event IDs | 600 s | Android WorkManager/backoff |
 | Pair ACK | Chrome | Android channel key | response-validated Chrome session | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | stable Chrome device key signs seal; fresh outer per relay | per-relay matching result retained separately | Android validates signer, both keys, session, digest, status, time | session + Android key | 600 s | Chrome pairing alarm |
-| Pair complete | Android | Chrome device key | `ack_validated`/`completion_pending` | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Android channel key signs seal; fresh outer per relay | at least one matching positive publication before Android promotion | Chrome catches up across the full authenticated relay set, validates completion, then stores channel and removes pairing secret | session + both endpoint keys | 600 s | Android coordinator; Chrome catch-up |
+| Pair complete | Android | Chrome device key | `ack_validated`/`completion_pending` | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Android channel key signs seal; fresh outer per relay | at least one matching positive publication before Android promotion | Chrome catches up across the full authenticated relay set, validates completion, then stores channel, exact Chrome-device binding, and relay digest and removes the pairing secret | session + both endpoint keys | 600 s | Android coordinator; Chrome catch-up |
 | Capture article | Chrome | local outbox | full plaintext intent and immutable transfer identity | none | none | local only | stable Chrome device key selected | none | none | `transferId`, `manifestId`, `documentId` | 7 d | Chrome alarm/manual retry |
 | Manifest | Chrome | Android channel | outbox already durable | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Chrome device seal; fresh outer key per relay | two unique relay `OK=true` results => `relay_accepted` | no delivery claim | stable transfer + manifest identity | outer and inner 7 d | Chrome bounded backoff |
 | Chunks | Chrome | Android channel | all compressed bytes retained in outbox | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Chrome device seal; fresh outer key per relay and retry | two unique positive results per chunk | none until full durable assembly | transfer/manifest/hash/index tuple | 7 d | Chrome bounded backoff |
@@ -69,6 +69,12 @@ browser startup, and the pairing alarm. The QR uses durable kind 1059, so a
 pairing tab or worker need not remain open. At most two live sessions are
 allowed; completion supersedes the others. One serial executor owns pairing
 session read-modify-write operations within each worker lifetime.
+The completed channel also stores the public key derived from the exact local
+device secret used in that transcript. Missing, malformed, replaced, or
+non-curve key state cannot report paired or send under the old channel. The
+channel binding is removed while preferences and captured outbox content are
+retained for explicit re-pairing. Earlier v2 state receives a one-time public
+binding-marker backfill only when its existing private key is valid.
 
 Android owns durable pairing rows in Room. Workers ignore `provisioning`, can
 resume the four pending v2 states, revoke expired/corrupt rows, and delete the
@@ -96,6 +102,9 @@ outbox item, preventing stale async handlers from recreating acknowledged
 content. Before sending, it also requires both stored channel metadata and the
 item's relay list to equal the authenticated six-default-plus-custom set; a
 missing list cannot reduce the quorum to zero or trigger a guessed fallback.
+It also verifies that the current Chrome device key still owns the channel and
+the bound manifest. A never-sent, unbound capture can be rebound after local
+identity repair; an already authenticated/bound transfer cannot be rewritten.
 
 Android receives through a rolling kind-1059 `#p` query. It deduplicates relay
 copies by event ID within a run and persists authenticated wrapper IDs across
@@ -111,6 +120,7 @@ run. Force-stop is explicitly not promised until the app is reopened.
 - Chrome pairing protocol and validation: `chrome/src/protocol/pairing.ts`.
 - Chrome relay policy/defaults: `chrome/src/protocol/relays.ts`.
 - Chrome persistence/recovery/outbox: `chrome/src/background/service-worker.ts`.
+- Chrome device/channel identity binding: `chrome/src/protocol/device-binding.ts`.
 - Chrome NIP-44/NIP-59 and relay I/O: `chrome/src/nostr/`.
 - Android QR/network policy: `android/app/src/main/java/com/reader/app/nostr/PairingProtocol.kt`.
 - Android pairing recovery: `android/app/src/main/java/com/reader/app/sync/PairingCoordinator.kt`.

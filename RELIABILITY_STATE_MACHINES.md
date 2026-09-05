@@ -47,6 +47,10 @@ a session removes its pairing secret rather than writing `null` or `undefined`.
 Response bootstrap queries are restricted to fixed relays. After the response
 authenticates Android and the relay digest, completion catch-up uses the whole
 bound relay set so a custom-relay-only success cannot split endpoint state.
+Every recovery also requires the local Chrome device secret to derive the
+public key bound at completion. Key loss, malformed key state, or replacement
+cancels an in-flight mismatched session and makes an old completed channel
+unpaired; it never silently rotates beneath trusted Android state.
 
 ## Android pairing
 
@@ -100,6 +104,9 @@ unbound and queued for a future authenticated re-pair; it cannot silently fall
 back to defaults or make a zero-relay quorum vacuously succeed. An already
 bound item with inconsistent recipient/relay state becomes a retained local
 failure rather than an endless silent retry.
+The same gate binds the sender identity. A never-sent item with no manifest
+identity can adopt a repaired device key before first send; an already-bound
+item with a different sender key becomes a retained local failure.
 
 ## Android receive/ACK
 
@@ -134,8 +141,9 @@ periodic and foreground-triggered workers.
 | Failure point | Durable owner | Recovery | Status |
 |---|---|---|---|
 | pairing tab closes | Chrome pairing session | worker/alarm query of durable kind 1059 | PASS in design/unit; full quota NOT MEASURED |
-| worker terminates before response | Chrome pairing session | worker evaluation/startup/alarm | PASS in deterministic tests; 20/20 physical NOT MEASURED |
+| worker terminates before response | Chrome pairing session | worker evaluation/startup/alarm | PASS in deterministic tests; 20/20 physical before-reply series NOT MEASURED (separate post-pair worker recovery 20/20 PASS) |
 | browser restarts | Chrome storage + alarms | startup ACK/pairing/outbox recovery | one paired-profile restart PASS; 20/20 NOT MEASURED |
+| Chrome device key is missing/corrupt/replaced | public binding marker + retained outbox | old channel fails closed; create a fresh identity and explicitly re-pair | PASS deterministic tests; deliberate live corruption not performed |
 | Android dies during provisioning | Room `provisioning` row | revoke/delete on resumed begin | PASS instrumentation |
 | Android dies during pairing ACK/completion | Room pending row + Keystore | WorkManager `processDue()` | PASS source/unit; physical lifecycle matrix NOT MEASURED |
 | Android dies after document commit/before ACK quorum | Room ACK intent + accepted-relay set | next WorkManager run resumes only missing relay attempts | PASS instrumentation/unit; physical interruption scenario NOT MEASURED |

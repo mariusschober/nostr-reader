@@ -34,6 +34,11 @@ The complete acceptance gate is therefore **NOT MEASURED**, while the executed
 unit, instrumentation, packaging, live-relay, and single-flow checks are
 reported independently in `TEST_REPORT.md`.
 
+The paired Chrome profile also survived 20/20 distinct post-pair service-worker
+terminations with identical seven-relay and outbox status. This is useful exact
+lifecycle evidence, but it is not substituted for the still-unrun 20/20
+termination-before-Android-reply pairing series.
+
 ## What changed
 
 - Pairing is `reader-pair/2`, durable kind 1059 only, and requires both
@@ -63,6 +68,10 @@ reported independently in `TEST_REPORT.md`.
   relays but queries authenticated completion across the entire bound set. It
   also rejects corrupt durable relay state before network use or quorum math;
   no zero-relay success or implicit paired-channel fallback remains.
+- Chrome now binds each completed channel to the exact public key derived from
+  its persisted device secret. Missing, malformed, replaced, or non-curve key
+  state fails closed instead of showing a ghost connection or sending under a
+  wrong identity; never-sent captures remain recoverable after re-pairing.
 
 ## Evidence map
 

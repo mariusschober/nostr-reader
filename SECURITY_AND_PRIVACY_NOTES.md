@@ -15,6 +15,10 @@ not used in repair testing.
 
 - Device and one-time pairing keys are generated and used in the MV3 service
   worker.
+- A completed channel is bound to the public key derived from the exact Chrome
+  device secret that completed pairing. Missing, malformed, replaced, or
+  non-curve key state cannot remain visibly paired; Reader removes only the
+  unusable channel binding and retains local captures for re-pairing.
 - `chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'})` is
   reasserted on every worker evaluation. In the exact current Chrome build,
   Reader's isolated content-script world could see the API namespace but its
@@ -68,6 +72,9 @@ and `evidence/raw/final/pairing-relay-state-hardening-2026-09-05.txt`.
 - Durable relay state is treated as untrusted input before connection and
   quorum calculation; missing or reordered state cannot become a zero-relay
   success or an implicit default fallback.
+- Never-sent unbound captures may adopt the current device identity at first
+  authenticated pairing. A transfer with an existing manifest identity must
+  retain its original sender/channel binding or fail locally before network.
 - Outer expiry is checked before decryption; application expiry, recipient,
   sender, protocol, kind, signature, MAC, hash, and resource limits are checked
   before state mutation.

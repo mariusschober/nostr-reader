@@ -10,6 +10,13 @@ async function targets() {
   return response.json();
 }
 
+async function browserTarget() {
+  const response = await fetch(`${endpoint}/json/version`);
+  if (!response.ok) throw new Error(`CDP browser endpoint failed: ${response.status}`);
+  const version = await response.json();
+  return { webSocketDebuggerUrl: version.webSocketDebuggerUrl };
+}
+
 async function connect(target) {
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
@@ -117,9 +124,11 @@ if (action === "status") {
   console.log(JSON.stringify(result, null, 2));
 } else if (action === "paired-integrity") {
   const result = await evaluate(page, `(async () => {
+    const status = await chrome.runtime.sendMessage({kind:"reader-status"});
     const state = await chrome.storage.local.get([
       "deviceSeckey",
       "channelPubkey",
+      "channelDevicePubkey",
       "relays",
       "channelRelaySetDigest",
       "protocolVersion"
@@ -134,12 +143,53 @@ if (action === "status") {
       protocolV2: state.protocolVersion === 2,
       deviceKeyPresentAndCanonical: typeof state.deviceSeckey === "string" && /^[0-9a-f]{64}$/.test(state.deviceSeckey),
       channelKeyPresentAndCanonical: typeof state.channelPubkey === "string" && /^[0-9a-f]{64}$/.test(state.channelPubkey),
+      deviceBindingPresentAndCanonical: typeof state.channelDevicePubkey === "string" && /^[0-9a-f]{64}$/.test(state.channelDevicePubkey),
+      deviceBindingVerified: status?.paired === true,
       relayCount: Array.isArray(state.relays) ? state.relays.length : 0,
       relayDigestPresentAndCanonical: typeof state.channelRelaySetDigest === "string" && /^[0-9a-f]{64}$/.test(state.channelRelaySetDigest),
       relayDigestMatches: computedDigest !== null && computedDigest === state.channelRelaySetDigest
     };
   })()`);
   console.log(JSON.stringify(result, null, 2));
+} else if (action === "worker-hash") {
+  const serviceWorker = worker(await targets());
+  if (!serviceWorker) throw new Error("Reader service worker target not found");
+  const result = await evaluate(serviceWorker, `(async () => {
+    const bytes = await fetch(chrome.runtime.getURL("background.js")).then((response) => response.arrayBuffer());
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  })()`);
+  console.log(JSON.stringify({backgroundSha256: result}, null, 2));
+} else if (action === "worker-recovery") {
+  const requested = Number(process.argv[4] ?? 20);
+  if (!Number.isSafeInteger(requested) || requested < 1 || requested > 100) {
+    throw new Error("worker recovery count must be an integer from 1 to 100");
+  }
+  let terminated = 0;
+  let recovered = 0;
+  for (let index = 0; index < requested; index += 1) {
+    // Ensure a worker target exists before terminating this distinct lifetime.
+    await evaluate(page, `chrome.runtime.sendMessage({kind:"reader-status"}).then(s => s.ok === true)`);
+    const serviceWorker = worker(await targets());
+    if (!serviceWorker) throw new Error(`Reader service worker target missing before run ${index + 1}`);
+    const browser = await connect(await browserTarget());
+    try {
+      const closed = await browser.call("Target.closeTarget", { targetId: serviceWorker.id });
+      if (closed.success === true) terminated += 1;
+    } finally {
+      browser.close();
+    }
+    const state = await evaluate(page, `chrome.runtime.sendMessage({kind:"reader-status"}).then(s => ({
+      ok:s.ok, paired:s.paired, relayCount:s.relays?.length ?? 0, pending:s.pending,
+      delivered:s.delivery?.delivered ?? 0, failed:s.delivery?.failed ?? 0
+    }))`);
+    if (
+      state?.ok === true && state?.paired === true && state?.relayCount === 7 &&
+      state?.pending === 0 && state?.delivered === 1 && state?.failed === 0
+    ) recovered += 1;
+  }
+  console.log(JSON.stringify({requested, terminated, recovered}, null, 2));
+  if (terminated !== requested || recovered !== requested) process.exitCode = 1;
 } else if (action === "reload") {
   const scheduled = await evaluate(page, `setTimeout(() => chrome.runtime.reload(), 100); true`);
   console.log(JSON.stringify({reloadScheduled: scheduled === true}, null, 2));

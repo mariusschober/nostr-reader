@@ -48,6 +48,11 @@ import {
   type DeliveryStatus,
 } from "../protocol/delivery-state.js";
 import { KeyedSerialExecutor, SerialExecutor } from "../protocol/serial-executor.js";
+import {
+  decodeStoredSecret,
+  inspectDeviceBinding,
+  isValidXOnlyPubkey,
+} from "../protocol/device-binding.js";
 
 interface OutboxItem {
   transferId: string;
@@ -90,18 +95,7 @@ let ackPolling: Promise<void> | null = null;
 let transportEpoch = 0;
 
 function hexToSeckey(value: unknown): Uint8Array {
-  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
-    throw new Error("stored transport key is invalid");
-  }
-  const b = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) b[i] = parseInt(value.slice(i * 2, i * 2 + 2), 16);
-  try {
-    // getPublicKey also rejects zero or an out-of-range scalar.
-    getPublicKey(b);
-  } catch {
-    throw new Error("stored transport key is invalid");
-  }
-  return b;
+  return decodeStoredSecret(value).seckey;
 }
 function seckeyToHex(s: Uint8Array): string {
   return [...s].map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -127,6 +121,7 @@ async function configuredRelaySet(): Promise<string[]> {
 
 interface PairedChannelState {
   channelPubkey: string;
+  devicePubkey: string;
   relays: string[];
   relaySetDigest: string;
 }
@@ -135,39 +130,53 @@ async function pairedChannelState(st: Record<string, unknown>): Promise<PairedCh
   const channelPubkey = st["channelPubkey"];
   if (
     st["protocolVersion"] !== 2 ||
-    typeof channelPubkey !== "string" ||
-    !/^[0-9a-f]{64}$/.test(channelPubkey)
+    !isValidXOnlyPubkey(channelPubkey)
   ) return undefined;
   try {
+    const identity = inspectDeviceBinding(st["deviceSeckey"], st["channelDevicePubkey"], true);
+    if (identity.state !== "bound" && identity.state !== "legacy") return undefined;
     const relays = validatePairedRelaySet(st["relays"]);
     const expectedDigest = await relaySetDigest(relays);
     const storedDigest = st["channelRelaySetDigest"];
+    const migration: Record<string, unknown> = {};
+    if (identity.state === "legacy") migration["channelDevicePubkey"] = identity.pubkey;
     if (storedDigest === undefined) {
       // Compatibility migration for channels completed by an earlier v2
       // build, which authenticated this exact list but did not retain its
       // digest beside the channel. New completions always write both.
-      await chrome.storage.local.set({ channelRelaySetDigest: expectedDigest });
+      migration["channelRelaySetDigest"] = expectedDigest;
     } else if (storedDigest !== expectedDigest) {
       return undefined;
     }
-    return { channelPubkey, relays, relaySetDigest: expectedDigest };
+    if (Object.keys(migration).length) await chrome.storage.local.set(migration);
+    return { channelPubkey, devicePubkey: identity.pubkey!, relays, relaySetDigest: expectedDigest };
   } catch {
     return undefined;
   }
 }
 
 async function loadPairedChannelState(): Promise<PairedChannelState | undefined> {
-  const st = await chrome.storage.local.get([...PAIRED_CHANNEL_STORAGE_KEYS]);
+  const st = await chrome.storage.local.get(["deviceSeckey", ...PAIRED_CHANNEL_STORAGE_KEYS]);
   return pairedChannelState(st as Record<string, unknown>);
 }
 
 async function getDeviceKey(): Promise<{ seckey: Uint8Array; pubkey: string }> {
   await lockDownKeyStorage();
-  const st = await chrome.storage.local.get(["deviceSeckey"]);
-  if (st.deviceSeckey) {
-    const seckey = hexToSeckey(st.deviceSeckey);
-    return { seckey, pubkey: getPublicKey(seckey) };
+  const st = await chrome.storage.local.get(["deviceSeckey", ...PAIRED_CHANNEL_STORAGE_KEYS]);
+  const hasChannelBinding = PAIRED_CHANNEL_STORAGE_KEYS.some((key) => st[key] !== undefined);
+  const identity = inspectDeviceBinding(st.deviceSeckey, st.channelDevicePubkey, hasChannelBinding);
+  if (identity.seckey && identity.pubkey) {
+    if (identity.state === "invalid" || identity.state === "mismatch") {
+      // Preserve the still-valid local device key, but never associate it with
+      // a channel authenticated by a different identity.
+      await chrome.storage.local.remove([...PAIRED_CHANNEL_STORAGE_KEYS]);
+    }
+    return { seckey: identity.seckey, pubkey: identity.pubkey };
   }
+  // A lost or malformed private key makes the old channel unrecoverable. Strip
+  // only that binding before creating a replacement identity; preferences and
+  // durable outbox content remain for an explicit re-pair.
+  if (hasChannelBinding) await chrome.storage.local.remove([...PAIRED_CHANNEL_STORAGE_KEYS]);
   const seckey = randomSeckey();
   await chrome.storage.local.set({ deviceSeckey: seckeyToHex(seckey) });
   return { seckey, pubkey: getPublicKey(seckey) };
@@ -353,29 +362,40 @@ function scheduleAckCheck(): void {
   });
 }
 
-async function bindOutboxItem(item: OutboxItem, channelPubkey: string): Promise<void> {
+async function bindOutboxItem(
+  item: OutboxItem,
+  channelPubkey: string,
+  senderDevicePubkey: string,
+): Promise<void> {
   const manifest = item.manifest;
   const existingRecipient = String(manifest["recipientChannelPubkey"] ?? "");
   if (existingRecipient && existingRecipient !== channelPubkey) throw new Error("queued transfer is bound to a different channel");
   const paired = await loadPairedChannelState();
   if (!paired || paired.channelPubkey !== channelPubkey) throw new Error("paired channel state is unavailable");
+  if (paired.devicePubkey !== senderDevicePubkey) throw new Error("paired device identity changed");
   const manifestId = String(manifest["manifestId"] ?? "");
   if (!manifestId) {
     item.relays = [...paired.relays];
     manifest["recipientChannelPubkey"] = channelPubkey;
+    // An unbound capture may predate a local identity repair. It has never
+    // been transmitted or authenticated, so bind it to the current key before
+    // computing its immutable manifest identity.
+    manifest["senderDevicePubkey"] = senderDevicePubkey;
     manifest["manifestId"] = await manifestIdentity({
       transferId: item.transferId,
       documentId: item.documentId,
       compressedSha256: String(manifest["compressedSha256"]),
       compressedBytes: Number(manifest["compressedBytes"]),
       chunkCount: Number(manifest["chunkCount"]),
-      senderDevicePubkey: String(manifest["senderDevicePubkey"]),
+      senderDevicePubkey,
       recipientChannelPubkey: channelPubkey,
       expiresAt: Number(manifest["expiresAt"]),
     });
     await outboxPut(item);
   } else if (existingRecipient !== channelPubkey) {
     throw new Error("bound transfer recipient is unavailable");
+  } else if (manifest["senderDevicePubkey"] !== senderDevicePubkey) {
+    throw new Error("bound transfer sender identity is unavailable");
   }
   item.relays = validatePairedRelaySet(item.relays);
   if (!sameRelayOrder(item.relays, paired.relays)) throw new Error("bound transfer relay set changed");
@@ -402,7 +422,7 @@ async function publishTransferInternal(
     return;
   }
   try {
-    await bindOutboxItem(item, channelPubkey);
+    await bindOutboxItem(item, channelPubkey, getPublicKey(seckey));
   } catch (error) {
     // A bound transfer whose recipient or authenticated relay set no longer
     // matches cannot be repaired by retransmission. Retain its plaintext for
@@ -660,6 +680,14 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
       lastError: "Stored pairing state is invalid. Create a new code.",
     };
   }
+  const deviceKey = await getDeviceKey();
+  if (deviceKey.pubkey !== next.request.chromeDevicePubkey) {
+    return {
+      ...stripPairingSecret(next),
+      state: "cancelled",
+      lastError: "Chrome's device key changed. Create a new pairing code.",
+    };
+  }
 
   if (next.state === "waiting_response") {
     if (!next.pairingSeckey) {
@@ -704,9 +732,8 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
   }
 
   if (next.state === "response_validated" && next.androidChannelPubkey) {
-    const { seckey } = await getDeviceKey();
     const ack = createPairAck(next.request, next.androidChannelPubkey, requestRelays, now);
-    const accepted = await publishFreshPayload(requestRelays, seckey, next.androidChannelPubkey, ack);
+    const accepted = await publishFreshPayload(requestRelays, deviceKey.seckey, next.androidChannelPubkey, ack);
     if (!accepted.length) {
       return { ...next, lastError: "No pairing relay accepted Chrome's authenticated acknowledgement yet." };
     }
@@ -714,18 +741,17 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
   }
 
   if (next.state === "waiting_completion" && next.androidChannelPubkey) {
-    const { seckey, pubkey } = await getDeviceKey();
     const events = await queryPairingEvents(
       pairingReadRelays("authenticated_completion", requestRelays),
-      pubkey,
+      deviceKey.pubkey,
       next.request.createdAt - 172800,
-      seckey,
+      deviceKey.seckey,
     );
     for (const event of events) {
       try {
         const envelope = await unwrapAndVerifyEnvelope({
           wrap: event,
-          recipientSeckey: seckey,
+          recipientSeckey: deviceKey.seckey,
           expectedSenderPubkey: next.androidChannelPubkey,
           expectedProtocols: [PAIRING_PROTOCOL],
           nowSecs: now,
@@ -782,6 +808,7 @@ async function recoverPairingSessionsInternal(): Promise<void> {
     await chrome.storage.local.set({
       [PAIRING_SESSIONS_KEY]: sessions,
       channelPubkey: winner.androidChannelPubkey,
+      channelDevicePubkey: winner.request.chromeDevicePubkey,
       relays: winner.request.relays,
       channelRelaySetDigest: winner.request.relaySetDigest,
       protocolVersion: 2,

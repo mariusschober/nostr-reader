@@ -16,6 +16,7 @@ export interface SecretBearingPairingSession {
 /** Stable key list for a local disconnect. Device identity and queued captures remain. */
 export const PAIRED_CHANNEL_STORAGE_KEYS = [
   "channelPubkey",
+  "channelDevicePubkey",
   "relays",
   "channelRelaySetDigest",
   "protocolVersion",
