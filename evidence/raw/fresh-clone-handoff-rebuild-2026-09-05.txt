@@ -1,0 +1,43 @@
+Nostr Reader pushed-branch fresh-clone rebuild evidence
+Date: 2026-09-05
+
+Source
+- Remote: https://github.com/mariusschober/nostr-reader.git
+- Branch: fix/pairing-delivery-hardening-982920b4
+- Cloned revision: 097f80855d5577e12978c39904f0b6726f69040e
+- Tracked files: 259
+- The clean clone contained AI_CONTINUATION_CONTEXT.md and
+  artifacts/README.md, but correctly contained no ignored ARTIFACTS.json,
+  APK, or Chrome ZIP before the build.
+
+Command
+- ./scripts/build-audit-artifacts.sh
+- Exit status: 0
+
+Fresh-clone results
+- npm install/advisory checks: 183 packages audited, 0 known vulnerabilities
+  at the execution time.
+- Chrome: typecheck PASS; 17/17 files and 101/101 tests PASS; package verifier
+  PASS; two packages byte-identical.
+- Android: first 66-task artifact build PASS; final 107-task
+  test/lint/artifact build PASS; app and test APK reproducibility PASS.
+- Rust: 6/6 tests PASS.
+- Swift: 7/7 tests PASS.
+
+Cross-check against the primary clean checkout
+- reader-debug.apk: exact cmp PASS
+  SHA-256 4c555d6d8e53784b3d7a5c00a7e85df671f3f5abede1923da5766573616cea5e
+- reader-debug-androidTest.apk: exact cmp PASS
+  SHA-256 244c4bd0d829f17a342c78e06d6d7bb9f6aa354dd2c527564a1da0c9187aa563
+- reader-chrome-extension.zip: exact cmp PASS
+  SHA-256 01b4d5b714c385d70c635e0043c6c6f6a55b8223caafd98475f6a79dc8744c92
+- android-debug-runtime-dependencies.txt: exact cmp PASS
+- chrome-sbom.cdx.json: expected run-metadata difference; npm generates
+  per-run metadata. Each generated SBOM parsed and matched its own manifest,
+  but no cross-run SBOM-byte-reproducibility claim is made.
+
+Boundary
+- This proves the pushed tracked source is independently buildable on the
+  handoff host and reproduces all installable artifacts exactly.
+- It does not add physical pairing/delivery reliability evidence or replace
+  any NOT MEASURED quota in TCL_PHYSICAL_VALIDATION.md.

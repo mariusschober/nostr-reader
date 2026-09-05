@@ -33,9 +33,13 @@ hashes:
 ```
 
 The Chrome ZIP is byte-identical to the package verified in Chrome for
-Testing. The final reproducible APK pair was not installed after the
-toolchain-only rebuild; its physical result remains `NOT MEASURED`. These are
-developer artifacts, not production-signed or published releases.
+Testing. The exact final app APK was installed in place on TCL T807D, pulled
+back as an exact byte match, and cold-started successfully. The matching test
+APK was not installed and final-hash instrumentation remains `NOT MEASURED`.
+A clean clone of the pushed branch reproduced both APKs, the Chrome ZIP, and
+the Android dependency inventory exactly. npm's SBOM includes run-specific
+metadata, so its checksum is per-generation rather than a cross-run identity.
+These are developer artifacts, not production-signed or published releases.
 
 `TEST-REPORT.md` is a preserved historical report and is superseded by the
 root `TEST_REPORT.md`.

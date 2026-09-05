@@ -54,9 +54,12 @@ map despite matching normalized DEX semantics. The narrowly upgraded,
 officially compatible Gradle 8.9/AGP 8.7.2/D8 8.7.18 toolchain closes that gap:
 two clean app builds and two clean test-APK builds were byte-identical. The
 exact APK hashes named in the generated artifact manifest remain authoritative.
-The reproducible pair was not installed after this toolchain-only change; the
-user retained the final install/use test. Do not transfer the earlier physical
-PASS to the new hashes—record them as **NOT MEASURED** until actually installed.
+The exact reproducible app APK `4c555d6d…ea5e` was subsequently installed in
+place on the TCL, pulled back with the same SHA-256 and exact bytes, and
+cold-started successfully. The matching final test APK `244c4bd0…563` was not
+installed and final-hash instrumentation was not run. Preserve that boundary:
+app install/startup on TCL is **PASS**; final instrumentation is **NOT
+MEASURED**.
 
 The paired Chrome profile also survived 20/20 distinct post-pair service-worker
 terminations with identical seven-relay and outbox status. This is useful exact
@@ -170,9 +173,9 @@ write, repeated wrappers cannot restart a completed two-relay ACK quorum.
 
 ## Safety boundary
 
-This dedicated branch may be pushed once to `origin` under the user's explicit
-2026-09-05 authorization. Do not merge, release, publish binaries, force-push,
-introduce a backend, use a real Nostr identity, or expose pairing/private-key
-material. Future external changes require fresh user authorization. Preserve
-the immutable baseline and distinguish `PASS`, `FAIL`, `NOT MEASURED`, and
-`BLOCKED` exactly.
+The user explicitly authorized pushing this dedicated handoff branch and
+documenting the final TCL install. Do not merge, release, publish binaries,
+force-push, introduce a backend, use a real Nostr identity, or expose
+pairing/private-key material. Other future external changes require fresh user
+authorization. Preserve the immutable baseline and distinguish `PASS`, `FAIL`,
+`NOT MEASURED`, and `BLOCKED` exactly.

@@ -226,10 +226,14 @@ Chrome: use Google Chrome/Chrome for Testing, never substitute Brave for the
 recorded evidence. Run the Chrome build, open `chrome://extensions`, enable
 Developer mode, choose **Load unpacked**, and select `chrome/dist`.
 
-At handoff, the final reproducible APK pair had not been installed after the
-toolchain-only rebuild because the user retained that final use test. The prior
-runtime-checkpoint pair passed 10/10 on TCL T807D, Samsung S23, and API-26, but
-that evidence must not be transferred to the new hashes.
+At handoff, the exact final app APK `4c555d6d…ea5e` had been installed in place
+on the TCL T807D with existing app data preserved. Pulling the installed
+`base.apk` back produced the same SHA-256 and exact bytes; the declared activity
+cold-started successfully and remained visible/resumed. The matching final test
+APK `244c4bd0…563` was not installed and final-hash instrumentation was not
+run. The prior runtime-checkpoint pair passed 10/10 on TCL T807D, Samsung S23,
+and API-26, but that instrumentation result must not be transferred to the new
+test-APK hash.
 
 ## 11. Physical/browser environment notes
 
@@ -269,6 +273,11 @@ Revalidate all external state before relying on it:
   post-pair service-worker terminations without outbox mutation.
 - Runtime-checkpoint Android APKs passed 10/10 instrumentation on both physical
   phones and API-26 with on-device hash matching.
+- The exact final app APK was installed with `-r` on TCL, pulled back as an
+  exact byte match, and cold-started into a visible resumed activity.
+- A fresh clone of the pushed GitHub branch, initially containing no generated
+  artifacts, passed the complete audit build and reproduced the APK, test APK,
+  Chrome ZIP, and Android dependency inventory exactly.
 - Chrome ZIP and both final Android APKs are byte-reproducible on the handoff
   host. APK alignment and debug signature verification pass.
 
@@ -288,7 +297,8 @@ quotas and physical scenarios are executed:
 - 20/20 duplicate/replay attempts with no duplicate local effect;
 - the remaining reboot, Doze, battery-saver, screen-off, network-switch,
   captive-network, and storage-failure cases in `TCL_PHYSICAL_VALIDATION.md`;
-- installation and instrumentation of the final reproducible APK hashes;
+- installation of the final test APK and final-hash instrumentation; final app
+  installation on S23/API-26 only if those additional targets are required;
 - a new public transfer from the exact final artifact only if explicitly
   authorized;
 - live third-party NIP-07/Amber checks, public NIP-42 challenge evidence,

@@ -19,17 +19,21 @@ stored once; Android's authenticated ACK cleared Chrome's outbox.
 The final runtime checkpoint was installed byte-for-byte on both physical
 phones and the API-26 emulator. Two additional cases exercise pending-pairing
 worker ownership and strict rejection of concatenated/trailing gzip input. All
-ten instrumentation cases pass in all three environments. The preserved TCL
-still exposes the authenticated Chrome device after the exact install. Chrome
+ten instrumentation cases pass in all three environments for the
+runtime-checkpoint APK pair. The preserved TCL still exposes the authenticated
+Chrome device after that exact install. Chrome
 loaded the exact ZIP worker bytes, preserved the seven-relay binding through a
 full same-profile restart, and recovered 20/20 distinct post-pair worker
 terminations without outbox mutation.
 
 The later Gradle 8.9/AGP 8.7.2 rebuild made the app and instrumentation APKs
-byte-reproducible without changing app source. Those new exact APK hashes were
-not installed after the user chose to perform the final use test personally;
-their physical install and instrumentation result is therefore **NOT
-MEASURED**. The generated `artifacts/ARTIFACTS.json` records that boundary.
+byte-reproducible without changing app source. On 2026-09-05 the exact final
+app APK `4c555d6d…ea5e` was installed in place on the TCL with app data
+preserved, pulled back from the package manager, compared byte-for-byte, and
+cold-started successfully. The matching test APK `244c4bd0…563` was not
+installed and final-hash instrumentation was not run; that narrower result
+remains **NOT MEASURED**. The generated `artifacts/ARTIFACTS.json` records the
+same boundary.
 
 The full task is not labeled PASS because the requested 20/20 and 50/50
 physical reliability series, several lifecycle/network scenarios, and a second
@@ -111,6 +115,7 @@ than claims about an immutable baseline line.
 | Chrome unit/fault | Vitest 5.0 | `npm test` | all pass | 17 files, 101 tests pass | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS |
 | Chrome package | Vite 8.2.2/CFT | `npm run build` | valid MV3 package, standalone content script | verifier pass; no module/noncharacter packaging defect | build output | PASS |
 | Chrome package reproducibility | macOS `zip` + fresh Vite rebuild | normalize staged timestamps/order/metadata; package twice; rebuild and package again | all three ZIPs byte-identical | common SHA-256 `01b4d5b7…744c92`; all entries fixed to 1980-01-01 00:00 | `artifact-reproducibility-2026-09-05.txt` | PASS |
+| Fresh GitHub-clone handoff rebuild | clean clone of pushed branch at `097f808` | run complete audit build with no generated artifacts present initially; compare outputs to primary checkout | all gates pass and installable artifacts match | Chrome 101/101; Android 107-task gate; Rust 6/6; Swift 7/7; APK, test APK, Chrome ZIP, and Android inventory exact matches | `evidence/raw/fresh-clone-handoff-rebuild-2026-09-05.txt` | PASS |
 | Chrome secret boundary | CFT 151 | content script reads local storage keys | access denied/hidden | API namespace present in exact current isolated world, but read denied; no values visible | `chrome-content-storage-isolation-*`, `pairing-relay-state-hardening-*` | PASS |
 | Chrome persistence | paired CFT profile | reload/restart + status + device/relay binding integrity | pairing/outbox survive with exact bound state | paired, exact seven relays, device binding present/verified, relay digest present/matched, delivered 1, pending 0 | `chrome-paired-status-*`, `chrome-device-binding-hardening-*` | PASS |
 | Chrome post-pair worker recovery | paired CFT profile | terminate 20 distinct service-worker targets and request read-only status after each | every new worker revalidates the same bound channel without outbox mutation | 20/20 recovered; paired 7, pending 0, delivered 1, failed 0 | `chrome-device-binding-hardening-*` | PASS for post-pair recovery; required before-reply pairing quota NOT MEASURED |
@@ -121,7 +126,8 @@ than claims about an immutable baseline line.
 | Android instrumentation | API-26 emulator | runtime-checkpoint APK `0768111d…d74` + test APK `0dc99230…821`, ten DB/codec/transfer/QR/pairing/recovery cases | all pass | 10/10 | `exact-artifact-api26-2026-09-05.txt` + final evidence | PASS for the runtime checkpoint |
 | Android instrumentation | physical TCL T807D | same byte-matched runtime-checkpoint APK pair, ten current cases | all pass | 10/10 | `pairing-retry-gzip-boundary-hardening-2026-09-05.txt` | PASS for the runtime checkpoint |
 | Android instrumentation | physical Samsung S23 | same byte-matched runtime-checkpoint APK pair, ten current cases | all pass | 10/10 | same evidence | PASS for the runtime checkpoint |
-| Final reproducible Android artifacts | TCL/S23/API-26 | install app APK `4c555d6d…ea5e` and test APK `244c4bd0…563`; run instrumentation | exact final hashes installed and tested | user retained this final use test; no post-toolchain install was performed | generated `artifacts/ARTIFACTS.json` | NOT MEASURED |
+| Final reproducible Android app APK | physical TCL T807D | `adb install -r` app APK `4c555d6d…ea5e`; pull installed `base.apk`; compare bytes; cold-start declared activity | exact final app installed with data preserved and starts | install `Success`; pulled SHA-256 exact; `cmp` PASS; `Status: ok`, `LaunchState: COLD`, visible resumed activity | `evidence/raw/final-tcl-app-install-2026-09-05.txt` + generated manifest | PASS for exact app install/startup on TCL |
+| Final reproducible Android instrumentation | TCL/S23/API-26 | install test APK `244c4bd0…563`; run ten-case instrumentation | exact final test hash installed and all cases pass | not run after toolchain rebuild | generated `artifacts/ARTIFACTS.json` | NOT MEASURED |
 | Android installed-state ACK recovery | preserved paired TCL | v4 -> v5 first catch-up then immediate second serialized catch-up | one bounded recovery ACK; no second ACK | observed exactly | same evidence | PASS for observation |
 | Rust normative core | rustc/cargo 1.97.1 | `cargo test` | all pass | 6/6 | terminal run | PASS |
 | Swift core mirror | Swift 6.3.3 | `swift test` | all pass | 7/7 | terminal run | PASS |
@@ -189,9 +195,9 @@ between clean builds despite identical normalized DEX semantics. The pinned,
 officially compatible Gradle 8.9/AGP 8.7.2/D8 8.7.18 update closes that gap:
 two clean app builds and two clean test-APK builds compare byte-for-byte.
 Exact final APK hashes remain authoritative. The earlier runtime-checkpoint
-hashes were installed/tested on all three targets; the final reproducible APK
-pair was deliberately left for the user's own install/use test and is **NOT
-MEASURED** physically.
+pair was installed/tested on all three targets. The final reproducible app APK
+is now byte-verified and startup-verified on the TCL; its matching final test
+APK and instrumentation remain **NOT MEASURED**.
 
 Exact post-commit values belong in `ARTIFACTS.json`; placing a future commit
 hash inside this tracked report would create an impossible self-reference.

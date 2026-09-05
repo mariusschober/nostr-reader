@@ -1,0 +1,45 @@
+Nostr Reader final TCL app installation evidence
+Date: 2026-09-05
+
+Scope
+- Target: TCL T807D
+- ADB serial: ZXKRS4VKGQ8PWGEQ
+- Package: com.reader.app
+- Version: 0.1.0 (versionCode 1, minSdk 26, targetSdk 34)
+- Final app artifact SHA-256:
+  4c555d6d8e53784b3d7a5c00a7e85df671f3f5abede1923da5766573616cea5e
+- Matching final instrumentation artifact SHA-256:
+  244c4bd0d829f17a342c78e06d6d7bb9f6aa354dd2c527564a1da0c9187aa563
+
+Preflight
+- Both the TCL T807D and Samsung S23 were attached.
+- Every device command used the explicit TCL serial.
+- The local app artifact SHA-256 matched the value above.
+- The existing Reader package was present on the TCL.
+
+Install
+- Command shape: adb -s TCL_SERIAL install -r artifacts/reader-debug.apk
+- Result: Success
+- `-r` preserved the existing application data; no uninstall, clear-data, or
+  test-package install was performed.
+- Package lastUpdateTime reported 2026-09-05 09:46:57 local host/device view.
+
+Exact installed-byte verification
+- The package manager's installed base.apk was pulled to a temporary host file.
+- Pulled base.apk SHA-256:
+  4c555d6d8e53784b3d7a5c00a7e85df671f3f5abede1923da5766573616cea5e
+- `cmp` between the pulled base.apk and `artifacts/reader-debug.apk`: PASS.
+
+Startup
+- Declared activity: com.reader.app/.ui.MainActivity
+- `am start -W` result: Status: ok; LaunchState: COLD; TotalTime: 1209 ms.
+- Follow-up state: process present; MainActivity visible and top-resumed.
+
+Evidence boundary
+- Exact final app APK installation and startup on TCL: PASS.
+- Existing app data was preserved, but no interactive UI/pairing assertion was
+  made in this installation step.
+- Matching final test APK installation and instrumentation: NOT MEASURED.
+- Final app installation on S23/API-26: NOT MEASURED.
+- No command targeted the S23, no Chrome data was cleared, and no public relay
+  payload was created.
