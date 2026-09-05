@@ -121,7 +121,8 @@ run. Force-stop is explicitly not promised until the app is reopened.
 - **PASS:** one real Chrome/TCL v2 pairing, seven authenticated relays, one
   synthetic article, exactly one stored document, and a verified device ACK
   clearing Chrome's outbox.
-- **PASS:** local fault relay, cross-runtime vectors, Chrome restart/reload
-  preservation, Android instrumentation on emulator and TCL.
+- **PASS:** local fault relay, shared field-exact Chrome/Android pairing and
+  codec vectors, Chrome restart/reload preservation, Android instrumentation
+  on emulator and both authorized physical phones.
 - **NOT MEASURED:** the mandatory 20/20 and 50/50 reliability quotas and the
   complete physical lifecycle matrix. See `TCL_PHYSICAL_VALIDATION.md`.

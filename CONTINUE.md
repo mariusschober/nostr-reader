@@ -23,8 +23,9 @@ Android ACK moved Chrome from pending to delivered. This proves the complete
 path can work; it is not the unexecuted 20/20 and 50/50 reliability series.
 
 The exact final APK was subsequently installed byte-for-byte on the TCL, S23,
-and API-26 emulator and passed 7/7 instrumentation cases in each environment,
-including hostile pairing-code validation. On the preserved TCL,
+and API-26 emulator and passed 8/8 instrumentation cases in each environment,
+including hostile pairing-code validation and the shared field-exact
+Chrome/Android pairing transcript. On the preserved TCL,
 the first Room v5 catch-up emitted the expected one recovery ACK, while the
 immediately serialized second catch-up read the retained events without another
 ACK batch. No new article was sent for that follow-up.
@@ -54,6 +55,8 @@ reported independently in `TEST_REPORT.md`.
 - NIP-42 event rejection is distinct from Reader-event rejection; malformed or
   misbound Chrome AUTH templates are rejected before signing, and duplicate
   AUTH/OK frames cannot cause repeated effects.
+- The public-only `shared/test-vectors/pairing-v2.json` fixture makes Chrome's
+  request/ACK and Android's response/completion one exact cross-runtime gate.
 
 ## Evidence map
 

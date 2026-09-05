@@ -1,0 +1,80 @@
+{
+  "vector": "reader-pairing-v2-cross-runtime-1",
+  "description": "Synthetic public-only transcript. Chrome builds the request and ACK; Android builds the response and completion. No private keys or bearer material are present.",
+  "validationNow": {
+    "request": 1800000001,
+    "response": 1800000006,
+    "ack": 1800000011,
+    "complete": 1800000021
+  },
+  "verifiedSenders": {
+    "chromeDevicePubkey": "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+    "androidChannelPubkey": "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"
+  },
+  "request": {
+    "protocol": "reader-pair/2",
+    "sessionId": "01010101010101010101010101010101",
+    "pairingPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "chromeDevicePubkey": "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+    "nonce": "0202020202020202020202020202020202020202020202020202020202020202",
+    "relays": [
+      "wss://relay.example",
+      "wss://second.example"
+    ],
+    "relaySetDigest": "72f9fc906385106b8db5beba0a15df36fbe721bd8cd7593b8c74829eb58e6b6a",
+    "createdAt": 1800000000,
+    "expiresAt": 1800000300,
+    "capabilities": [
+      "durable-pair-response",
+      "pair-ack-v2",
+      "pair-complete-v2",
+      "endpoint-ack-v2",
+      "gzip"
+    ]
+  },
+  "response": {
+    "protocol": "reader-pair/2",
+    "type": "pair-response",
+    "sessionId": "01010101010101010101010101010101",
+    "nonce": "0202020202020202020202020202020202020202020202020202020202020202",
+    "recipientPairingPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "chromeDevicePubkey": "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+    "androidChannelPubkey": "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+    "relaySetDigest": "72f9fc906385106b8db5beba0a15df36fbe721bd8cd7593b8c74829eb58e6b6a",
+    "appVersion": "0.2.0-test",
+    "capabilities": [
+      "durable-pair-response",
+      "pair-ack-v2",
+      "pair-complete-v2",
+      "endpoint-ack-v2",
+      "gzip"
+    ],
+    "createdAt": 1800000005,
+    "expiresAt": 1800000605
+  },
+  "ack": {
+    "protocol": "reader-pair/2",
+    "type": "pair-ack",
+    "sessionId": "01010101010101010101010101010101",
+    "chromeDevicePubkey": "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+    "androidChannelPubkey": "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+    "relaySetDigest": "72f9fc906385106b8db5beba0a15df36fbe721bd8cd7593b8c74829eb58e6b6a",
+    "acceptedRelays": [
+      "wss://second.example"
+    ],
+    "status": "accepted",
+    "createdAt": 1800000010,
+    "expiresAt": 1800000610
+  },
+  "complete": {
+    "protocol": "reader-pair/2",
+    "type": "pair-complete",
+    "sessionId": "01010101010101010101010101010101",
+    "chromeDevicePubkey": "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+    "androidChannelPubkey": "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+    "relaySetDigest": "72f9fc906385106b8db5beba0a15df36fbe721bd8cd7593b8c74829eb58e6b6a",
+    "status": "connected",
+    "createdAt": 1800000020,
+    "expiresAt": 1800000620
+  }
+}

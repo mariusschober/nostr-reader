@@ -107,16 +107,21 @@ revalidated.
 
 ## Instrumentation and UI evidence
 
-The exact APK/test-APK pair passed all seven instrumentation cases on the physical
+The exact APK/test-APK pair passed all eight instrumentation cases on the physical
 TCL, Samsung S23, and API-26 emulator. The cases cover v3 -> v5 database
 migration, missing-key
 revocation, sole-active replacement, Chrome/normative gzip decode, conflicting
 sender/duplicate safety, and reordered/duplicate chunk atomic commit with a
 durable bound ACK intent and terminal replay behavior. The seventh case runs
 the strict hostile pairing-code and prohibited-DNS boundary in the Android
-runtime without contacting those destinations. The current three-target run
-is retained in `evidence/raw/final/exact-artifact-state-race-auth-2026-09-05.txt`; the
-earlier screenshots remain supplemental UI evidence.
+runtime without contacting those destinations. The eighth case consumes the
+same synthetic public-only v2 pairing transcript as Chrome and requires exact
+request, response, ACK, completion, relay-digest, endpoint, and time fields.
+The shared-vector physical run is retained in
+`evidence/raw/final/shared-pairing-vector-2026-09-05.txt`; exact post-commit
+artifact identity and install results belong to generated
+`artifacts/ARTIFACTS.json`. Earlier screenshots remain supplemental UI
+evidence.
 
 Emulator screenshots:
 

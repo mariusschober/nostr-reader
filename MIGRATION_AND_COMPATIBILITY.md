@@ -79,8 +79,9 @@ sent after a new authenticated pairing.
 
 ## Cross-platform compatibility
 
-`shared/test-vectors/codec-v2.json` gates deterministic gzip/hash behavior in
-Rust, TypeScript, Kotlin, and Swift. The NIP-44 and BIP-340 corpora gate
-applicable crypto implementations. Mac code currently validates the codec/core
-contract but is not a complete v2 transport client; UniFFI and release UI work
-remain future work.
+`shared/test-vectors/pairing-v2.json` gates the exact Chrome/Android v2
+request, response, ACK, and completion fields. `codec-v2.json` gates
+deterministic gzip/hash behavior in Rust, TypeScript, Kotlin, and Swift. The
+NIP-44 and BIP-340 corpora gate applicable crypto implementations. Mac code
+currently validates the codec/core contract but is not a complete v2 transport
+client; UniFFI and release UI work remain future work.

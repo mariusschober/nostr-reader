@@ -1,6 +1,7 @@
 package com.reader.app
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.reader.app.nostr.PAIRING_CAPABILITIES
 import com.reader.app.nostr.PAIRING_PROTOCOL
 import com.reader.app.nostr.PairingProtocol
@@ -8,6 +9,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -36,6 +40,53 @@ class PairingProtocolInstrumentedTest {
 
   private fun changed(base: JsonObject, field: String, value: JsonPrimitive): JsonObject =
     JsonObject(base.toMutableMap().also { it[field] = value })
+
+  @Test
+  fun physicalRuntimeMatchesSharedChromeAndroidPairingTranscript() {
+    val context = InstrumentationRegistry.getInstrumentation().context
+    val vector = kotlinx.serialization.json.Json.parseToJsonElement(
+      context.assets.open("pairing-v2.json").bufferedReader().use { it.readText() },
+    ).jsonObject
+    val validationNow = vector["validationNow"]!!.jsonObject
+    val verifiedSenders = vector["verifiedSenders"]!!.jsonObject
+    val expectedRequest = vector["request"]!!.jsonObject
+    val expectedResponse = vector["response"]!!.jsonObject
+    val expectedAck = vector["ack"]!!.jsonObject
+    val expectedComplete = vector["complete"]!!.jsonObject
+
+    val parsed = PairingProtocol.validateRequest(
+      expectedRequest.toString(),
+      validationNow["request"]!!.jsonPrimitive.long,
+    )
+    assertEquals(expectedRequest, parsed.json)
+    assertEquals(
+      expectedResponse,
+      PairingProtocol.buildPairResponse(
+        parsed,
+        verifiedSenders["androidChannelPubkey"]!!.jsonPrimitive.content,
+        expectedResponse["appVersion"]!!.jsonPrimitive.content,
+        expectedResponse["createdAt"]!!.jsonPrimitive.long,
+      ),
+    )
+    assertEquals(
+      expectedAck,
+      PairingProtocol.validatePairAck(
+        expectedAck,
+        parsed,
+        verifiedSenders["androidChannelPubkey"]!!.jsonPrimitive.content,
+        verifiedSenders["chromeDevicePubkey"]!!.jsonPrimitive.content,
+        validationNow["ack"]!!.jsonPrimitive.long,
+      ),
+    )
+    assertEquals(
+      expectedComplete,
+      PairingProtocol.buildPairComplete(
+        parsed,
+        verifiedSenders["androidChannelPubkey"]!!.jsonPrimitive.content,
+        expectedComplete["createdAt"]!!.jsonPrimitive.long,
+      ),
+    )
+  }
 
   @Test
   fun physicalRuntimeRejectsHostilePairingCodesBeforeNetwork() {

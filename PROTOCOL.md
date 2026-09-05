@@ -120,6 +120,12 @@ It then removes the one-time pairing secret and supersedes other live pairing
 sessions. Cancellation, expiry, disconnect, and replacement also physically
 remove one-time or obsolete key material.
 
+`shared/test-vectors/pairing-v2.json` is the field-exact cross-runtime
+transcript gate: Chrome must reproduce its request and ACK, Android must
+reproduce its response and completion, and each receiving runtime must accept
+the opposite platform's fixed message only with the recorded authenticated
+sender and validation time.
+
 ## NIP-59 envelope
 
 Every pairing, manifest, chunk, and endpoint ACK uses a fresh outer key and a

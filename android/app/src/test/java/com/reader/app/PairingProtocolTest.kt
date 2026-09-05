@@ -40,6 +40,54 @@ class PairingProtocolTest {
     JsonObject(json.toMutableMap().also { it[name] = value })
 
   @Test
+  fun sharedChromeAndroidPairingTranscriptMatchesByteForField() {
+    val stream = checkNotNull(javaClass.classLoader?.getResourceAsStream("pairing-v2.json")) {
+      "shared pairing-v2.json test resource missing"
+    }
+    val vector = stream.bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }
+    val validationNow = vector["validationNow"]!!.jsonObject
+    val verifiedSenders = vector["verifiedSenders"]!!.jsonObject
+    val expectedRequest = vector["request"]!!.jsonObject
+    val expectedResponse = vector["response"]!!.jsonObject
+    val expectedAck = vector["ack"]!!.jsonObject
+    val expectedComplete = vector["complete"]!!.jsonObject
+
+    val request = PairingProtocol.validateRequest(
+      expectedRequest.toString(),
+      validationNow["request"]!!.jsonPrimitive.long,
+    )
+    assertEquals(expectedRequest, request.json)
+
+    val response = PairingProtocol.buildPairResponse(
+      request,
+      verifiedSenders["androidChannelPubkey"]!!.jsonPrimitive.content,
+      expectedResponse["appVersion"]!!.jsonPrimitive.content,
+      expectedResponse["createdAt"]!!.jsonPrimitive.long,
+    )
+    assertEquals(expectedResponse, response)
+
+    assertEquals(
+      expectedAck,
+      PairingProtocol.validatePairAck(
+        expectedAck,
+        request,
+        verifiedSenders["androidChannelPubkey"]!!.jsonPrimitive.content,
+        verifiedSenders["chromeDevicePubkey"]!!.jsonPrimitive.content,
+        validationNow["ack"]!!.jsonPrimitive.long,
+      ),
+    )
+
+    assertEquals(
+      expectedComplete,
+      PairingProtocol.buildPairComplete(
+        request,
+        verifiedSenders["androidChannelPubkey"]!!.jsonPrimitive.content,
+        expectedComplete["createdAt"]!!.jsonPrimitive.long,
+      ),
+    )
+  }
+
+  @Test
   fun responseAndAckBindTheVerifiedInnerSenders() {
     val request = request()
     val response = PairingProtocol.buildPairResponse(request, channelKey, "0.2.0-test", now + 2)

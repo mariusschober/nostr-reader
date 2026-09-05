@@ -22,8 +22,10 @@ and key storage.
   `pack(manifest+chunks)`, `unwrap_verify`, `rsvp_tokens`, `narrate`,
   `word_count`, `check_limits`. UniFFI generates Kotlin + Swift bindings;
   TS validates against the same vectors in CI.
-- `shared/test-vectors/codec-v2.json`, `nip44-official.json`, and
-  `bip340-official.csv` are release gates for every applicable platform. The
+- `shared/test-vectors/pairing-v2.json`, `codec-v2.json`,
+  `nip44-official.json`, and `bip340-official.csv` are release gates for every
+  applicable platform. The pairing vector fixes the exact Chrome-produced
+  request/ACK and Android-produced response/completion transcript. The
   historical `golden-v1.json` is migration evidence only. No platform may
   "fix" vectors locally.
 - Design tokens: one Flexoki table per platform generated from the same hex

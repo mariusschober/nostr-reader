@@ -56,8 +56,9 @@ scripts/              clean-tree artifact build + provenance manifest
 Chrome: `cd chrome && npm ci && npm run typecheck && npm test && npm run build`
 Android: `cd android && ./gradlew test lint assembleDebug assembleDebugAndroidTest`
 Audited artifacts from a clean commit: `./scripts/build-audit-artifacts.sh`
-Vectors gate every release: `codec-v2.json`, the official NIP-44 corpus, and
-the official BIP-340 corpus must pass on every implementing platform.
+Vectors gate every release: `pairing-v2.json`, `codec-v2.json`, the official
+NIP-44 corpus, and the official BIP-340 corpus must pass on every implementing
+platform.
 
 ## Install
 

@@ -10,7 +10,7 @@ referenced specification.
 | NIP-40 | wrapper expiration | exactly one integer `expiration` tag; receivers reject missing, duplicate, malformed, and expired wrappers before payload use; inner pairing/transfer expiry also enforced | PASS |
 | NIP-42 | relay authentication | independently validate exact kind-22242 fields, current timestamp, empty content, one exact relay tag, and one exact bounded challenge before the anonymous transport key signs; publish/subscription retry once after AUTH; stale/negative/misbound/duplicate AUTH tests | PASS in local harness; no tested public relay required AUTH |
 | NIP-44 v2 | endpoint encryption | exact conversation key, padding boundaries including extended lengths, MAC-before-plaintext, strict Base64/UTF-8/caps; pinned official positive/negative corpus in TS and Kotlin | PASS |
-| NIP-59 | rumors, seals, gift wraps | rumor ID present/no signature; kind-13 seal has empty tags; fresh random wrapper key; kind 1059 has exact `p` and expiration; signatures/sender/recipient/timestamps verified | PASS for Reader v2 tested paths |
+| NIP-59 | rumors, seals, gift wraps | rumor ID present/no signature; kind-13 seal has empty tags; fresh random wrapper key; kind 1059 has exact `p` and expiration; signatures/sender/recipient/timestamps verified; shared field-exact pairing transcript consumed by Chrome and Android | PASS for Reader v2 tested paths |
 | NIP-07 | optional provenance proof | browser signer signs a bounded `device-auth` proof; returned pubkey/event/content are independently verified before use; no page-world key bridge | PASS unit; live Amber/nos2x browser signer NOT MEASURED |
 | NIP-55 | optional Android provenance boundary | transport keys never leave Android Keystore path; baseline Amber integration remains a stub/status boundary | NOT MEASURED |
 | BIP-340 | x-only secp256k1 Schnorr | exact nonce derivation with `BIP0340/aux`, `/nonce`, `/challenge`; on-curve key validation; official vectors 0–14 | PASS |
@@ -82,6 +82,10 @@ Pair-response bootstrap trust is not circular: Chrome first verifies the
 NIP-59 chain without a pre-known sender, then requires the verified inner sender
 to own the returned Android channel key and bind the one-time session, nonce,
 both Chrome keys, relay digest, capabilities, and expiry.
+
+The synthetic public-only `shared/test-vectors/pairing-v2.json` transcript is
+reproduced field-for-field by the Chrome and Android unit suites and by the
+Android runtime instrumentation suite. It contains public test values only.
 
 ## Primary references
 

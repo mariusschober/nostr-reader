@@ -1,0 +1,51 @@
+READER V2 SHARED PAIRING TRANSCRIPT — PRE-COMMIT PHYSICAL GATE
+UTC date: 2026-09-05
+
+BOUNDARY
+- Synthetic public-only transcript; no secret key, QR bearer value, challenge,
+  private URL, real article, or owner identity is present.
+- Base HEAD before this isolated change: 3a18670772a2ddfed8ced607b1a43f8a7fbb31d4.
+- This record proves the pairing-v2 fixture and tests in the accompanying
+  commit. Exact post-commit artifact identity/install results are generated in
+  ignored artifacts/ARTIFACTS.json; do not use the preliminary test-APK hash
+  below as the final artifact identity.
+
+VECTOR
+- shared/test-vectors/pairing-v2.json
+- Chrome is the request and pair-ACK producer.
+- Android is the pair-response and pair-complete producer.
+- Both runtimes require exact field-for-field equality, relay normalization,
+  relay-set digest, endpoint keys, session, nonce, capabilities, and times.
+
+CHROME
+Command: npm test
+Result: PASS — 16 files, 88/88 tests.
+Targeted pairing transcript: PASS — 5/5 pairing tests.
+TypeScript typecheck: PASS.
+
+ANDROID JVM
+Command: ./gradlew testDebugUnitTest
+Result: PASS — 83 tests, zero failures/errors.
+PairingProtocolTest: PASS — 8/8, including
+sharedChromeAndroidPairingTranscriptMatchesByteForField.
+
+PRELIMINARY PHYSICAL TEST APK
+SHA-256: 9c53b982856fb9f1a292bd1aa90fa1d3a936e6829280c42ab0e1ce7b8f1b05ab
+Install mode: adb install -r of test package only; Reader app data not cleared.
+
+TCL T807D ZXKRS4VKGQ8PWGEQ
+Test-package upgrade: PASS.
+Instrumentation: PASS — OK (8 tests), 1.69 s.
+Shared pairing transcript runtime case: PASS.
+
+Samsung S23 R3CW404GVBL
+Test-package upgrade: PASS.
+Instrumentation: PASS — OK (8 tests), 2.005 s.
+Shared pairing transcript runtime case: PASS.
+
+STATUS BOUNDARY
+- Shared Android/Chrome pairing transcript: PASS.
+- Physical statistical pairing/delivery quotas: NOT MEASURED.
+- New public payload or live pairing: NOT PERFORMED.
+- App data clear: NOT PERFORMED.
+- Push, merge, publication, release, force-push: NOT PERFORMED.

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   createPairAck,
   createPairingRequest,
@@ -25,6 +27,45 @@ async function request() {
 }
 
 describe("pairing v2 transcript", () => {
+  it("matches the shared Android-Chrome pairing transcript byte-for-field", async () => {
+    const vector = JSON.parse(readFileSync(
+      join(process.cwd(), "..", "shared", "test-vectors", "pairing-v2.json"),
+      "utf8",
+    ));
+    const expectedRequest = vector.request;
+    const qr = await createPairingRequest({
+      sessionId: expectedRequest.sessionId,
+      pairingPubkey: expectedRequest.pairingPubkey,
+      chromeDevicePubkey: expectedRequest.chromeDevicePubkey,
+      nonce: expectedRequest.nonce,
+      relays: ["wss://Relay.Example/", "wss://second.example"],
+      nowSecs: expectedRequest.createdAt,
+    });
+    expect(qr).toEqual(expectedRequest);
+
+    expect(validatePairResponse(
+      vector.response,
+      qr,
+      vector.verifiedSenders.androidChannelPubkey,
+      vector.validationNow.response,
+    )).toEqual(vector.response);
+
+    expect(createPairAck(
+      qr,
+      vector.verifiedSenders.androidChannelPubkey,
+      vector.ack.acceptedRelays,
+      vector.ack.createdAt,
+    )).toEqual(vector.ack);
+
+    expect(validatePairComplete(
+      vector.complete,
+      qr,
+      vector.verifiedSenders.androidChannelPubkey,
+      vector.verifiedSenders.androidChannelPubkey,
+      vector.validationNow.complete,
+    )).toEqual(vector.complete);
+  });
+
   it("normalizes and binds the exact relay set", async () => {
     const qr = await request();
     expect(qr.protocol).toBe(PAIRING_PROTOCOL);
