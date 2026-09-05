@@ -14,7 +14,12 @@ export interface SecretBearingPairingSession {
 }
 
 /** Stable key list for a local disconnect. Device identity and queued captures remain. */
-export const PAIRED_CHANNEL_STORAGE_KEYS = ["channelPubkey", "relays", "protocolVersion"] as const;
+export const PAIRED_CHANNEL_STORAGE_KEYS = [
+  "channelPubkey",
+  "relays",
+  "channelRelaySetDigest",
+  "protocolVersion",
+] as const;
 
 export function isActivePairingState(state: PairingLifecycleState): boolean {
   return state === "waiting_response" || state === "response_validated" || state === "waiting_completion";

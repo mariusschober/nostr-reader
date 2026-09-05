@@ -1,0 +1,62 @@
+Reader v2 pairing relay-set and durable-state hardening gate
+UTC recorded: 2026-09-05
+
+BOUNDARY
+- Base implementation commit: 1eccb27e6b08f22bb9236c4981879f0f587ac666.
+- Tests use synthetic relay URLs or the pinned local fault relay.
+- No public relay payload, new article, new pairing, private article, QR bearer,
+  authentication challenge, secret key, signer response, or real identity was
+  used or retained.
+- Existing Chrome and Android app data were not cleared.
+
+DEFECTS CLOSED
+- Chrome's unauthenticated pair-response catch-up correctly used only the six
+  fixed bootstrap relays, but final pair-complete catch-up incorrectly used the
+  same restricted list. Android could therefore become active when only a
+  custom relay accepted completion while Chrome remained waiting.
+- A paired capture could silently fall back to defaults when its durable relay
+  list was absent. A corrupt empty item list also made the computed write
+  requirement zero.
+- An unused transport probe labeled NIP-11 plus WebSocket connectivity as relay
+  health even though it did not prove matching OK or read-back.
+
+CONTROLS
+- Before Android is authenticated, Chrome reads responses only from fixed
+  defaults. After the exact response/digest is authenticated, completion is
+  read from the entire bound set, including custom relays.
+- Paired channel state requires protocol v2, a canonical channel key, all six
+  ordered defaults, a canonical zero-to-two custom suffix, and a matching
+  retained relay-set digest. Compatible earlier-v2 state gets one digest
+  backfill from its already authenticated canonical list.
+- Pairing recovery recomputes the request digest before network use. Invalid
+  request or pairing-key state is cancelled and stripped of its one-time key.
+- Channel and item relay sets are validated and compared before quorum math or
+  network send. An incomplete channel leaves a new capture unbound and queued;
+  an inconsistent already-bound item becomes a retained local failure.
+- The unused connectivity-only probe was removed; the dated public smoke
+  harness remains the write, matching-OK, exact-read-back evidence source.
+
+PRE-COMMIT RESULTS
+- Targeted relay/pairing/recovery suite: PASS, 3 files / 23 tests.
+- Chrome full suite: PASS, 16 files / 95 tests.
+- Chrome TypeScript typecheck: PASS.
+- Chrome extension build and package verifier: PASS.
+- Preserved Chrome-for-Testing profile after extension reload: PASS; paired
+  with seven relays, pending 0, delivered 1, failed 0.
+- Trusted-state integrity check: PASS; protocol v2, canonical device/channel
+  key presence, seven relays, retained digest present/canonical, and recomputed
+  digest match all true. No key or digest value was printed.
+- Content-script isolation retest: PASS; one isolated context exposed the API
+  namespace, but its storage read failed and no device secret or pairing state
+  was visible. This records the security invariant more precisely than the
+  earlier run in which the namespace itself was absent.
+
+STATUS BOUNDARY
+- Relay selection, digest/storage guards, zero-relay prevention, and package
+  verification: PASS in deterministic local tests and source assertions.
+- Public custom-relay-only completion failover: NOT MEASURED.
+- Required physical 20/20 and 50/50 reliability quotas: NOT MEASURED.
+- Exact post-commit artifact hashes, installs, and preserved-profile checks are
+  recorded separately in ignored artifacts/ARTIFACTS.json and final evidence.
+- Push, merge, publication, release, force-push, app-data clear, real identity,
+  and backend introduction: NOT PERFORMED.

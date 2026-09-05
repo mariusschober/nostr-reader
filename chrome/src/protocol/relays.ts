@@ -39,3 +39,37 @@ export function configuredRelays(customRelays: readonly string[]): string[] {
 export function sameRelayOrder(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((relay, index) => relay === right[index]);
 }
+
+/**
+ * Revalidate a durable channel relay set before any network use.
+ *
+ * A paired Reader channel always contains every fixed default in canonical
+ * order, followed by zero to two normalized custom relays. Persisted state is
+ * an input boundary: never let missing/corrupt state turn the write quorum
+ * into zero or silently select a different relay set.
+ */
+export function validatePairedRelaySet(value: unknown): string[] {
+  if (!Array.isArray(value) || !value.every((relay) => typeof relay === "string")) {
+    throw new Error("paired relay set is unavailable");
+  }
+  if (value.length < DEFAULT_RELAYS.length || value.length > DEFAULT_RELAYS.length + MAX_CUSTOM_RELAYS) {
+    throw new Error("paired relay set has an invalid size");
+  }
+  const customRelays = normalizeCustomRelays(value.slice(DEFAULT_RELAYS.length));
+  const canonical = configuredRelays(customRelays);
+  if (!sameRelayOrder(value, canonical)) throw new Error("paired relay set does not match the authenticated channel");
+  return canonical;
+}
+
+/**
+ * The unauthenticated response bootstrap is read only from fixed relays. Once
+ * Android's response authenticates the complete relay digest, Chrome must
+ * listen for completion on the entire bound set—including custom relays.
+ */
+export function pairingReadRelays(
+  phase: "bootstrap_response" | "authenticated_completion",
+  value: unknown,
+): string[] {
+  const relays = validatePairedRelaySet(value);
+  return phase === "bootstrap_response" ? [...DEFAULT_RELAYS] : relays;
+}

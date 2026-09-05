@@ -88,6 +88,9 @@ Pair-response bootstrap trust is not circular: Chrome first verifies the
 NIP-59 chain without a pre-known sender, then requires the verified inner sender
 to own the returned Android channel key and bind the one-time session, nonce,
 both Chrome keys, relay digest, capabilities, and expiry.
+Only fixed relays are queried before that authentication. Final completion is
+then queried across the entire authenticated set, so a valid wrapper retained
+only by a custom relay is still observable by Chrome.
 
 The synthetic public-only `shared/test-vectors/pairing-v2.json` transcript is
 reproduced field-for-field by the Chrome and Android unit suites and by the

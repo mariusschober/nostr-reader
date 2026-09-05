@@ -115,6 +115,31 @@ if (action === "status") {
 } else if (action === "permission-state") {
   const result = await evaluate(page, `chrome.permissions.getAll()`);
   console.log(JSON.stringify(result, null, 2));
+} else if (action === "paired-integrity") {
+  const result = await evaluate(page, `(async () => {
+    const state = await chrome.storage.local.get([
+      "deviceSeckey",
+      "channelPubkey",
+      "relays",
+      "channelRelaySetDigest",
+      "protocolVersion"
+    ]);
+    const digestBytes = Array.isArray(state.relays)
+      ? await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(state.relays)))
+      : null;
+    const computedDigest = digestBytes
+      ? [...new Uint8Array(digestBytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+      : null;
+    return {
+      protocolV2: state.protocolVersion === 2,
+      deviceKeyPresentAndCanonical: typeof state.deviceSeckey === "string" && /^[0-9a-f]{64}$/.test(state.deviceSeckey),
+      channelKeyPresentAndCanonical: typeof state.channelPubkey === "string" && /^[0-9a-f]{64}$/.test(state.channelPubkey),
+      relayCount: Array.isArray(state.relays) ? state.relays.length : 0,
+      relayDigestPresentAndCanonical: typeof state.channelRelaySetDigest === "string" && /^[0-9a-f]{64}$/.test(state.channelRelaySetDigest),
+      relayDigestMatches: computedDigest !== null && computedDigest === state.channelRelaySetDigest
+    };
+  })()`);
+  console.log(JSON.stringify(result, null, 2));
 } else if (action === "reload") {
   const scheduled = await evaluate(page, `setTimeout(() => chrome.runtime.reload(), 100); true`);
   console.log(JSON.stringify({reloadScheduled: scheduled === true}, null, 2));

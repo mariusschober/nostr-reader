@@ -5,8 +5,10 @@ import {
   configuredRelays,
   DEFAULT_RELAYS,
   normalizeCustomRelays,
+  pairingReadRelays,
   RELAY_WRITE_QUORUM,
   sameRelayOrder,
+  validatePairedRelaySet,
 } from "../src/protocol/relays.js";
 
 describe("cross-platform default relay contract", () => {
@@ -55,5 +57,20 @@ describe("cross-platform default relay contract", () => {
     expect(next).toEqual([...DEFAULT_RELAYS, ...custom]);
     expect(sameRelayOrder(next, [...next])).toBe(true);
     expect(sameRelayOrder(next, [...DEFAULT_RELAYS])).toBe(false);
+  });
+
+  it("fails closed on missing, reordered, or non-canonical durable relay state", () => {
+    const valid = [...DEFAULT_RELAYS, "wss://custom.example"];
+    expect(validatePairedRelaySet(valid)).toEqual(valid);
+    expect(() => validatePairedRelaySet([])).toThrow(/invalid size/);
+    expect(() => validatePairedRelaySet([...DEFAULT_RELAYS].reverse())).toThrow(/authenticated channel/);
+    expect(() => validatePairedRelaySet([...DEFAULT_RELAYS, "wss://CUSTOM.example/"])).toThrow(/authenticated channel/);
+    expect(() => validatePairedRelaySet([...DEFAULT_RELAYS, "wss://127.0.0.1"])).toThrow();
+  });
+
+  it("bootstraps on fixed relays but reads authenticated completion from the full bound set", () => {
+    const bound = [...DEFAULT_RELAYS, "wss://custom.example"];
+    expect(pairingReadRelays("bootstrap_response", bound)).toEqual([...DEFAULT_RELAYS]);
+    expect(pairingReadRelays("authenticated_completion", bound)).toEqual(bound);
   });
 });

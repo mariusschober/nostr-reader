@@ -16,9 +16,9 @@ not used in repair testing.
 - Device and one-time pairing keys are generated and used in the MV3 service
   worker.
 - `chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'})` is
-  reasserted on every worker evaluation. A real Chrome content-script test
-  confirmed that `chrome.storage.local` was not exposed in Reader's isolated
-  content-script world.
+  reasserted on every worker evaluation. In the exact current Chrome build,
+  Reader's isolated content-script world could see the API namespace but its
+  storage read was denied; no device secret or pairing state was visible.
 - Secrets are not stored in sync storage, page localStorage, the DOM, reports,
   or logs. Pairing material is removed on completion, cancellation, expiry,
   disconnect, and supersession.
@@ -33,7 +33,8 @@ not used in repair testing.
 - The Settings site-access text delegates supported-site permission changes to
   Chrome's extension controls; the former inert checkboxes were removed.
 
-Evidence: `evidence/raw/final/chrome-content-storage-isolation-2026-09-05.txt`.
+Evidence: `evidence/raw/final/chrome-content-storage-isolation-2026-09-05.txt`
+and `evidence/raw/final/pairing-relay-state-hardening-2026-09-05.txt`.
 
 ## Android
 
@@ -61,6 +62,12 @@ Evidence: `evidence/raw/final/chrome-content-storage-isolation-2026-09-05.txt`.
   they are too short for generic credential-pattern redaction.
 - Relay `OK=true` is shown only as relay acceptance. `Delivered` requires the
   exact authenticated Android ACK.
+- Chrome reads an unauthenticated pair response only from fixed bootstrap
+  relays. After that response authenticates the full relay digest, final
+  completion catch-up uses every bound relay, including custom relays.
+- Durable relay state is treated as untrusted input before connection and
+  quorum calculation; missing or reordered state cannot become a zero-relay
+  success or an implicit default fallback.
 - Outer expiry is checked before decryption; application expiry, recipient,
   sender, protocol, kind, signature, MAC, hash, and resource limits are checked
   before state mutation.

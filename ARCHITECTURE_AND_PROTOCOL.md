@@ -52,7 +52,7 @@ matching positive relay results per payload.
 | Provision channel | Android | local Android state | `provisioning` row, then Keystore-wrapped fresh key | none | none | Android Keystore AES-GCM wrapping | new Android channel key | none | not connected | channel/session IDs | request + 600 s cleanup window | Android coordinator |
 | Pair response | Android | Chrome pairing key | pending state before network send | 1059 | one exact `p`, one `expiration` | NIP-44 rumor -> signed seal -> NIP-44 wrap | Android channel key signs seal; fresh outer key signs wrap | per-relay matching `OK=true`; at least one advances to awaiting ACK | Chrome decrypts and validates full transcript | session, nonce, rumor/event IDs | 600 s | Android WorkManager/backoff |
 | Pair ACK | Chrome | Android channel key | response-validated Chrome session | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | stable Chrome device key signs seal; fresh outer per relay | per-relay matching result retained separately | Android validates signer, both keys, session, digest, status, time | session + Android key | 600 s | Chrome pairing alarm |
-| Pair complete | Android | Chrome device key | `ack_validated`/`completion_pending` | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Android channel key signs seal; fresh outer per relay | at least one matching positive publication before Android promotion | Chrome validates completion, then stores channel and removes pairing secret | session + both endpoint keys | 600 s | Android coordinator; Chrome catch-up |
+| Pair complete | Android | Chrome device key | `ack_validated`/`completion_pending` | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Android channel key signs seal; fresh outer per relay | at least one matching positive publication before Android promotion | Chrome catches up across the full authenticated relay set, validates completion, then stores channel and removes pairing secret | session + both endpoint keys | 600 s | Android coordinator; Chrome catch-up |
 | Capture article | Chrome | local outbox | full plaintext intent and immutable transfer identity | none | none | local only | stable Chrome device key selected | none | none | `transferId`, `manifestId`, `documentId` | 7 d | Chrome alarm/manual retry |
 | Manifest | Chrome | Android channel | outbox already durable | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Chrome device seal; fresh outer key per relay | two unique relay `OK=true` results => `relay_accepted` | no delivery claim | stable transfer + manifest identity | outer and inner 7 d | Chrome bounded backoff |
 | Chunks | Chrome | Android channel | all compressed bytes retained in outbox | 1059 | one exact `p`, one `expiration` | NIP-44/NIP-59 | Chrome device seal; fresh outer key per relay and retry | two unique positive results per chunk | none until full durable assembly | transfer/manifest/hash/index tuple | 7 d | Chrome bounded backoff |
@@ -93,7 +93,9 @@ Relay `OK=true` never does. Publish, ACK, retry, and discard operations for the
 same transfer are serialized and reload IndexedDB state inside that critical
 section. Chrome persists the small delivered receipt before deleting the
 outbox item, preventing stale async handlers from recreating acknowledged
-content.
+content. Before sending, it also requires both stored channel metadata and the
+item's relay list to equal the authenticated six-default-plus-custom set; a
+missing list cannot reduce the quorum to zero or trigger a guessed fallback.
 
 Android receives through a rolling kind-1059 `#p` query. It deduplicates relay
 copies by event ID within a run and persists authenticated wrapper IDs across

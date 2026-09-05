@@ -36,7 +36,10 @@ immediate second catch-up with no repeated ACK publication.
 
 The anonymous Chrome device key and queued captures remain local. Version 1
 channel bindings are not silently converted; v2 pairing writes
-`protocolVersion=2`, the authenticated channel key, and the exact relay list.
+`protocolVersion=2`, the authenticated channel key, the exact relay list, and
+its relay-set digest. A compatible earlier-v2 channel that predates the
+separate digest field receives a one-time digest backfill from its already
+authenticated canonical relay list; all new pairings persist both together.
 Pairing sessions are versioned and bounded. Old ad-hoc pairing keys are removed
 after v2 recovery.
 

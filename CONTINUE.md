@@ -59,6 +59,10 @@ reported independently in `TEST_REPORT.md`.
   frames cannot cause repeated effects.
 - The public-only `shared/test-vectors/pairing-v2.json` fixture makes Chrome's
   request/ACK and Android's response/completion one exact cross-runtime gate.
+- Chrome now restricts unauthenticated response catch-up to the fixed bootstrap
+  relays but queries authenticated completion across the entire bound set. It
+  also rejects corrupt durable relay state before network use or quorum math;
+  no zero-relay success or implicit paired-channel fallback remains.
 
 ## Evidence map
 

@@ -101,7 +101,9 @@ No channel is active at this point.
 Chrome catches up from the request's rolling window, decrypts the response with
 the pairing key, verifies the seal/rumor chain, and binds the authenticated
 inner sender to `androidChannelPubkey`. It sends `pair-ack` from the stable
-Chrome device key to that Android key.
+Chrome device key to that Android key. Before that authenticated response,
+Chrome queries only the six fixed bootstrap relays; it does not contact custom
+hostnames merely because they appeared in durable state.
 
 `acceptedRelays` means the ordered subset Chrome accepts as the channel
 configuration. It is not a claim that every listed relay returned `OK=true` for
@@ -116,9 +118,13 @@ accepts that completion does Android transactionally promote the channel and
 revoke any previous active channel.
 
 Chrome marks the channel connected only after authenticating the completion.
-It then removes the one-time pairing secret and supersedes other live pairing
-sessions. Cancellation, expiry, disconnect, and replacement also physically
-remove one-time or obsolete key material.
+Because Android has now authenticated the exact relay-set digest and applied
+its public-address guard, Chrome queries for this completion on the complete
+bound set, including custom relays. A completion accepted only by a custom
+relay therefore cannot leave Android active while Chrome waits only on the
+defaults. Chrome then removes the one-time pairing secret and supersedes other
+live pairing sessions. Cancellation, expiry, disconnect, and replacement also
+physically remove one-time or obsolete key material.
 
 `shared/test-vectors/pairing-v2.json` is the field-exact cross-runtime
 transcript gate: Chrome must reproduce its request and ACK, Android must
@@ -210,6 +216,10 @@ Only durable document presence permits Android to send an ACK. It binds:
 
 Chrome accepts it only inside a fully verified NIP-59 envelope from the paired
 Android channel and with every field matching the persisted outbox item.
+Before computing a write quorum or opening a connection, Chrome revalidates
+that durable channel and item relay state is exactly the six ordered defaults
+plus the authenticated custom suffix. Missing or corrupt state never becomes a
+zero-relay success and never selects an implicit fallback channel.
 `OK=true` from a relay means only `relay_accepted`. Chrome calls an item
 `delivered` and deletes its captured payload only after a valid `stored` or
 `duplicate` device ACK. Recent delivery receipts retain only opaque transfer ID

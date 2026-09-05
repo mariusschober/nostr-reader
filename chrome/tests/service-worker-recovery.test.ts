@@ -121,6 +121,37 @@ describe("durable delivery recovery ordering", () => {
     expect(disconnect).not.toContain("customRelays");
   });
 
+  it("uses the full authenticated relay set for final pairing completion", () => {
+    const pairing = source.slice(
+      source.indexOf("async function processPairingSession"),
+      source.indexOf("async function recoverPairingSessionsInternal"),
+    );
+    expect(pairing).toContain('pairingReadRelays("bootstrap_response", requestRelays)');
+    expect(pairing).toContain('pairingReadRelays("authenticated_completion", requestRelays)');
+    expect(pairing).toContain("await relaySetDigest(requestRelays)");
+    expect(pairing).not.toContain("next.request.relays.filter");
+  });
+
+  it("validates durable channel and item relay state before computing quorum", () => {
+    const bind = source.slice(
+      source.indexOf("async function bindOutboxItem"),
+      source.indexOf("async function publishTransferInternal"),
+    );
+    const publish = source.slice(
+      source.indexOf("async function publishTransferInternal"),
+      source.indexOf("async function publishTransfer("),
+    );
+    expect(bind).toContain("await loadPairedChannelState()");
+    expect(bind).toContain("item.relays = validatePairedRelaySet(item.relays)");
+    expect(bind).toContain("sameRelayOrder(item.relays, paired.relays)");
+    expect(source).toContain("storedDigest !== expectedDigest");
+    expect(source).toContain("channelRelaySetDigest: winner.request.relaySetDigest");
+    expect(publish.indexOf("await bindOutboxItem(item, channelPubkey)")).toBeLessThan(
+      publish.indexOf("const required = Math.min(RELAY_WRITE_QUORUM, item.relays.length)"),
+    );
+    expect(publish).toMatch(/catch \(error\) \{[\s\S]*item\.status = "failed";[\s\S]*await outboxPut\(item\);[\s\S]*return;/);
+  });
+
   it("never deletes captured payload merely because a retry ceiling was reached", () => {
     const publish = source.slice(
       source.indexOf("async function publishTransfer"),

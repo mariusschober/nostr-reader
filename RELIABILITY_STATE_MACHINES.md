@@ -44,6 +44,9 @@ attempt/error metadata, and—only while needed—the one-time pairing key. Reco
 is re-entered on service-worker evaluation, startup, install/update, and a
 one-minute alarm. Completing, canceling, expiring, disconnecting, or superseding
 a session removes its pairing secret rather than writing `null` or `undefined`.
+Response bootstrap queries are restricted to fixed relays. After the response
+authenticates Android and the relay digest, completion catch-up uses the whole
+bound relay set so a custom-relay-only success cannot split endpoint state.
 
 ## Android pairing
 
@@ -91,6 +94,12 @@ ACK, retry, and discard mutations for one transfer share a keyed serial critical
 section and reload the durable record inside it, so a late publisher cannot
 resurrect content already acknowledged or discarded. The delivered receipt is
 persisted before the outbox item is deleted.
+Persisted channel and per-item relay lists are revalidated before network use
+and before quorum calculation. An incomplete channel keeps a new capture
+unbound and queued for a future authenticated re-pair; it cannot silently fall
+back to defaults or make a zero-relay quorum vacuously succeed. An already
+bound item with inconsistent recipient/relay state becomes a retained local
+failure rather than an endless silent retry.
 
 ## Android receive/ACK
 

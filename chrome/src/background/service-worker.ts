@@ -20,6 +20,7 @@ import {
   createPairAck,
   createPairingRequest,
   PAIRING_PROTOCOL,
+  relaySetDigest,
   type PairingRequestV2,
   validatePairComplete,
   validatePairResponse,
@@ -29,8 +30,10 @@ import {
   configuredRelays,
   DEFAULT_RELAYS,
   normalizeCustomRelays,
+  pairingReadRelays,
   RELAY_WRITE_QUORUM,
   sameRelayOrder,
+  validatePairedRelaySet,
 } from "../protocol/relays.js";
 import {
   cancelActivePairingSessions,
@@ -86,9 +89,18 @@ let pairingRecovery: Promise<void> | null = null;
 let ackPolling: Promise<void> | null = null;
 let transportEpoch = 0;
 
-function hexToSeckey(hex: string): Uint8Array {
+function hexToSeckey(value: unknown): Uint8Array {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    throw new Error("stored transport key is invalid");
+  }
   const b = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) b[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  for (let i = 0; i < 32; i++) b[i] = parseInt(value.slice(i * 2, i * 2 + 2), 16);
+  try {
+    // getPublicKey also rejects zero or an out-of-range scalar.
+    getPublicKey(b);
+  } catch {
+    throw new Error("stored transport key is invalid");
+  }
   return b;
 }
 function seckeyToHex(s: Uint8Array): string {
@@ -113,11 +125,47 @@ async function configuredRelaySet(): Promise<string[]> {
   return configuredRelays(await loadCustomRelays());
 }
 
+interface PairedChannelState {
+  channelPubkey: string;
+  relays: string[];
+  relaySetDigest: string;
+}
+
+async function pairedChannelState(st: Record<string, unknown>): Promise<PairedChannelState | undefined> {
+  const channelPubkey = st["channelPubkey"];
+  if (
+    st["protocolVersion"] !== 2 ||
+    typeof channelPubkey !== "string" ||
+    !/^[0-9a-f]{64}$/.test(channelPubkey)
+  ) return undefined;
+  try {
+    const relays = validatePairedRelaySet(st["relays"]);
+    const expectedDigest = await relaySetDigest(relays);
+    const storedDigest = st["channelRelaySetDigest"];
+    if (storedDigest === undefined) {
+      // Compatibility migration for channels completed by an earlier v2
+      // build, which authenticated this exact list but did not retain its
+      // digest beside the channel. New completions always write both.
+      await chrome.storage.local.set({ channelRelaySetDigest: expectedDigest });
+    } else if (storedDigest !== expectedDigest) {
+      return undefined;
+    }
+    return { channelPubkey, relays, relaySetDigest: expectedDigest };
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadPairedChannelState(): Promise<PairedChannelState | undefined> {
+  const st = await chrome.storage.local.get([...PAIRED_CHANNEL_STORAGE_KEYS]);
+  return pairedChannelState(st as Record<string, unknown>);
+}
+
 async function getDeviceKey(): Promise<{ seckey: Uint8Array; pubkey: string }> {
   await lockDownKeyStorage();
   const st = await chrome.storage.local.get(["deviceSeckey"]);
   if (st.deviceSeckey) {
-    const seckey = hexToSeckey(st.deviceSeckey as string);
+    const seckey = hexToSeckey(st.deviceSeckey);
     return { seckey, pubkey: getPublicKey(seckey) };
   }
   const seckey = randomSeckey();
@@ -216,9 +264,12 @@ export async function queueCapture(raw: { title: string; markdown: string; sourc
   const canonicalBytes = new TextEncoder().encode(canonical);
   const docId = await documentId(canonical);
   const gz = deterministicGzip(canonicalBytes);
-  const st = await chrome.storage.local.get(["channelPubkey", "relays"]);
-  const channelPubkey = st.channelPubkey as string | undefined;
-  const relays = (st.relays as string[] | undefined) ?? [...DEFAULT_RELAYS];
+  const paired = await loadPairedChannelState();
+  const channelPubkey = paired?.channelPubkey;
+  // If durable channel metadata is incomplete, retain this capture as an
+  // unbound queued item. Never guess a relay set for a supposedly paired
+  // channel; a later authenticated re-pair can bind it safely.
+  const relays = paired?.relays ?? [...DEFAULT_RELAYS];
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + 7 * 86400;
   // Adaptive chunk target: size real frames later; start 24 KiB of gzip.
@@ -306,11 +357,11 @@ async function bindOutboxItem(item: OutboxItem, channelPubkey: string): Promise<
   const manifest = item.manifest;
   const existingRecipient = String(manifest["recipientChannelPubkey"] ?? "");
   if (existingRecipient && existingRecipient !== channelPubkey) throw new Error("queued transfer is bound to a different channel");
-  const st = await chrome.storage.local.get(["relays"]);
-  const configuredRelays = st.relays as string[] | undefined;
-  if (!String(manifest["manifestId"] ?? "")) {
-    if (!configuredRelays?.length) throw new Error("paired relay set is unavailable");
-    item.relays = [...configuredRelays];
+  const paired = await loadPairedChannelState();
+  if (!paired || paired.channelPubkey !== channelPubkey) throw new Error("paired channel state is unavailable");
+  const manifestId = String(manifest["manifestId"] ?? "");
+  if (!manifestId) {
+    item.relays = [...paired.relays];
     manifest["recipientChannelPubkey"] = channelPubkey;
     manifest["manifestId"] = await manifestIdentity({
       transferId: item.transferId,
@@ -323,7 +374,11 @@ async function bindOutboxItem(item: OutboxItem, channelPubkey: string): Promise<
       expiresAt: Number(manifest["expiresAt"]),
     });
     await outboxPut(item);
+  } else if (existingRecipient !== channelPubkey) {
+    throw new Error("bound transfer recipient is unavailable");
   }
+  item.relays = validatePairedRelaySet(item.relays);
+  if (!sameRelayOrder(item.relays, paired.relays)) throw new Error("bound transfer relay set changed");
 }
 
 async function publishTransferInternal(
@@ -346,7 +401,17 @@ async function publishTransferInternal(
     await outboxPut(item);
     return;
   }
-  await bindOutboxItem(item, channelPubkey);
+  try {
+    await bindOutboxItem(item, channelPubkey);
+  } catch (error) {
+    // A bound transfer whose recipient or authenticated relay set no longer
+    // matches cannot be repaired by retransmission. Retain its plaintext for
+    // explicit user review/discard and surface a terminal local failure.
+    item.status = "failed";
+    item.lastError = safePairingError(error);
+    await outboxPut(item);
+    return;
+  }
   const manifestId = String(item.manifest["manifestId"]);
   const compressedSha256 = String(item.manifest["compressedSha256"]);
   const payloads: unknown[] = [item.manifest];
@@ -407,8 +472,8 @@ async function publishTransfer(
     // discard may have deleted a stale caller's object while it was waiting.
     const durable = await outboxGet(item.transferId);
     if (!durable) return;
-    const storedChannel = (await chrome.storage.local.get(["channelPubkey"])).channelPubkey;
-    if (storedChannel !== channelPubkey) return;
+    const storedChannel = await loadPairedChannelState();
+    if (storedChannel?.channelPubkey !== channelPubkey) return;
     if (force) durable.nextAttemptAt = 0;
     await publishTransferInternal(durable, seckey, channelPubkey, transportEpoch);
   });
@@ -416,13 +481,12 @@ async function publishTransfer(
 
 // ---- E2E ACK catch-up (rolling window: NIP-59 timestamps are randomized) ----
 async function pollForAcksInternal(): Promise<void> {
-  const st = await chrome.storage.local.get(["deviceSeckey", "channelPubkey", "relays"]);
-  if (!st.deviceSeckey || !st.channelPubkey) return;
-  const seckey = hexToSeckey(st.deviceSeckey as string);
+  const st = await chrome.storage.local.get(["deviceSeckey", ...PAIRED_CHANNEL_STORAGE_KEYS]);
+  const paired = await pairedChannelState(st as Record<string, unknown>);
+  if (!st.deviceSeckey || !paired) return;
+  const seckey = hexToSeckey(st.deviceSeckey);
   const devicePubkey = getPublicKey(seckey);
-  const channelPubkey = st.channelPubkey as string;
-  const relays = st.relays as string[];
-  if (!Array.isArray(relays) || !relays.length) return;
+  const { channelPubkey, relays } = paired;
   const now = Math.floor(Date.now() / 1000);
   const events = await queryPairingEvents(relays, devicePubkey, syncSince(now), seckey);
   for (const event of events) {
@@ -583,14 +647,36 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
   if (now >= next.request.expiresAt + 600) {
     return { ...stripPairingSecret(next), state: "expired", lastError: "Pairing expired. Create a new code." };
   }
+  let requestRelays: string[];
+  try {
+    requestRelays = validatePairedRelaySet(next.request.relays);
+    if (await relaySetDigest(requestRelays) !== next.request.relaySetDigest) {
+      throw new Error("pairing relay digest mismatch");
+    }
+  } catch {
+    return {
+      ...stripPairingSecret(next),
+      state: "cancelled",
+      lastError: "Stored pairing state is invalid. Create a new code.",
+    };
+  }
 
   if (next.state === "waiting_response") {
     if (!next.pairingSeckey) {
       return { ...next, state: "expired", lastError: "Pairing secret is unavailable. Create a new code." };
     }
-    const pairingSeckey = hexToSeckey(next.pairingSeckey);
+    let pairingSeckey: Uint8Array;
+    try {
+      pairingSeckey = hexToSeckey(next.pairingSeckey);
+    } catch {
+      return {
+        ...stripPairingSecret(next),
+        state: "cancelled",
+        lastError: "Stored pairing key is invalid. Create a new code.",
+      };
+    }
     const events = await queryPairingEvents(
-      next.request.relays.filter((relay) => (DEFAULT_RELAYS as readonly string[]).includes(relay)),
+      pairingReadRelays("bootstrap_response", requestRelays),
       next.request.pairingPubkey,
       next.request.createdAt - 172800,
       pairingSeckey,
@@ -619,8 +705,8 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
 
   if (next.state === "response_validated" && next.androidChannelPubkey) {
     const { seckey } = await getDeviceKey();
-    const ack = createPairAck(next.request, next.androidChannelPubkey, next.request.relays, now);
-    const accepted = await publishFreshPayload(next.request.relays, seckey, next.androidChannelPubkey, ack);
+    const ack = createPairAck(next.request, next.androidChannelPubkey, requestRelays, now);
+    const accepted = await publishFreshPayload(requestRelays, seckey, next.androidChannelPubkey, ack);
     if (!accepted.length) {
       return { ...next, lastError: "No pairing relay accepted Chrome's authenticated acknowledgement yet." };
     }
@@ -630,7 +716,7 @@ async function processPairingSession(session: PairingSession): Promise<PairingSe
   if (next.state === "waiting_completion" && next.androidChannelPubkey) {
     const { seckey, pubkey } = await getDeviceKey();
     const events = await queryPairingEvents(
-      next.request.relays.filter((relay) => (DEFAULT_RELAYS as readonly string[]).includes(relay)),
+      pairingReadRelays("authenticated_completion", requestRelays),
       pubkey,
       next.request.createdAt - 172800,
       seckey,
@@ -697,6 +783,7 @@ async function recoverPairingSessionsInternal(): Promise<void> {
       [PAIRING_SESSIONS_KEY]: sessions,
       channelPubkey: winner.androidChannelPubkey,
       relays: winner.request.relays,
+      channelRelaySetDigest: winner.request.relaySetDigest,
       protocolVersion: 2,
     });
     const items = await outboxAll().catch(() => []);
@@ -810,35 +897,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     } else if (msg?.kind === "reader-cancel-pairing") {
       sendResponse({ ok: true, cancelled: await cancelPairing(String(msg.sessionId ?? "")) });
     } else if (msg?.kind === "reader-status") {
-      const st = await chrome.storage.local.get(["channelPubkey", "relays"]);
+      const paired = await loadPairedChannelState();
       const items = await outboxAll().catch(() => []);
       const customRelays = await loadCustomRelays();
       const receipts = await loadDeliveryReceipts();
       const nextRelays = configuredRelays(customRelays);
-      const pairedRelays = Array.isArray(st.relays) ? st.relays as string[] : [];
+      const pairedRelays = paired?.relays ?? [];
       const delivery = summarizeDeliveryStates(items, receipts.length);
       sendResponse({
         ok: true,
-        paired: !!st.channelPubkey,
+        paired: !!paired,
         relays: pairedRelays,
         pending: delivery.queued + delivery.relayAccepted + delivery.awaitingDevice,
         delivery,
         defaultRelays: [...DEFAULT_RELAYS],
         customRelays,
         configuredRelays: nextRelays,
-        relayChangePending: !!st.channelPubkey && !sameRelayOrder(pairedRelays, nextRelays),
+        relayChangePending: !!paired && !sameRelayOrder(pairedRelays, nextRelays),
       });
     } else if (msg?.kind === "reader-save-custom-relays") {
       const customRelays = normalizeCustomRelays(msg.relays);
       await chrome.storage.local.set({ [CUSTOM_RELAYS_KEY]: customRelays });
       const nextRelays = configuredRelays(customRelays);
-      const st = await chrome.storage.local.get(["channelPubkey", "relays"]);
-      const pairedRelays = Array.isArray(st.relays) ? st.relays as string[] : [];
+      const paired = await loadPairedChannelState();
+      const pairedRelays = paired?.relays ?? [];
       sendResponse({
         ok: true,
         customRelays,
         configuredRelays: nextRelays,
-        relayChangePending: !!st.channelPubkey && !sameRelayOrder(pairedRelays, nextRelays),
+        relayChangePending: !!paired && !sameRelayOrder(pairedRelays, nextRelays),
       });
     } else if (msg?.kind === "reader-disconnect") {
       transportEpoch += 1;
@@ -870,9 +957,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       await pollForAcks().catch(() => undefined);
       const items = await outboxAll();
       const { seckey } = await getDeviceKey();
-      const ch = (await chrome.storage.local.get(["channelPubkey"])).channelPubkey as string | undefined;
+      const paired = await loadPairedChannelState();
       const retryable = items.filter((item) => item.status !== "failed");
-      if (ch) await Promise.all(retryable.map((item) => publishTransfer(item, seckey, ch, true).catch(() => undefined)));
+      if (paired) {
+        await Promise.all(retryable.map((item) => (
+          publishTransfer(item, seckey, paired.channelPubkey, true).catch(() => undefined)
+        )));
+      }
       sendResponse({ ok: true, retried: retryable.length });
     }
   })().catch((e) => sendResponse({ ok: false, error: String(e).slice(0, 300) }));
@@ -880,8 +971,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 chrome.action.onClicked.addListener(async (tab) => {
-  const st = await chrome.storage.local.get(["channelPubkey"]);
-  if (!st.channelPubkey) {
+  const paired = await loadPairedChannelState();
+  if (!paired) {
     await chrome.tabs.create({ url: chrome.runtime.getURL("src/ui/pairing.html") });
     return;
   }
@@ -916,14 +1007,14 @@ chrome.alarms.onAlarm.addListener(async (a) => {
   await pollForAcks().catch(() => undefined);
   const items = await outboxAll().catch(() => []);
   if (!items.length) return;
-  const st = await chrome.storage.local.get(["channelPubkey"]);
-  if (!st.channelPubkey) return;
+  const paired = await loadPairedChannelState();
+  if (!paired) return;
   const { seckey } = await getDeviceKey();
   const now = Math.floor(Date.now() / 1000);
   await Promise.all(
     items
       .filter((candidate) => candidate.status !== "failed" && (candidate.nextAttemptAt ?? 0) <= now)
-      .map((item) => publishTransfer(item, seckey, st.channelPubkey as string).catch(() => undefined)),
+      .map((item) => publishTransfer(item, seckey, paired.channelPubkey).catch(() => undefined)),
   );
 });
 

@@ -11,14 +11,6 @@ export const WRAP_KIND = 1059;
 export const OUTER_TTL_SECS = 7 * 86400;
 export const MAX_RELAY_EVENT_BYTES = 512 * 1024;
 
-export interface RelayHealth {
-  url: string;
-  ok: boolean;
-  nip11?: unknown;
-  maxEventBytes?: number;
-  note: string;
-}
-
 export interface RelayPublishResult {
   url: string;
   ok: boolean;
@@ -410,27 +402,6 @@ export async function unwrapAndVerify(opts: {
   nowSecs?: number;
 }): Promise<Record<string, unknown>> {
   return (await unwrapAndVerifyEnvelope(opts)).payload;
-}
-
-/** Probe candidate relays: connect + NIP-11 + write/read roundtrip. */
-export async function probeRelays(urls: string[], timeoutMs = 9000): Promise<RelayHealth[]> {
-  const pool = new SimplePool();
-  const out: RelayHealth[] = [];
-  for (const url of urls) {
-    try {
-      const info = await fetch(url.replace(/^ws/, "http"), {
-        headers: { Accept: "application/nostr+json" },
-        signal: AbortSignal.timeout(timeoutMs),
-      }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      const relay = await pool.ensureRelay(url);
-      void relay;
-      out.push({ url, ok: true, nip11: info, note: "connect ok" });
-    } catch (e) {
-      out.push({ url, ok: false, note: String(e).slice(0, 160) });
-    }
-  }
-  try { pool.close(urls); } catch { /* ignore */ }
-  return out;
 }
 
 export function normalizeRelayUrl(raw: string): string {

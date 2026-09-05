@@ -35,7 +35,12 @@ describe("pairing session lifecycle hygiene", () => {
   });
 
   it("disconnect removes only channel binding—not identity, preferences, or outbox", () => {
-    expect(PAIRED_CHANNEL_STORAGE_KEYS).toEqual(["channelPubkey", "relays", "protocolVersion"]);
+    expect(PAIRED_CHANNEL_STORAGE_KEYS).toEqual([
+      "channelPubkey",
+      "relays",
+      "channelRelaySetDigest",
+      "protocolVersion",
+    ]);
     expect(PAIRED_CHANNEL_STORAGE_KEYS).not.toContain("deviceSeckey");
     expect(PAIRED_CHANNEL_STORAGE_KEYS).not.toContain("customRelays");
   });
