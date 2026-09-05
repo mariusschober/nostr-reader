@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 const copyExtensionAssets = () => ({
   name: "copy-extension-assets",
   async closeBundle() {
-    const output = resolve(import.meta.dirname, "dist");
+    const output = resolve(import.meta.dirname, process.env.READER_DIST ?? "dist");
     await copyFile(resolve(import.meta.dirname, "manifest.json"), resolve(output, "manifest.json"));
     await cp(resolve(import.meta.dirname, "icons"), resolve(output, "icons"), { recursive: true });
   }
@@ -21,7 +21,7 @@ export default defineConfig({
   plugins: [copyExtensionAssets()],
   build: {
     modulePreload: false,
-    outDir: "dist",
+    outDir: process.env.READER_DIST ?? "dist",
     emptyOutDir: true,
     rollupOptions: {
       input: {

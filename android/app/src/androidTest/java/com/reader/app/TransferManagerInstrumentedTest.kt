@@ -175,6 +175,21 @@ class TransferManagerInstrumentedTest {
     assertEquals("[\"wss://one.example\",\"wss://two.example\"]", stillCompleted.acceptedRelaysJson)
     assertEquals("stored", stillCompleted.status)
 
+    // Once accepted receipts have been lost, a new demand after cooldown
+    // reopens exactly one batch. Retained authenticated wrapper IDs do not.
+    db.ackIntents().update(stillCompleted.copy(completedAt = System.currentTimeMillis() - 301_000))
+    assertNull(manager.ingestForSync(manifestWrap, "channel", senderPubkey, receiverKey))
+    assertNotNull(db.ackIntents().byTransfer("channel", intake.transferId)!!.completedAt)
+    val demand = wrap(f.manifest, senderKey, receiverKey)
+    manager.ingestForSync(demand, "channel", senderPubkey, receiverKey)
+    val reopened = db.ackIntents().byTransfer("channel", intake.transferId)!!
+    assertNull(reopened.completedAt)
+    assertEquals(1, reopened.refreshCount)
+    assertEquals("[]", reopened.acceptedRelaysJson)
+    assertNotNull(db.documents().byId(f.documentId))
+    assertNull(manager.ingestForSync(demand, "channel", senderPubkey, receiverKey))
+    assertEquals(reopened, db.ackIntents().byTransfer("channel", intake.transferId))
+
     // An exhausted ACK lifecycle is terminal too; a retry cannot turn an
     // intentionally bounded sender into unbounded relay traffic.
     db.ackIntents().update(

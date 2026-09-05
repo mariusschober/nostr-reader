@@ -18,7 +18,10 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   buildTypes {
-    debug { isMinifyEnabled = false }
+    debug {
+      isMinifyEnabled = false
+      if (providers.gradleProperty("readerQa").orNull == "true") applicationIdSuffix = ".qa"
+    }
     release { isMinifyEnabled = false }
   }
   compileOptions {

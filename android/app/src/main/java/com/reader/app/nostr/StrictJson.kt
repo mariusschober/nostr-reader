@@ -16,6 +16,7 @@ object StrictJson {
 
   private class Guard(private val text: String) {
     private var index = 0
+    private var depth = 0
 
     fun check() {
       whitespace()
@@ -29,6 +30,7 @@ object StrictJson {
     }
 
     private fun value() {
+      require(++depth <= 32) { "JSON nesting limit" }
       whitespace()
       when (text.getOrNull(index)) {
         '{' -> objectValue()
@@ -39,6 +41,7 @@ object StrictJson {
         'n' -> literal("null")
         else -> numberValue()
       }
+      depth--
     }
 
     private fun objectValue() {

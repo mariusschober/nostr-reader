@@ -2,7 +2,7 @@
 set -eu
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-dist_dir="$repo_dir/chrome/dist"
+dist_dir="${READER_DIST:-$repo_dir/chrome/dist}"
 output=${1:-"$repo_dir/artifacts/reader-chrome-extension.zip"}
 
 case "$output" in

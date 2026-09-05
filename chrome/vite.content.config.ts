@@ -14,7 +14,7 @@ export default defineConfig({
   },
   build: {
     modulePreload: false,
-    outDir: "dist",
+    outDir: process.env.READER_DIST ?? "dist",
     emptyOutDir: false,
     target: "es2022",
     minify: false,

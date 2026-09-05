@@ -31,6 +31,9 @@ import com.reader.app.security.KeystoreWrap
 import com.reader.app.signer.AmberSigner
 import com.reader.app.sync.Ingest
 import com.reader.app.sync.PairingCoordinator
+import com.reader.app.sync.ReaderSyncSession
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
 import com.reader.app.sync.SyncWorker
 import com.reader.app.sync.TransferManager
 import com.reader.app.tts.AndroidTtsEngine
@@ -63,6 +66,15 @@ class MainActivity : ComponentActivity() {
     prefs = Prefs(this)
     keys = KeystoreWrap(this)
     SyncWorker.schedule(this)
+    lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+      repeatOnLifecycle(Lifecycle.State.STARTED) {
+        val receiving = ReaderSyncSession(applicationContext)
+        while (true) {
+          receiving.runOnce()
+          kotlinx.coroutines.delay(1000)
+        }
+      }
+    }
     handleIncomingIntent(intent)
     setContent {
       val stack = remember { RouteStack() }

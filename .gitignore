@@ -19,3 +19,7 @@ android/local.properties
 /artifacts/SHA256SUMS
 /artifacts/chrome-sbom.cdx.json
 /artifacts/android-debug-runtime-dependencies.txt
+
+# Local beta candidates and QA packages (hashes/evidence are tracked separately).
+/artifacts/beta/
+/artifacts/beta-qa/

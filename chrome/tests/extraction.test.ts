@@ -43,8 +43,9 @@ describe("provider adapters", () => {
 });
 
 describe("selection", () => {
-  it("threshold gates accidental selections", () => {
-    expect(meaningfulSelection("hi")).toBe(false);
+  it("honors every nonblank deliberate selection", () => {
+    expect(meaningfulSelection("hi")).toBe(true);
+    expect(meaningfulSelection(" \n\t")).toBe(false);
     expect(meaningfulSelection("word ".repeat(12))).toBe(true);
     expect(meaningfulSelection("x".repeat(80))).toBe(true);
   });

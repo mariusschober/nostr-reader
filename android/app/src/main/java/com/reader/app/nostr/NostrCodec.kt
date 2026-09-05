@@ -176,6 +176,7 @@ object NostrCodec {
     require(seal.kind == SEAL_KIND) { "bad seal kind" }
     require(seal.tags.isEmpty()) { "seal tags must be empty" }
     require(verifyEvent(seal)) { "invalid seal signature" }
+    if (expectedSenderPubkey != null) require(seal.pubkey == expectedSenderPubkey) { "untrusted seal sender" }
     require(kotlin.math.abs(nowSecs - seal.createdAt) <= 30L * 86400L) { "seal timestamp out of range" }
     val sealCk = Nip44.getConversationKey(recipientSeckey, Secp256k1.hexToBytes(seal.pubkey))
     val rumorJson = try {
@@ -192,6 +193,9 @@ object NostrCodec {
     require(lowerHex64.matches(rumorId)) { "non-canonical rumor id" }
     val rumorTags = rumor["tags"]?.jsonArray?.map { row -> row.jsonArray.map { it.jsonPrimitive.content } }
       ?: throw IllegalArgumentException("missing rumor tags")
+    require(rumorTags.isEmpty() && rumor["kind"]!!.jsonPrimitive.int == ReaderCore.RUMOR_KIND &&
+      !rumor["kind"]!!.jsonPrimitive.isString && !rumor["created_at"]!!.jsonPrimitive.isString &&
+      rumor["created_at"]!!.jsonPrimitive.long in 0..(nowSecs + 600) && rumor["content"]!!.jsonPrimitive.isString) { "invalid Reader rumor profile" }
     val expectedRumorId = eventId(
       rumorPubkey,
       rumor["created_at"]!!.jsonPrimitive.long,
@@ -215,8 +219,10 @@ object NostrCodec {
 
 /** Minimal relay client over OkHttp WebSocket: publish w/ OK, subscribe window. */
 class RelayClient private constructor(private val http: OkHttpClient) {
-  constructor() : this(
-    OkHttpClient.Builder().dns(object : Dns {
+  constructor() : this(sharedHttp)
+
+  companion object {
+    private val sharedHttp = OkHttpClient.Builder().dns(object : Dns {
       override fun lookup(hostname: String): List<InetAddress> {
         val addresses = Dns.SYSTEM.lookup(hostname)
         if (addresses.isEmpty() || addresses.any(PairingProtocol::isProhibitedAddress)) {
@@ -224,8 +230,8 @@ class RelayClient private constructor(private val http: OkHttpClient) {
         }
         return addresses
       }
-    }).build(),
-  )
+    }).build()
+  }
 
   /** Explicit test-only route for a loopback MockWebServer. Never used by the app. */
   internal constructor(allowLocalForTests: Boolean) : this(
@@ -552,8 +558,13 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     kinds: List<Int>,
     collectSecs: Long = 25,
     authSeckey: ByteArray? = null,
+    onEvent: ((NostrEvent) -> Unit)? = null,
   ): List<NostrEvent> {
     val out = Collections.synchronizedList(mutableListOf<NostrEvent>())
+    val failure = AtomicReference<String?>(null)
+    val eose = AtomicBoolean(false)
+    var receivedBytes = 0L
+    var receivedEvents = 0
     val latch = CountDownLatch(1)
     val subId = "reader-" + SecureRandom().nextInt(1_000_000)
     val authEventId = AtomicReference<String?>(null)
@@ -573,7 +584,10 @@ class RelayClient private constructor(private val http: OkHttpClient) {
         request(webSocket)
       }
       override fun onMessage(webSocket: WebSocket, text: String) {
-        if (text.toByteArray(Charsets.UTF_8).size > MAX_RELAY_FRAME_BYTES) {
+        val bytes = text.toByteArray(Charsets.UTF_8).size
+        receivedBytes += bytes
+        if (bytes > MAX_RELAY_FRAME_BYTES || receivedBytes > 32L * 1024 * 1024) {
+          failure.set("receive byte budget exceeded")
           webSocket.close(1009, "frame too large")
           latch.countDown()
           return
@@ -581,9 +595,15 @@ class RelayClient private constructor(private val http: OkHttpClient) {
         try {
           val arr = StrictJson.parse(text).jsonArray
           if (arr.size >= 3 && arr[0].jsonPrimitive.content == "EVENT" && arr[1].jsonPrimitive.content == subId) {
-            out.add(NostrCodec.parseEvent(arr[2].toString()))
+            if (++receivedEvents > 4096) throw IllegalStateException("receive event budget exceeded")
+            val event = NostrCodec.parseEvent(arr[2].toString())
+            require(event.tags.size <= 16 && event.tags.all { it.size <= 4 }) { "event tag budget exceeded" }
+            if (onEvent != null) onEvent(event) else {
+              require(receivedBytes <= 8L * 1024 * 1024) { "collection byte budget exceeded" }
+              out.add(event)
+            }
           } else if (arr.size >= 2 && arr[0].jsonPrimitive.content == "EOSE") {
-            // keep socket open for live events until timeout
+            if (arr[1].jsonPrimitive.content == subId) eose.set(true)
           } else if (
             arr.size >= 2 && arr[0].jsonPrimitive.content == "AUTH" &&
             authSeckey != null && authPending.compareAndSet(false, true)
@@ -591,6 +611,7 @@ class RelayClient private constructor(private val http: OkHttpClient) {
             val challenge = arr[1].jsonPrimitive.content
             val auth = runCatching { authEvent(url, challenge, authSeckey) }.getOrNull()
             if (auth == null) {
+              failure.set("invalid authentication challenge")
               latch.countDown()
               webSocket.close(1002, "invalid relay authentication challenge")
             } else {
@@ -603,23 +624,37 @@ class RelayClient private constructor(private val http: OkHttpClient) {
             if (arr[2].jsonPrimitive.boolean) {
               if (authenticated.compareAndSet(false, true)) request(webSocket)
             } else {
+              failure.set("authentication rejected")
               latch.countDown()
               webSocket.close(1000, "relay authentication rejected")
             }
+          } else if (arr.size >= 2 && arr[0].jsonPrimitive.content == "CLOSED" && arr[1].jsonPrimitive.content == subId) {
+            val reason = arr.getOrNull(2)?.jsonPrimitive?.content.orEmpty()
+            if (authSeckey == null || authenticated.get() || !reason.contains("auth-required", ignoreCase = true)) {
+              failure.set("subscription closed")
+              latch.countDown()
+            }
           }
         } catch (e: Exception) {
+          failure.set("invalid or over-budget subscription")
+          latch.countDown()
+          webSocket.cancel()
         }
       }
       override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+        failure.set("subscription transport failed")
         latch.countDown()
       }
     })
-    latch.await(collectSecs, TimeUnit.SECONDS)
     try {
+      latch.await(collectSecs, TimeUnit.SECONDS)
+      failure.get()?.let { throw java.io.IOException(it) }
+      if (!eose.get()) throw java.io.IOException("subscription coverage unconfirmed")
+      return synchronized(out) { out.toList() }
+    } finally {
       ws.send("[\"CLOSE\",\"$subId\"]")
       ws.close(1000, null)
-    } catch (e: Exception) {
+      ws.cancel()
     }
-    return synchronized(out) { out.toList() }
   }
 }

@@ -137,19 +137,24 @@ describe("NIP-42 relay authentication", () => {
       },
     };
     const expected = { id: "ab".repeat(32), created_at: 1 };
-    const pool = {
-      ensureRelay: async () => relay,
-      querySync: async () => {
-        queryCalls += 1;
+    const socket = { onmessage: (_event: { data: string }) => {} };
+    Object.assign(relay, { ws: socket, prepareSubscription: (_filters: unknown, params: any) => ({
+      close: () => {},
+      fire: () => queueMicrotask(() => {
+        queryCalls++;
         if (!authenticated) {
           challengeAvailable = true;
           relay.challenge = "c";
           (relay._onauth as null | ((challenge: string) => void))?.("c");
-          throw new Error("auth-required: authenticate first");
+          params.onclose("auth-required: authenticate first");
+        } else {
+          params.onevent(expected);
+          socket.onmessage({ data: JSON.stringify(["EOSE", params.id]) });
+          params.oneose();
         }
-        return [expected];
-      },
-    } as unknown as SimplePool;
+      }),
+    }) });
+    const pool = { ensureRelay: async () => relay } as unknown as SimplePool;
     const events = await queryRelayWithAuth(pool, "wss://relay.example", { kinds: [1059] }, authKey, 50);
     expect(events).toEqual([expected]);
     expect(queryCalls).toBe(2);

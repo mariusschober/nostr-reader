@@ -109,6 +109,7 @@ data class AckIntentEntity(
   val completedAt: Long?,
   val failedAt: Long?,
   val lastErrorCode: String?,
+  @ColumnInfo(defaultValue = "0") val refreshCount: Int = 0,
 )
 
 @Entity(tableName = "processed_events")
@@ -386,6 +387,12 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
   }
 }
 
+val MIGRATION_5_6 = object : Migration(5, 6) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("ALTER TABLE ack_intents ADD COLUMN refreshCount INTEGER NOT NULL DEFAULT 0")
+  }
+}
+
 @Database(
   entities = [
     DocumentEntity::class,
@@ -395,7 +402,7 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     AckIntentEntity::class,
     ProcessedEventEntity::class,
   ],
-  version = 5,
+  version = 6,
   exportSchema = false,
 )
 abstract class ReaderDb : RoomDatabase() {
@@ -411,7 +418,7 @@ abstract class ReaderDb : RoomDatabase() {
     private var instance: ReaderDb? = null
     fun get(ctx: Context): ReaderDb = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(ctx.applicationContext, ReaderDb::class.java, "reader.db")
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
         .build()
         .also { instance = it }
     }

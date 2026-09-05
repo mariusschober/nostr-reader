@@ -1,10 +1,13 @@
 // Service worker: key ownership, outbox, pairing, quorum send, E2E ACK listen.
 // Private keys never leave this scope. State is durable (storage.local +
 // IndexedDB) because MV3 workers are suspended at will.
+import { publishFragments, type FragmentOutcome } from "./resumable-publisher.js";
+import { scanHistory, type ScanState } from "../nostr/history-scan.js";
+import { DurableAlarms } from "./durable-alarms.js";
 import { SimplePool } from "nostr-tools/pool";
 import { getPublicKey } from "nostr-tools/pure";
 import {
-  READER_PROTOCOL, canonicalize, documentId, wordCount, syncSince, checkLimits,
+  READER_PROTOCOL, escapePlainText, canonicalize, documentId, wordCount, syncSince, checkLimits,
 } from "../protocol/core.js";
 import { deterministicGzip } from "../protocol/codec.js";
 import {
@@ -69,6 +72,7 @@ interface OutboxItem {
   attemptCount: number;
   nextAttemptAt: number;
   lastError?: string;
+  fragmentProgress?: Record<string, Record<string, FragmentOutcome>>;
 }
 
 interface PairingSession {
@@ -90,12 +94,30 @@ const ACK_ALARM = "reader-ack-check";
 const CUSTOM_RELAYS_KEY = "customRelays";
 const DELIVERY_RECEIPTS_KEY = "recentDeliveryReceipts";
 const MAX_PAIRING_SESSIONS = 2;
+const captureOperations = new SerialExecutor();
+const publicationOwner = new SerialExecutor();
+const activePublicationStops = new Map<string, () => void>();
 const transferOperations = new KeyedSerialExecutor<string>();
 const receiptOperations = new SerialExecutor();
 const pairingOperations = new SerialExecutor();
 let pairingRecovery: Promise<void> | null = null;
 let ackPolling: Promise<void> | null = null;
 let transportEpoch = 0;
+const durableAlarms = new DurableAlarms(chrome.alarms);
+let retryRecovery: Promise<void> | null = null;
+
+async function restoreWorkAlarms(): Promise<void> {
+  await durableAlarms.reconcile(RETRY_ALARM, async () => {
+    const items = (await outboxAll()).filter(item => item.status !== "failed");
+    if (!items.length || !await loadPairedChannelState()) return undefined;
+    return Math.min(...items.map(item => (item.nextAttemptAt ?? item.createdAt) * 1000));
+  });
+  await durableAlarms.reconcile(PAIRING_ALARM, async () => {
+    const sessions = (await loadPairingSessions()).filter(session => isActivePairingState(session.state));
+    if (!sessions.length) return undefined;
+    return Math.min(...sessions.map(session => ((session.lastAttemptAt ?? session.request.createdAt) + 30) * 1000));
+  });
+}
 
 function hexToSeckey(value: unknown): Uint8Array {
   return decodeStoredSecret(value).seckey;
@@ -197,8 +219,11 @@ void lockDownKeyStorage().catch(() => undefined);
 // ---- Outbox (IndexedDB, durable across worker restarts) ----
 function idb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const r = indexedDB.open("reader-outbox", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("items", { keyPath: "transferId" });
+    const r = indexedDB.open("reader-outbox", 2);
+    r.onupgradeneeded = () => {
+      if (!r.result.objectStoreNames.contains("items")) r.result.createObjectStore("items", { keyPath: "transferId" });
+      if (!r.result.objectStoreNames.contains("captures")) r.result.createObjectStore("captures", { keyPath: "captureId" });
+    };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
   });
@@ -258,19 +283,37 @@ async function loadDeliveryReceipts(nowSecs = Math.floor(Date.now() / 1000)): Pr
     typeof (item as DeliveryReceipt).transferId === "string" &&
     Number.isSafeInteger((item as DeliveryReceipt).deliveredAt) &&
     (item as DeliveryReceipt).deliveredAt >= cutoff
-  )).slice(-20);
+  )).slice(-1000);
 }
 
 async function recordDelivered(transferId: string, deliveredAt: number): Promise<void> {
   await receiptOperations.run(async () => {
     const receipts = (await loadDeliveryReceipts(deliveredAt)).filter((item) => item.transferId !== transferId);
     receipts.push({ transferId, deliveredAt });
-    await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts.slice(-20) });
+    await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts.slice(-1000) });
   });
 }
 
 // ---- Send pipeline ----
-export async function queueCapture(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }): Promise<{ transferId: string; queued: boolean }> {
+export async function queueCapture(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId = randomHex(16)): Promise<{ transferId: string; queued: boolean }> {
+  if (!raw || typeof raw.title !== "string" || typeof raw.markdown !== "string" || !raw.markdown.trim() ||
+      raw.markdown.length > 20 * 1024 * 1024 || raw.title.length > 500 ||
+      (raw.sourceUrl !== undefined && (typeof raw.sourceUrl !== "string" || raw.sourceUrl.length > 2000)) ||
+      !/^[a-f0-9-]{32,36}$/.test(captureId)) throw new Error("Invalid capture or content too large.");
+  return captureOperations.run(async () => {
+    const db = await idb();
+    try {
+      const existing = await new Promise<any>((resolve, reject) => {
+        const request = db.transaction("captures").objectStore("captures").get(captureId);
+        request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+      });
+      if (existing) return { transferId: existing.transferId, queued: !await loadPairedChannelState() };
+      return await queueCaptureInternal(raw, captureId);
+    } finally { db.close(); }
+  });
+}
+
+async function queueCaptureInternal(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId: string): Promise<{ transferId: string; queued: boolean }> {
   const { seckey, pubkey } = await getDeviceKey();
   const canonical = canonicalize(raw.markdown);
   const canonicalBytes = new TextEncoder().encode(canonical);
@@ -329,7 +372,16 @@ export async function queueCapture(raw: { title: string; markdown: string; sourc
     attemptCount: 0,
     nextAttemptAt: now,
   };
-  await outboxPut(item);
+  const captureDb = await idb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = captureDb.transaction(["items", "captures"], "readwrite");
+      tx.objectStore("items").put(item);
+      tx.objectStore("captures").put({ captureId, transferId, ...raw, createdAt: now });
+      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+    });
+  } finally { captureDb.close(); }
+  void restoreWorkAlarms().catch(() => undefined);
   if (!channelPubkey) return { transferId, queued: true }; // unpaired: stays queued
   void publishTransfer(item, seckey, channelPubkey).catch(() => { /* alarm retries */ });
   return { transferId, queued: false };
@@ -404,101 +456,86 @@ async function bindOutboxItem(
   if (!sameRelayOrder(item.relays, paired.relays)) throw new Error("bound transfer relay set changed");
 }
 
-async function publishTransferInternal(
-  item: OutboxItem,
-  seckey: Uint8Array,
-  channelPubkey: string,
-  epoch: number,
-): Promise<void> {
-  const now = Math.floor(Date.now() / 1000);
-  item.expiresAt = item.expiresAt || Number(item.manifest["expiresAt"] ?? item.createdAt + 7 * 86400);
-  item.attemptCount = item.attemptCount || 0;
-  item.nextAttemptAt = item.nextAttemptAt || now;
-  if (item.status === "failed" || now < item.nextAttemptAt) return;
-  const ceilingReason = deliveryCeilingReason(item, now);
-  if (ceilingReason) {
-    item.status = "failed";
-    item.lastError = ceilingReason;
-    // Retain captured plaintext until an authenticated device ACK or an
-    // explicit user discard. A retry ceiling must never masquerade as delivery.
-    await outboxPut(item);
-    return;
-  }
-  try {
-    await bindOutboxItem(item, channelPubkey, getPublicKey(seckey));
-  } catch (error) {
-    // A bound transfer whose recipient or authenticated relay set no longer
-    // matches cannot be repaired by retransmission. Retain its plaintext for
-    // explicit user review/discard and surface a terminal local failure.
-    item.status = "failed";
-    item.lastError = safePairingError(error);
-    await outboxPut(item);
-    return;
-  }
-  const manifestId = String(item.manifest["manifestId"]);
-  const compressedSha256 = String(item.manifest["compressedSha256"]);
-  const payloads: unknown[] = [item.manifest];
-  item.chunks.forEach((dataBase64, index) => payloads.push({
-    protocol: READER_PROTOCOL, type: "chunk", transferId: item.transferId,
-    manifestId, documentId: item.documentId, compressedSha256,
-    index, count: item.chunks.length, dataBase64, expiresAt: item.expiresAt,
-  }));
-  const required = Math.min(RELAY_WRITE_QUORUM, item.relays.length);
-  let complete = 0;
-  let anyAccepted = false;
-  try {
-    for (const payload of payloads) {
-      if (epoch !== transportEpoch) throw new Error("delivery interrupted by channel change");
-      const accepted = await publishFreshPayload(item.relays, seckey, channelPubkey, payload, 7 * 86400);
-      if (accepted.length) anyAccepted = true;
-      if (accepted.length >= required) complete += 1;
-    }
-    if (epoch !== transportEpoch) throw new Error("delivery interrupted by channel change");
-    // Never stop at a manifest or early chunk merely because one relay is
-    // unavailable. Every payload has now been attempted, so a surviving relay
-    // can still deliver a complete transfer and the authenticated device ACK
-    // can settle it.
-    if (complete < payloads.length) {
-      throw new Error(`relay quorum failed (${complete}/${payloads.length} payloads)`);
-    }
-    item.status = "awaiting_device";
-    item.attemptCount += 1;
-    item.nextAttemptAt = retryAt(item.attemptCount, now);
-    item.lastError = undefined;
-    await outboxPut(item);
-  } catch (error) {
-    item.status = anyAccepted || complete > 0 ? "relay_accepted" : "queued";
-    item.attemptCount += 1;
-    item.nextAttemptAt = retryAt(item.attemptCount, now);
-    item.lastError = safePairingError(error);
-    await outboxPut(item);
-    // A device can receive from the one relay that accepted the payload even
-    // when the configured write quorum was missed. Its authenticated ACK is
-    // authoritative and must be checked immediately in that partial-success
-    // path as well.
-    scheduleAckCheck();
-    void pollForAcks().catch(() => undefined);
-    throw error;
-  }
-  scheduleAckCheck();
-  void pollForAcks().catch(() => undefined);
-}
-
 async function publishTransfer(
-  item: OutboxItem,
-  seckey: Uint8Array,
-  channelPubkey: string,
-  force = false,
+  item: OutboxItem, seckey: Uint8Array, channelPubkey: string, force = false,
 ): Promise<void> {
-  return transferOperations.run(item.transferId, async () => {
-    // Always reload inside the per-transfer critical section. An ACK or user
-    // discard may have deleted a stale caller's object while it was waiting.
-    const durable = await outboxGet(item.transferId);
-    if (!durable) return;
-    const storedChannel = await loadPairedChannelState();
-    if (storedChannel?.channelPubkey !== channelPubkey) return;
-    if (force) durable.nextAttemptAt = 0;
-    await publishTransferInternal(durable, seckey, channelPubkey, transportEpoch);
+  return publicationOwner.run(async () => {
+    const epoch = transportEpoch;
+    const snapshot = await transferOperations.run(item.transferId, async () => {
+      const durable = await outboxGet(item.transferId);
+      if (!durable) return;
+      // Recover the receipt-before-cleanup crash without republishing.
+      if ((await loadDeliveryReceipts()).some(receipt => receipt.transferId === item.transferId)) {
+        await outboxDelete(item.transferId);
+        return;
+      }
+      const now = Math.floor(Date.now() / 1000);
+      if (durable.status === "failed" || (!force && durable.nextAttemptAt > now)) return;
+      const ceiling = deliveryCeilingReason(durable, now);
+      try {
+        if (ceiling) throw new Error(ceiling);
+        await bindOutboxItem(durable, channelPubkey, getPublicKey(seckey));
+      } catch (error) {
+        durable.status = "failed";
+        durable.lastError = safePairingError(error);
+        await outboxPut(durable);
+        return;
+      }
+      durable.attemptCount++;
+      durable.nextAttemptAt = retryAt(durable.attemptCount, now);
+      await outboxPut(durable); // attempt reservation survives interruption
+      return durable;
+    });
+    if (!snapshot) return;
+    scheduleAckCheck();
+    const generation = snapshot.attemptCount;
+    const current = async () => {
+      const latest = await outboxGet(snapshot.transferId);
+      return epoch === transportEpoch && !!latest && latest.status !== "failed" && latest.attemptCount === generation;
+    };
+    const pool = new SimplePool();
+    activePublicationStops.set(snapshot.transferId, () => pool.close(snapshot.relays));
+    try {
+      await publishFragments({
+        snapshot: { relays: snapshot.relays, payloadCount: snapshot.chunks.length + 1, progress: snapshot.fragmentProgress ?? {} },
+        current,
+        send: async (index, relay) => {
+          const payload = index === 0 ? snapshot.manifest : {
+            protocol: READER_PROTOCOL, type: "chunk", transferId: snapshot.transferId,
+            manifestId: snapshot.manifest["manifestId"], documentId: snapshot.documentId,
+            compressedSha256: snapshot.manifest["compressedSha256"], index: index - 1,
+            count: snapshot.chunks.length, dataBase64: snapshot.chunks[index - 1], expiresAt: snapshot.expiresAt,
+          };
+          const { wrap } = await sealAndWrap({ senderSeckey: seckey, recipientPubkey: channelPubkey, payload, expireSecs: Math.max(1, snapshot.expiresAt - Math.floor(Date.now() / 1000)) });
+          if (new TextEncoder().encode(JSON.stringify(["EVENT", wrap])).length > 512 * 1024) throw new Error("encrypted frame too large");
+          const [outcome] = await publishPerRelay(pool, [relay], wrap as never, seckey);
+          return { state: outcome?.state ?? "SOCKET_ERROR", at: Date.now() };
+        },
+        checkpoint: (index, relay, outcome) => transferOperations.run(snapshot.transferId, async () => {
+          if (!await current()) return false;
+          const durable = (await outboxGet(snapshot.transferId))!;
+          ((durable.fragmentProgress ??= {})[String(index)] ??= {})[relay] = outcome;
+          if (outcome.state === "OK_TRUE") durable.status = "relay_accepted";
+          await outboxPut(durable);
+          return true;
+        }),
+      });
+      await transferOperations.run(snapshot.transferId, async () => {
+        if (!await current()) return;
+        const durable = (await outboxGet(snapshot.transferId))!;
+        const complete = Array.from({ length: snapshot.chunks.length + 1 }, (_, i) =>
+          snapshot.relays.filter(relay => durable.fragmentProgress?.[String(i)]?.[relay]?.state === "OK_TRUE").length >= RELAY_WRITE_QUORUM).every(Boolean);
+        durable.status = complete ? "awaiting_device" : durable.status;
+        durable.lastError = complete ? undefined : "Relay quorum incomplete; captured content retained.";
+        await outboxPut(durable);
+      });
+    } finally {
+      activePublicationStops.delete(snapshot.transferId);
+      pool.close(snapshot.relays);
+      scheduleAckCheck();
+      void pollForAcks().catch(() => undefined);
+      await restoreWorkAlarms();
+    }
   });
 }
 
@@ -511,8 +548,9 @@ async function pollForAcksInternal(): Promise<void> {
   const devicePubkey = getPublicKey(seckey);
   const { channelPubkey, relays } = paired;
   const now = Math.floor(Date.now() / 1000);
-  const events = await queryPairingEvents(relays, devicePubkey, syncSince(now), seckey);
+  const consume = async (events: Awaited<ReturnType<typeof queryPairingEvents>>) => {
   for (const event of events) {
+    let storageOperation = false;
     try {
       const envelope = await unwrapAndVerifyEnvelope({
         wrap: event,
@@ -523,10 +561,11 @@ async function pollForAcksInternal(): Promise<void> {
       });
       if (envelope.payload["type"] !== "ack") continue;
       const transferId = String(envelope.payload["transferId"] ?? "");
+      storageOperation = true;
       await transferOperations.run(transferId, async () => {
         const item = await outboxGet(transferId);
         if (!item) return;
-        const ack = validateEndpointAck(
+        const ack = runSafely(() => validateEndpointAck(
           envelope.payload,
           {
             transferId: item.transferId,
@@ -537,12 +576,14 @@ async function pollForAcksInternal(): Promise<void> {
           },
           envelope.senderPubkey,
           now,
-        );
+        ), null);
+        if (!ack) return;
         if (ack.status === "stored" || ack.status === "duplicate") {
           // Persist the delivered receipt before deleting the only durable
           // outbox copy. If receipt storage fails, retain the item so the same
           // authenticated ACK can safely settle it on a later poll.
           await recordDelivered(item.transferId, now);
+          activePublicationStops.get(item.transferId)?.();
           await outboxDelete(item.transferId); // Only this strict E2E ACK clears captured content.
         } else {
           item.status = "failed";
@@ -550,10 +591,13 @@ async function pollForAcksInternal(): Promise<void> {
           await outboxPut(item);
         }
       });
-    } catch {
+    } catch (error) {
+      if (storageOperation) throw error;
       // Hostile, expired, misbound, or unrelated events never mutate the outbox.
     }
   }
+  };
+  await queryPairingEvents(relays, devicePubkey, syncSince(now), seckey, consume);
 }
 
 async function pollForAcks(): Promise<void> {
@@ -586,6 +630,7 @@ async function loadPairingSessions(): Promise<PairingSession[]> {
 
 async function savePairingSessions(sessions: PairingSession[]): Promise<void> {
   await chrome.storage.local.set({ [PAIRING_SESSIONS_KEY]: sessions });
+  await restoreWorkAlarms();
 }
 
 async function readyPairingRelays(
@@ -618,17 +663,22 @@ async function queryPairingEvents(
   recipientPubkey: string,
   since: number,
   recipientSeckey: Uint8Array,
+  consume?: (events: Awaited<ReturnType<typeof queryRelayWithAuth>>) => Promise<void>,
 ): Promise<Array<Parameters<typeof unwrapAndVerifyEnvelope>[0]["wrap"]>> {
   const pool = new SimplePool();
   const batches = await Promise.all(relays.map(async (url) => {
     try {
-      return await queryRelayWithAuth(
-        pool,
-        url,
-        { kinds: [WRAP_KIND], "#p": [recipientPubkey], since, limit: 64 },
-        recipientSeckey,
-        5000,
-      );
+      const key = `readerScan:${recipientPubkey}:${url}`;
+      const stored = (await chrome.storage.local.get(key))[key] as ScanState | undefined;
+      const result = await scanHistory({
+        since, until: Math.floor(Date.now() / 1000) + 600, state: stored,
+        query: window => queryRelayWithAuth(pool, url, { kinds: [WRAP_KIND], "#p": [recipientPubkey], ...window }, recipientSeckey, 2500),
+        checkpoint: async state => { await chrome.storage.local.set({ [key]: state }); },
+        consume,
+      });
+      await chrome.storage.local.set({ [`${key}:coverage`]: result.complete ? "covered" : "incomplete" });
+      return result.events;
+
     } catch {
       return [];
     }
@@ -944,8 +994,11 @@ async function cancelPairing(sessionId: string): Promise<boolean> {
 // ---- Wiring ----
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
+    const trustedPage = _sender.id === chrome.runtime.id &&
+      ["src/ui/options.html", "src/ui/pairing.html", "src/ui/popup.html"].some(path => _sender.url === chrome.runtime.getURL(path));
+    if (!trustedPage && (msg?.kind !== "reader-capture" || _sender.id !== chrome.runtime.id || !_sender.tab)) throw new Error("Untrusted extension request");
     if (msg?.kind === "reader-capture") {
-      const r = await queueCapture(msg.doc);
+      const r = await queueCapture(msg.doc, msg.captureId);
       sendResponse({ ok: true, ...r });
     } else if (msg?.kind === "reader-start-pairing") {
       sendResponse({ ok: true, ...(await startPairing()) });
@@ -1027,12 +1080,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true;
 });
 
-chrome.action.onClicked.addListener(async (tab) => {
-  const paired = await loadPairedChannelState();
-  if (!paired) {
-    await chrome.tabs.create({ url: chrome.runtime.getURL("src/ui/pairing.html") });
-    return;
-  }
+async function captureTab(tab: chrome.tabs.Tab): Promise<void> {
   if (tab.id != null) {
     try {
       await chrome.tabs.sendMessage(tab.id, { kind: "reader-capture-now" });
@@ -1043,46 +1091,63 @@ chrome.action.onClicked.addListener(async (tab) => {
     try {
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
       await chrome.tabs.sendMessage(tab.id, { kind: "reader-capture-now" });
-    } catch { /* offline or restricted page */ }
+    } catch {
+      await chrome.action.setBadgeText({ text: "!", tabId: tab.id });
+      await chrome.action.setTitle({ title: "Couldn’t save: this page restricts capture. Open a normal web page or select text.", tabId: tab.id });
+    }
+  }
+}
+chrome.action.onClicked.addListener(captureTab);
+chrome.commands.onCommand.addListener(async command => {
+  if (command === "capture") {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab) await captureTab(tab);
   }
 });
 
-chrome.alarms.create(RETRY_ALARM, { periodInMinutes: 15 });
-chrome.alarms.create(PAIRING_ALARM, { periodInMinutes: 1 });
-chrome.alarms.onAlarm.addListener(async (a) => {
-  if (a.name === PAIRING_ALARM) {
-    void recoverPairingSessions().catch(() => undefined);
-    return;
-  }
-  if (a.name === ACK_ALARM) {
+async function resumeDueTransfers(): Promise<void> {
+  if (retryRecovery) return retryRecovery;
+  retryRecovery = (async () => {
     await pollForAcks().catch(() => undefined);
-    return;
+    const paired = await loadPairedChannelState();
+    if (!paired) return;
+    const { seckey } = await getDeviceKey();
+    // Bounded owner; network operations never fan out over the whole library.
+    for (const item of await outboxAll()) {
+      if (item.status !== "failed" && (item.nextAttemptAt ?? 0) <= Math.floor(Date.now() / 1000)) {
+        await publishTransfer(item, seckey, paired.channelPubkey).catch(() => undefined);
+      }
+    }
+  })().finally(async () => { retryRecovery = null; await restoreWorkAlarms(); });
+  return retryRecovery;
+}
+
+chrome.alarms.onAlarm.addListener(async (a) => {
+  try {
+    if (a.name === PAIRING_ALARM) await recoverPairingSessions();
+    if (a.name === ACK_ALARM) {
+      await pollForAcks();
+      if ((await outboxAll()).some(item => item.status !== "failed")) scheduleAckCheck();
+    }
+    if (a.name === RETRY_ALARM) await resumeDueTransfers();
+  } finally {
+    await restoreWorkAlarms();
   }
-  if (a.name !== RETRY_ALARM) return;
-  // ACK-first ordering prevents a late publisher from resurrecting an outbox
-  // item that was concurrently deleted after authenticated device storage.
-  await pollForAcks().catch(() => undefined);
-  const items = await outboxAll().catch(() => []);
-  if (!items.length) return;
-  const paired = await loadPairedChannelState();
-  if (!paired) return;
-  const { seckey } = await getDeviceKey();
-  const now = Math.floor(Date.now() / 1000);
-  await Promise.all(
-    items
-      .filter((candidate) => candidate.status !== "failed" && (candidate.nextAttemptAt ?? 0) <= now)
-      .map((item) => publishTransfer(item, seckey, paired.channelPubkey).catch(() => undefined)),
-  );
 });
+// Evaluation/reload restores missing alarms from persisted work, without moving
+// existing deadlines. Startup also executes due work even with all UI closed.
+void restoreWorkAlarms().catch(() => undefined);
 
 chrome.runtime.onInstalled.addListener(() => {
   void lockDownKeyStorage()
     .then(getDeviceKey)
     .then(() => recoverPairingSessions())
     .catch(() => undefined);
+  try { chrome.contextMenus.create({ id: "reader-options", title: "Reader settings and recent sends", contexts: ["action"] }); } catch {}
   try { chrome.contextMenus.create({ id: "reader-send-selection", title: "Send selection to Reader", contexts: ["selection"] }); } catch { /* exists */ }
 });
 chrome.runtime.onStartup.addListener(() => {
+  void resumeDueTransfers().catch(() => undefined);
   void recoverPairingSessions().catch(() => undefined);
   void pollForAcks().catch(() => undefined);
   // The phone may still be finishing a background sync when Chrome starts.
@@ -1091,7 +1156,8 @@ chrome.runtime.onStartup.addListener(() => {
   scheduleAckCheck();
 });
 chrome.contextMenus.onClicked.addListener(async (info) => {
+  if (info.menuItemId === "reader-options") { await chrome.runtime.openOptionsPage(); return; }
   if (info.menuItemId !== "reader-send-selection" || !info.selectionText) return;
-  if (info.selectionText.trim().length < 10) return;
-  await queueCapture({ title: "Selection", markdown: info.selectionText.trim() + "\n", sourceType: "selection" }).catch(() => undefined);
+  if (!info.selectionText.trim()) return;
+  await queueCapture({ title: "Selection", markdown: escapePlainText(info.selectionText.trim()) + "\n", sourceUrl: info.pageUrl, sourceType: "selection" }).catch(() => undefined);
 });

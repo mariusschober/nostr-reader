@@ -233,7 +233,7 @@ describe("deterministic local Nostr fault relay", () => {
     stored.set("restore", [event]);
     requestCounts.set("restore", 0);
     const firstPool = new SimplePool();
-    await expect(queryRelayWithAuth(firstPool, modeUrl("restore"), { kinds: [1059], "#p": [recipient], since: 0 }, key, 80)).resolves.toEqual([]);
+    await expect(queryRelayWithAuth(firstPool, modeUrl("restore"), { kinds: [1059], "#p": [recipient], since: 0 }, key, 80)).rejects.toThrow("closed");
     firstPool.close([modeUrl("restore")]);
     const secondPool = new SimplePool();
     try {
@@ -260,7 +260,7 @@ describe("deterministic local Nostr fault relay", () => {
     }
   });
 
-  it("retains an event seen before subscriber disconnect and catches up cleanly", async () => {
+  it("reports interrupted coverage and catches up cleanly", async () => {
     const key = generateSecretKey();
     const recipient = getPublicKey(key);
     const event = signedEvent(recipient);
@@ -268,9 +268,8 @@ describe("deterministic local Nostr fault relay", () => {
     requestCounts.set("subscriber-disconnect", 0);
     const first = new SimplePool();
     const url = modeUrl("subscriber-disconnect");
-    const partial = await queryRelayWithAuth(first, url, { kinds: [1059], "#p": [recipient], since: 0 }, key, 100);
+    await expect(queryRelayWithAuth(first, url, { kinds: [1059], "#p": [recipient], since: 0 }, key, 100)).rejects.toThrow("closed");
     first.close([url]);
-    expect(partial.map((item) => item.id)).toEqual([event.id]);
     const second = new SimplePool();
     try {
       const recovered = await queryRelayWithAuth(second, url, { kinds: [1059], "#p": [recipient], since: 0 }, key, 100);
@@ -280,12 +279,12 @@ describe("deterministic local Nostr fault relay", () => {
     }
   });
 
-  it("treats a relay CLOSED subscription frame as an empty safe result", async () => {
+  it("reports a relay CLOSED subscription as failure", async () => {
     const key = generateSecretKey();
     const pool = new SimplePool();
     const url = modeUrl("closed-frame");
     try {
-      await expect(queryRelayWithAuth(pool, url, { kinds: [1059], "#p": [getPublicKey(key)], since: 0 }, key, 100)).resolves.toEqual([]);
+      await expect(queryRelayWithAuth(pool, url, { kinds: [1059], "#p": [getPublicKey(key)], since: 0 }, key, 100)).rejects.toThrow("restricted");
     } finally {
       pool.close([url]);
     }
@@ -298,8 +297,7 @@ describe("deterministic local Nostr fault relay", () => {
     const pool = new SimplePool();
     const url = modeUrl("oversized-query");
     try {
-      const found = await queryRelayWithAuth(pool, url, { kinds: [1059], "#p": [recipient], since: 0 }, key, 200);
-      expect(found).toEqual([]);
+      await expect(queryRelayWithAuth(pool, url, { kinds: [1059], "#p": [recipient], since: 0 }, key, 200)).rejects.toThrow("budget");
     } finally {
       pool.close([url]);
     }

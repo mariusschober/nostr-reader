@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reader.app.data.AckIntentEntity
 import com.reader.app.data.MIGRATION_3_4
+import com.reader.app.data.MIGRATION_5_6
 import com.reader.app.data.MIGRATION_4_5
 import com.reader.app.data.ChannelEntity
 import com.reader.app.data.ProcessedEventEntity
@@ -125,7 +126,7 @@ class ReaderDbMigrationInstrumentedTest {
     helper.close()
 
     val migrated = Room.databaseBuilder(context, ReaderDb::class.java, name)
-      .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
       .build()
     try {
       migrated.openHelper.writableDatabase

@@ -1,6 +1,6 @@
 // Nostr transport: NIP-44 + NIP-59 gift-wrap with the full verification
 // checklist from PROTOCOL.md. No high-level unwrap shortcut is used.
-import { finalizeEvent, getEventHash, getPublicKey, verifyEvent } from "nostr-tools/pure";
+import { generateSecretKey, finalizeEvent, getEventHash, getPublicKey, verifyEvent } from "nostr-tools/pure";
 import * as nip44 from "./nip44.js";
 import { SimplePool } from "nostr-tools/pool";
 import { READER_PROTOCOL, RUMOR_KIND } from "../protocol/core.js";
@@ -190,7 +190,66 @@ function boundedRelayEvents(events: PoolQueryEvent[]): PoolQueryEvent[] {
   return [...unique.values()].sort((left, right) => left.created_at - right.created_at);
 }
 
-/** One-relay catch-up query with a NIP-42 retry when the relay challenges. */
+/** Pinned nostr-tools 2.7.1 socket adapter: bound frames BEFORE its queue,
+ * JSON.parse, signature verification and query accumulation. Fail closed if the
+ * pinned hook disappears. One query owner per relay connection is required.
+ */
+async function boundedQuery(
+  relay: Awaited<ReturnType<SimplePool["ensureRelay"]>>,
+  filter: PoolQueryFilter,
+  maxWait: number,
+): Promise<PoolQueryEvent[]> {
+  const socket = (relay as unknown as { ws?: WebSocket }).ws;
+  if (!socket || typeof socket.onmessage !== "function") throw new ClientProtocolError("relay receive adapter unavailable");
+  const original = socket.onmessage;
+  const id = `reader-${randomHex(8)}`;
+  let bytes = 0;
+  let frames = 0;
+  let receivedEose = false;
+  let subscription: ReturnType<typeof relay.subscribe> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await new Promise<PoolQueryEvent[]>((resolve, reject) => {
+      const events: PoolQueryEvent[] = [];
+      socket.onmessage = event => {
+        try {
+          if (typeof event.data !== "string") throw new ClientProtocolError("binary relay frame");
+          const size = new TextEncoder().encode(event.data).length;
+          bytes += size;
+          if (size > MAX_RELAY_EVENT_BYTES || bytes > 8 * 1024 * 1024 || ++frames > 4100) {
+            throw new ClientProtocolError("relay receive budget exceeded");
+          }
+          const frame = parseStrictJson(event.data);
+          if (!Array.isArray(frame)) throw new ClientProtocolError("invalid relay frame");
+          if (frame[0] === "EOSE" && frame[1] === id) receivedEose = true;
+          if (frame[0] === "EVENT") {
+            const tags = frame[2]?.tags;
+            if (!Array.isArray(tags) || tags.length > 16 || tags.some((tag: unknown) => !Array.isArray(tag) || tag.length > 4)) {
+              throw new ClientProtocolError("relay tag budget exceeded");
+            }
+          }
+          original.call(socket, event);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      timer = setTimeout(() => reject(new Error("relay query timeout")), maxWait + 100);
+      subscription = relay.prepareSubscription([filter], {
+        id, eoseTimeout: maxWait,
+        onevent: event => { events.push(event); },
+        oneose: () => receivedEose ? resolve(events) : reject(new Error("relay query timeout before EOSE")),
+        onclose: reason => reject(new Error(reason || "relay subscription closed")),
+      });
+      subscription.fire();
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+    socket.onmessage = original;
+    subscription?.close();
+  }
+}
+
+/** One-relay bounded catch-up with one NIP-42 authentication retry. */
 export async function queryRelayWithAuth(
   pool: SimplePool,
   url: string,
@@ -199,38 +258,23 @@ export async function queryRelayWithAuth(
   maxWait = 5000,
 ): Promise<PoolQueryEvent[]> {
   const controller = await configureRelayAuth(pool, url, authSeckey);
-  const query = async (): Promise<PoolQueryEvent[]> => {
-    try {
-      const events = await pool.querySync([url], filter, { maxWait });
-      const failure = controller.auth.failure();
-      if (failure) throw failure;
-      return events;
-    } catch (error) {
-      throw new Error(sanitizedReason(controller.auth.failure() ?? error, controller.auth.challenges()));
-    }
-  };
-  let first: PoolQueryEvent[];
   try {
-    first = await pool.querySync([url], filter, { maxWait });
+    let events: PoolQueryEvent[];
+    try {
+      events = await boundedQuery(controller.relay, filter, maxWait);
+    } catch (error) {
+      if (!isAuthRequired(error)) throw error;
+      await bounded(controller.auth.authenticate(), 2500, "relay authentication");
+      events = await boundedQuery(controller.relay, filter, maxWait);
+    }
+    const pending = controller.auth.current();
+    if (pending) await bounded(pending, 2500, "relay authentication");
     const failure = controller.auth.failure();
     if (failure) throw failure;
+    return boundedRelayEvents(events);
   } catch (error) {
-    const surfaced = controller.auth.failure() ?? error;
-    if (!isAuthRequired(surfaced)) {
-      throw new Error(sanitizedReason(surfaced, controller.auth.challenges()));
-    }
-    await bounded(controller.auth.authenticate(), 2500, "relay authentication");
-    return boundedRelayEvents(await query());
+    throw new Error(sanitizedReason(controller.auth.failure() ?? error, controller.auth.challenges()));
   }
-  const pending = controller.auth.current();
-  if (pending) await bounded(pending, 2500, "relay authentication");
-  const failure = controller.auth.failure();
-  if (failure) throw new Error(sanitizedReason(failure, controller.auth.challenges()));
-  if (!controller.auth.authenticated()) return boundedRelayEvents(first);
-  const second = await query();
-  const unique = new Map(first.map((event) => [event.id, event]));
-  for (const event of second) unique.set(event.id, event);
-  return boundedRelayEvents([...unique.values()]);
 }
 
 function randomPow(): string {
@@ -301,11 +345,7 @@ function randomPowDelay(): number {
 }
 
 export function randomSeckey(): Uint8Array {
-  const b = new Uint8Array(32);
-  crypto.getRandomValues(b);
-  b[0] &= 0x7f; // keep inside curve order with overwhelming probability
-  if (b.every((x) => x === 0)) b[31] = 1;
-  return b;
+  return generateSecretKey();
 }
 
 function isLowerHex(value: string, bytes: number): boolean {
@@ -362,6 +402,7 @@ export async function unwrapAndVerifyEnvelope(opts: {
     throw new Error("non-canonical seal hex");
   }
   if (!verifyEvent(seal as never)) throw new Error("invalid seal signature");
+  if (expectedSenderPubkey && seal.pubkey !== expectedSenderPubkey) throw new Error("untrusted sender (seal)");
   if (Math.abs(now - seal.created_at) > 30 * 86400) throw new Error("seal timestamp out of range");
   let rumorJson: string;
   try {
@@ -381,6 +422,11 @@ export async function unwrapAndVerifyEnvelope(opts: {
     tags: string[][];
     sig?: unknown;
   };
+  if (rumor.kind !== RUMOR_KIND || !Number.isSafeInteger(rumor.created_at) ||
+      rumor.created_at < 0 || rumor.created_at > now + 600 ||
+      !Array.isArray(rumor.tags) || rumor.tags.length !== 0 || typeof rumor.content !== "string") {
+    throw new Error("invalid Reader rumor profile");
+  }
   if (rumor.sig !== undefined) throw new Error("rumor must not be signed");
   if (!isLowerHex(rumor.pubkey, 32) || !rumor.id || !isLowerHex(rumor.id, 32)) {
     throw new Error("non-canonical rumor hex");

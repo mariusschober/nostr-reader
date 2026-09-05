@@ -144,16 +144,10 @@ class TransferManager(
       existing.manifestId == intake.manifestId && existing.documentId == intake.documentId &&
         existing.recipientDevicePubkey == recipientDevicePubkey,
     ) { "conflicting ACK intent" }
-    // One immutable transfer owns one bounded ACK lifecycle. A Chrome retry or
-    // a delayed wrapper from another relay must not reset a completed quorum or
-    // an exhausted retry ceiling; the accepted ACK remains relay-retained until
-    // the transfer itself expires.
-    dao.update(
-      existing.copy(
-        status = preferredStatus,
-        expiresAt = maxOf(existing.expiresAt, intake.expiresAt),
-      ),
-    )
+    // Called only for a newly authenticated wrapper, after the durable replay
+    // ledger check. Never extend immutable expiry or reset lifetime attempts.
+    require(existing.expiresAt == intake.expiresAt) { "conflicting ACK expiry" }
+    dao.update(refreshAckOnDemand(existing.copy(status = preferredStatus), nowSecs * 1000))
   }
 
   private fun exactKeys(payload: JsonObject, required: Set<String>, optional: Set<String> = emptySet()) {

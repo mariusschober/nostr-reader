@@ -22,7 +22,7 @@ turndown.addRule("cite", {
 
 export function meaningfulSelection(text: string): boolean {
   const t = text.trim();
-  return t.length >= 80 || t.split(/\s+/).filter(Boolean).length >= 12;
+  return t.length > 0;
 }
 
 function sanitizeHtml(html: string): string {

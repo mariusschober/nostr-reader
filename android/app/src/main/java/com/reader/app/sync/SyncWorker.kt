@@ -11,6 +11,10 @@ import com.reader.app.nostr.PairingProtocol
 import com.reader.app.nostr.READER_RELAY_WRITE_QUORUM
 import com.reader.app.nostr.WRAP_KIND
 import com.reader.app.security.KeystoreWrap
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -62,7 +66,8 @@ internal fun syncNeedsRetry(pairingPending: Boolean, ackPending: Boolean): Boole
   pairingPending || ackPending
 
 /** Background poll: rolling 10-day window, dedupe, assemble, ACK. No permanent socket. */
-class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+class ReaderSyncSession(private val applicationContext: Context) {
+  companion object { private val syncMutex = Mutex() }
   private data class AckRelayAttempt(
     val relayUrl: String,
     val outcome: RelayClient.PublishResult? = null,
@@ -181,7 +186,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
     return dao.pendingCount(channel.channelId, System.currentTimeMillis() / 1000) > 0
   }
 
-  override suspend fun doWork(): Result = syncMutex.withLock {
+  suspend fun runOnce(): Boolean = syncMutex.withLock {
     val db = ReaderDb.get(applicationContext)
     val keys = KeystoreWrap(applicationContext)
     val relays = RelayClient()
@@ -195,6 +200,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
       Log.i("NostrReaderSync", "activeChannels=${channels.size}")
       val tm = TransferManager(db)
       var ackRetryNeeded = false
+      var receiveFailed = false
       for (ch in channels) {
         val seckey = openActiveChannelKeyOrRevoke(db, keys, ch)
         if (seckey == null) {
@@ -205,61 +211,68 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         val relayList = runCatching {
           Json.parseToJsonElement(ch.relaysJson).jsonArray.map { it.jsonPrimitive.content }
         }.getOrDefault(emptyList())
-        if (relayList.isEmpty()) continue
+        if (relayList.isEmpty()) { receiveFailed = true; continue }
         if (runCatching { PairingProtocol.validateResolvedRelayAddresses(relayList) }.isFailure) {
+          receiveFailed = true
           Log.w("NostrReaderSync", "channel=${ch.channelId.take(8)} relayValidation=failed")
           continue
         }
         Log.i("NostrReaderSync", "channel=${ch.channelId.take(8)} relays=${relayList.size}")
         val since = ReaderCore.syncSince(System.currentTimeMillis() / 1000)
-        val seen = mutableSetOf<String>()
-        val batches = coroutineScope {
-          relayList.map { url ->
-            async(Dispatchers.IO) {
-              val result = runCatching {
-                relays.subscribe(url, receiverPubkey, since, listOf(WRAP_KIND), 20, seckey)
+        // Small bounded queue: process while sockets receive, not after the
+        // slowest relay's collection window. Producers backpressure individually.
+        coroutineScope {
+          val intakeQueue = Channel<com.reader.app.nostr.NostrEvent>(16)
+          val consumer = launch(Dispatchers.IO) {
+            for (ev in intakeQueue) {
+              try {
+                val intake = tm.ingestForSync(ev, ch.channelId, ch.trustedSenderPubkey, seckey)
+                if (intake != null && dispatchPendingAcks(db, tm, relays, ch, seckey, relayList)) ackRetryNeeded = true
+              } catch (error: CancellationException) { throw error
+              } catch (_: Exception) {
+                Log.w("NostrReaderSync", "authenticated intake rejected")
               }
-              result.onSuccess {
-                Log.i("NostrReaderSync", "relay=${safeRelay(url)} received=${it.size}")
-              }.onFailure {
-                Log.w("NostrReaderSync", "relay=${safeRelay(url)} subscribe=${safeFailure(it)}")
-              }
-              result.getOrDefault(emptyList())
             }
-          }.awaitAll()
-        }
-        for (events in batches) {
-          for (ev in events) {
-            if (!seen.add(ev.id)) continue // relays overlap: dedupe
-            val intake = try {
-              tm.ingestForSync(ev, ch.channelId, ch.trustedSenderPubkey, seckey)
-            } catch (e: Exception) {
-              Log.w("NostrReaderSync", "event=${ev.id.take(12)} ingest=${safeFailure(e)}")
-              continue
-            }
-            if (intake == null) {
-              Log.d("NostrReaderSync", "event=${ev.id.take(12)} ingest=no-ack-partial-or-unrelated")
-              continue
-            }
-            Log.i(
-              "NostrReaderSync",
-              "event=${ev.id.take(12)} transfer=${intake.transferId.take(8)} status=${intake.status}",
-            )
           }
+          consumer.invokeOnCompletion { intakeQueue.cancel() }
+          try {
+            relayList.map { url ->
+              async(Dispatchers.IO) {
+                try {
+                  runInterruptible {
+                    relays.subscribe(url, receiverPubkey, since, listOf(WRAP_KIND), 20, seckey) { event ->
+                      // Bounded send; cancellation of this scope cancels the
+                      // queue and runInterruptible closes each socket in finally.
+                      runBlocking { intakeQueue.send(event) }
+                    }
+                  }
+                  true
+                } catch (error: CancellationException) { throw error
+                } catch (_: Exception) { false }
+              }
+            }.awaitAll().let { results -> if (results.any { !it }) receiveFailed = true }
+          } finally {
+            intakeQueue.close()
+          }
+          consumer.join()
         }
         if (dispatchPendingAcks(db, tm, relays, ch, seckey, relayList)) ackRetryNeeded = true
       }
-      if (syncNeedsRetry(pairingRetryNeeded, ackRetryNeeded)) Result.retry() else Result.success()
+      syncNeedsRetry(pairingRetryNeeded, ackRetryNeeded) || receiveFailed
     } catch (error: CancellationException) {
       throw error
     } catch (e: Exception) {
-      Result.retry()
+      true
     }
   }
 
-  companion object {
-    private val syncMutex = Mutex()
+}
 
+class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+  override suspend fun doWork(): Result =
+    if (ReaderSyncSession(applicationContext).runOnce()) Result.retry() else Result.success()
+
+  companion object {
     private fun connectedConstraint(): Constraints =
       Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 

@@ -1,6 +1,7 @@
 /** JSON.parse plus duplicate-object-key rejection at every nesting level. */
 class JsonGuard {
   private index = 0;
+  private depth = 0;
 
   constructor(private readonly text: string) {}
 
@@ -16,6 +17,7 @@ class JsonGuard {
   }
 
   private value(): void {
+    if (++this.depth > 32) throw new Error("JSON nesting limit");
     this.ws();
     const char = this.text[this.index];
     if (char === "{") this.object();
@@ -25,6 +27,7 @@ class JsonGuard {
     else if (char === "f") this.literal("false");
     else if (char === "n") this.literal("null");
     else this.number();
+    this.depth--;
   }
 
   private object(): void {
