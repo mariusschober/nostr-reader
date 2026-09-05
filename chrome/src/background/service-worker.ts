@@ -376,9 +376,16 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = captureDb.transaction(["items", "captures"], "readwrite");
-      tx.objectStore("items").put(item);
-      tx.objectStore("captures").put({ captureId, transferId, ...raw, createdAt: now });
       tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+      try {
+        tx.objectStore("items").put(item);
+        tx.objectStore("captures").put({ captureId, transferId, ...raw, createdAt: now });
+      } catch (error) {
+        // Synchronous request setup failures do not automatically roll back
+        // earlier queued writes. Never leave a send without its retained capture.
+        tx.abort();
+        reject(error);
+      }
     });
   } finally { captureDb.close(); }
   void restoreWorkAlarms().catch(() => undefined);
@@ -666,9 +673,9 @@ async function queryPairingEvents(
   consume?: (events: Awaited<ReturnType<typeof queryRelayWithAuth>>) => Promise<void>,
 ): Promise<Array<Parameters<typeof unwrapAndVerifyEnvelope>[0]["wrap"]>> {
   const pool = new SimplePool();
-  const batches = await Promise.all(relays.map(async (url) => {
+  const batches = await Promise.allSettled(relays.map(async (url) => {
+    const key = `readerScan:${recipientPubkey}:${url}`;
     try {
-      const key = `readerScan:${recipientPubkey}:${url}`;
       const stored = (await chrome.storage.local.get(key))[key] as ScanState | undefined;
       const result = await scanHistory({
         since, until: Math.floor(Date.now() / 1000) + 600, state: stored,
@@ -679,13 +686,19 @@ async function queryPairingEvents(
       await chrome.storage.local.set({ [`${key}:coverage`]: result.complete ? "covered" : "incomplete" });
       return result.events;
 
-    } catch {
-      return [];
+    } catch (error) {
+      await chrome.storage.local.set({ [`${key}:coverage`]: "failed" });
+      throw error;
     }
   }));
   try { pool.close(relays); } catch { /* ignore */ }
+  const successful = batches.filter((batch): batch is PromiseFulfilledResult<Awaited<ReturnType<typeof queryRelayWithAuth>>> => batch.status === "fulfilled");
+  await chrome.storage.local.set({ readerLastReceive: {
+    checkedAt: Date.now(), successfulRelays: successful.length, failedRelays: batches.length - successful.length,
+  } });
+  if (!successful.length && relays.length) throw new Error("Couldn’t check relays; saved content will retry.");
   const unique = new Map<string, Parameters<typeof unwrapAndVerifyEnvelope>[0]["wrap"]>();
-  for (const event of batches.flat()) unique.set(event.id, event as never);
+  for (const event of successful.flatMap(batch => batch.value)) unique.set(event.id, event as never);
   return [...unique.values()].sort((a, b) => a.created_at - b.created_at);
 }
 
@@ -1155,9 +1168,22 @@ chrome.runtime.onStartup.addListener(() => {
   // already have gone idle; it never republishes the captured article.
   scheduleAckCheck();
 });
-chrome.contextMenus.onClicked.addListener(async (info) => {
+async function captureFeedback(tabId: number | undefined, text: string, failed = false): Promise<void> {
+  if (tabId === undefined) return;
+  await chrome.action.setBadgeText({ tabId, text: failed ? "!" : text === "Saving…" ? "…" : "✓" });
+  await chrome.action.setTitle({ tabId, title: text });
+  await chrome.tabs.sendMessage(tabId, { kind: "reader-capture-feedback", text }).catch(() => undefined);
+}
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "reader-options") { await chrome.runtime.openOptionsPage(); return; }
   if (info.menuItemId !== "reader-send-selection" || !info.selectionText) return;
   if (!info.selectionText.trim()) return;
-  await queueCapture({ title: "Selection", markdown: escapePlainText(info.selectionText.trim()) + "\n", sourceUrl: info.pageUrl, sourceType: "selection" }).catch(() => undefined);
+  await captureFeedback(tab?.id, "Saving…").catch(() => undefined);
+  try {
+    const result = await queueCapture({ title: "Selection", markdown: escapePlainText(info.selectionText.trim()) + "\n", sourceUrl: info.pageUrl, sourceType: "selection" });
+    await captureFeedback(tab?.id, result.queued ? "Saved — connect your phone" : "Saved — waiting for your phone");
+  } catch {
+    await captureFeedback(tab?.id, "Couldn’t save — storage unavailable or content too large. Try again.", true).catch(() => undefined);
+  }
 });

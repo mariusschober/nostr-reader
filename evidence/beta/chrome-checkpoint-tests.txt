@@ -1,0 +1,13 @@
+
+> reader-chrome@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+
+ Test Files  21 passed (21)
+      Tests  114 passed (114)
+   Start at  23:26:40
+   Duration  1.42s (tests 58%, transform 15%, environment 14%, import 11%, worker 2%)
+

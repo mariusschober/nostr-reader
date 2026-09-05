@@ -1,0 +1,11 @@
+{
+  "documentCount": 1,
+  "expectedDocumentHash": "c4745b60855edff941e66d266f180b24333e1ccf4607d21d10263436315d97f3",
+  "matchingSingleDocument": true,
+  "channelStates": [
+    [
+      "active",
+      1
+    ]
+  ]
+}

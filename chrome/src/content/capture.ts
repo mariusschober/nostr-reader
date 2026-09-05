@@ -87,6 +87,11 @@ const owner = globalThis as typeof globalThis & { readerCaptureInstalled?: boole
 if (!owner.readerCaptureInstalled) {
   owner.readerCaptureInstalled = true;
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.kind === "reader-capture-feedback" && typeof msg.text === "string") {
+      feedback(msg.text.slice(0, 400));
+      sendResponse({ ok: true });
+      return false;
+    }
     if (msg?.kind !== "reader-capture-now") return false;
     void captureForToolbar().then(() => sendResponse({ ok: true }));
     return true;

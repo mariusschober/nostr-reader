@@ -56,7 +56,7 @@ dependencies {
   implementation("androidx.room:room-runtime:2.6.1")
   implementation("androidx.room:room-ktx:2.6.1")
   ksp("androidx.room:room-compiler:2.6.1")
-  implementation("androidx.datastore:datastore-preferences:1.1.1")
+  implementation("androidx.datastore:datastore-preferences:1.1.7")
   implementation("androidx.work:work-runtime-ktx:2.9.0")
   // Media / images
   implementation("androidx.media3:media3-session:1.4.1")
@@ -76,10 +76,10 @@ dependencies {
   // QR (pure-JVM zxing core; camera via CameraX)
   implementation("com.google.zxing:core:3.5.3")
   implementation("org.jsoup:jsoup:1.17.2")
-  implementation("androidx.camera:camera-core:1.3.4")
-  implementation("androidx.camera:camera-camera2:1.3.4")
-  implementation("androidx.camera:camera-lifecycle:1.3.4")
-  implementation("androidx.camera:camera-view:1.3.4")
+  implementation("androidx.camera:camera-core:1.4.2")
+  implementation("androidx.camera:camera-camera2:1.4.2")
+  implementation("androidx.camera:camera-lifecycle:1.4.2")
+  implementation("androidx.camera:camera-view:1.4.2")
   // Tests
   testImplementation("junit:junit:4.13.2")
   testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
