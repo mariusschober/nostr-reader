@@ -66,6 +66,8 @@ Actual screenshots from the baseline Android build on a TCL T807D, captured on 8
 - Turn on **Highlight**, select text, and adjust the native handles. Choose yellow, green, cyan, or purple; saving is automatic and silent.
 - Highlight mode hides the floating Android action menu while retaining native selection. **Undo highlight change** is available in the article’s overflow menu.
 - Browse quotes by **Shuffle** or **Newest**, review them individually, mark important passages, and share quote text.
+- In Highlights, swipe right to mark a passage important (yellow star, top right) or left past the mark to remove the quote. Long-press selects several quotes to remove at once. Removed quotes have no Undo; their articles stay in your library.
+- Long-press articles to select several and archive or unarchive them together, with Undo. Permanent deletion remains an explicit single-article action inside Archive.
 - Saved highlights and review history survive permanent deletion of the source article. The retained quote shows its source title and identifies when the local source is gone.
 
 ### Finish and move on
