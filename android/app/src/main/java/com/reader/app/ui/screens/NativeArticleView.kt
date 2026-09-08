@@ -10,7 +10,7 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
-import android.widget.ScrollView
+import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.content.res.ResourcesCompat
 import com.reader.app.R
@@ -21,7 +21,7 @@ import com.reader.app.prefs.ReaderSettings
 import java.util.UUID
 
 /** A single selectable native surface per bounded article part. No editing or clipboard reads. */
-class NativeArticleView(context: Context) : ScrollView(context) {
+class NativeArticleView(context: Context) : FrameLayout(context) {
   private class SelectionText(context: Context) : TextView(context) {
     var changed: ((Int, Int) -> Unit)? = null
     override fun onSelectionChanged(start: Int, end: Int) {
@@ -46,13 +46,16 @@ class NativeArticleView(context: Context) : ScrollView(context) {
   var onTap: () -> Unit = {}
 
   init {
-    isFillViewport = true
     clipToPadding = false
     body.setTextIsSelectable(true)
+    body.isVerticalScrollBarEnabled = true
     body.linksClickable = false
     body.setLineSpacing(0f, 1.35f)
     body.setPadding(0, dp(8), 0, dp(96))
-    addView(body, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+    // Native selection handles scroll the TextView's own viewport. A tall
+    // wrap-content TextView inside a ScrollView hides that viewport boundary
+    // from Android's handle controller and prevents edge autoscrolling.
+    addView(body, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     body.changed = { start, end -> selectionChanged(start, end) }
     body.customSelectionActionModeCallback = object : ActionMode.Callback {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
@@ -92,7 +95,7 @@ class NativeArticleView(context: Context) : ScrollView(context) {
       }
       false
     }
-    setOnScrollChangeListener { _, _, _, _, _ -> if (!restoring) reportCursor() }
+    body.setOnScrollChangeListener { _, _, _, _, _ -> if (!restoring) reportCursor() }
   }
 
   fun display(id: String, value: RenderedProjection, text: CharSequence, settings: ReaderSettings,
@@ -119,8 +122,9 @@ class NativeArticleView(context: Context) : ScrollView(context) {
         val layout = body.layout
         if (layout != null && saved != null) {
           val offset = value.offset(saved.blockId, saved.charOffset).coerceIn(0, body.length())
-          val y = layout.getLineTop(layout.getLineForOffset(offset)) + body.paddingTop - height / 3
-          scrollTo(0, y.coerceAtLeast(0))
+          val y = layout.getLineTop(layout.getLineForOffset(offset)) + body.paddingTop - body.height / 3
+          val maxY = (layout.height + body.totalPaddingTop + body.totalPaddingBottom - body.height).coerceAtLeast(0)
+          body.scrollTo(0, y.coerceIn(0, maxY))
         }
         restoring = false
       }
@@ -174,7 +178,7 @@ class NativeArticleView(context: Context) : ScrollView(context) {
   fun currentCursor(): SemanticCursor? {
     val value = projection ?: return null
     val layout = body.layout ?: return null
-    val line = layout.getLineForVertical((scrollY + height / 3 - body.paddingTop).coerceAtLeast(0))
+    val line = layout.getLineForVertical((body.scrollY + body.height / 3 - body.paddingTop).coerceAtLeast(0))
     return value.cursor(documentId, layout.getLineStart(line))
   }
 

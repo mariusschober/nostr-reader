@@ -1,0 +1,72 @@
+Applications Memory Usage (in Kilobytes):
+Uptime: 435730489 Realtime: 860745337
+
+** MEMINFO in pid 6666 [com.reader.app.qa] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap    32169    32132       20       45    33284   132228    33067    95002
+  Dalvik Heap     7629     7568       16       72     8644    17059     8530     8529
+ Dalvik Other    15637     5948        0        0    25580                           
+        Stack     1564     1564        0        0     1572                           
+       Ashmem       12        0        0        0      496                           
+    Other dev       21        0       20        0      592                           
+     .so mmap    12585      300     2140       13    69384                           
+    .jar mmap     2177        0      112        0    51172                           
+    .apk mmap      362        0       68        0     2596                           
+    .ttf mmap      495        0      340        0     1192                           
+    .dex mmap   149441   149424        0        0   150220                           
+    .oat mmap       26        0        0        0     1924                           
+    .art mmap     9054     8264       32       83    19552                           
+   Other mmap     1677       68     1300        0     3044                           
+   EGL mtrack    17265    17265        0        0    17265                           
+    GL mtrack    32808    32808        0        0    32808                           
+      Unknown     1022      752      212        1     1576                           
+        TOTAL   284158   256093     4260      214   420901   149287    41597   103531
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:    15864                          28196
+         Native Heap:    32132                          33284
+                Code:   152540                         296020
+               Stack:     1564                           1572
+            Graphics:    50073                          50073
+       Private Other:     8180
+              System:    23805
+             Unknown:                                   11756
+ 
+           TOTAL PSS:   284158            TOTAL RSS:   420901       TOTAL SWAP PSS:      214
+ 
+ Objects
+               Views:       14         ViewRootImpl:        1
+         AppContexts:        7           Activities:        1
+              Assets:       49        AssetManagers:        0
+       Local Binders:       19        Proxy Binders:       57
+       Parcel memory:       12         Parcel count:       43
+    Death Recipients:        0             WebViews:        0
+ 
+ Native Allocations
+                         Count                       Total(kB)
+                        ------                         ------
+   Bitmap (malloced):        2                              9
+    Other (malloced):      581                             54
+ Other (nonmalloced):       84                             62
+ 
+ SQL
+         MEMORY_USED:      867
+  PAGECACHE_OVERFLOW:      415          MALLOC_SIZE:      128
+ 
+ DATABASES
+      pgsz     dbsz   Lookaside(b) cache hits cache misses cache size  Dbname
+PER CONNECTION STATS
+         4      372            102   226   332    15  /data/user/0/com.reader.app.qa/databases/reader.db
+         4        8                    0     0     0    (attached) temp
+         4      372            123   145    25    13  /data/user/0/com.reader.app.qa/databases/reader.db (7)
+         4      104             73    77   105    25  /data/user/0/com.reader.app.qa/no_backup/androidx.work.workdb
+         4        8                    0     0     0    (attached) temp
+         4      104             44     5    16     4  /data/user/0/com.reader.app.qa/no_backup/androidx.work.workdb (2)
+POOL STATS
+     cache hits  cache misses    cache size  Dbname
+            396           464           860  /data/user/0/com.reader.app.qa/databases/reader.db
+             84           143           227  /data/user/0/com.reader.app.qa/no_backup/androidx.work.workdb

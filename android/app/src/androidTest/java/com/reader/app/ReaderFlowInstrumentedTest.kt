@@ -93,16 +93,19 @@ class ReaderFlowInstrumentedTest {
     tap("Newest")
     // The keyed feed preserves its visible item when sorting changes.
     val feedScreen = context.resources.displayMetrics
-    val feedDown = SystemClock.uptimeMillis()
     val feedX = feedScreen.widthPixels * .8f
     val feedY = feedScreen.heightPixels * .3f
-    event(MotionEvent.ACTION_DOWN, feedX, feedY, feedDown)
-    for (step in 1..20) {
-      event(MotionEvent.ACTION_MOVE, feedX, feedY + feedScreen.heightPixels * .5f * step / 20f, feedDown)
-      SystemClock.sleep(20)
+    var attempts = 0
+    while (node(title) == null && attempts++ < 12) {
+      val feedDown = SystemClock.uptimeMillis()
+      event(MotionEvent.ACTION_DOWN, feedX, feedY, feedDown)
+      for (step in 1..20) {
+        event(MotionEvent.ACTION_MOVE, feedX, feedY + feedScreen.heightPixels * .5f * step / 20f, feedDown)
+        SystemClock.sleep(20)
+      }
+      event(MotionEvent.ACTION_UP, feedX, feedY + feedScreen.heightPixels * .5f, feedDown)
+      SystemClock.sleep(700)
     }
-    event(MotionEvent.ACTION_UP, feedX, feedY + feedScreen.heightPixels * .5f, feedDown)
-    SystemClock.sleep(700)
     tap(title)
   }
 
@@ -214,8 +217,11 @@ class ReaderFlowInstrumentedTest {
             val line = layout.getLineForOffset(offset)
             val y = if (handle) layout.getLineBottom(line) + 8 * textView.resources.displayMetrics.density
               else (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f
-            result = location[0] + textView.totalPaddingLeft + layout.getPrimaryHorizontal(offset) to
-              location[1] + textView.totalPaddingTop + y
+            // The end handle's round touch target sits to the right of its
+            // text-boundary tip; touching the tip can miss the popup window.
+            result = location[0] + textView.totalPaddingLeft + layout.getPrimaryHorizontal(offset) +
+              (if (handle) 12 * textView.resources.displayMetrics.density else 0f) to
+              location[1] + textView.totalPaddingTop + y - textView.scrollY
           }
           return result
         }
@@ -246,8 +252,15 @@ class ReaderFlowInstrumentedTest {
         }
         val originalEnd = selectionEnd()
         val paragraph = textView.text.indexOf("Paragraph one.")
-        dragEnd(offsetPoint(paragraph + 25, false))
+        val handleStart = offsetPoint(originalEnd, true)
+        // Native drag tracking keeps the text endpoint above the finger.
+        // Aim into the following paragraph, then assert the actual range.
+        val handleTarget = offsetPoint(textView.text.indexOf("Paragraph 2.") + 10, false)
+        dragEnd(handleTarget)
         val extendedEnd = selectionEnd()
+        screenshot("reader-handle-extension-attempt")
+        File(context.getExternalFilesDir("qa"), "reader-handle-extension.txt").writeText(
+          "originalEnd=$originalEnd paragraph=$paragraph handle=$handleStart target=$handleTarget extendedEnd=$extendedEnd\n")
         assertTrue("Handle extends across paragraphs", extendedEnd > paragraph)
         verifySameRecord()
         screenshot("reader-handle-extended")
@@ -259,7 +272,7 @@ class ReaderFlowInstrumentedTest {
         runner.runOnMainSync { native!!.getGlobalVisibleRect(bounds) }
         dragEnd(bounds.exactCenterX() to (bounds.bottom + 16 * textView.resources.displayMetrics.density), true)
         var scroll = 0
-        runner.runOnMainSync { scroll = native!!.scrollY }
+        runner.runOnMainSync { scroll = textView.scrollY }
         screenshot("reader-handle-autoscroll")
         assertTrue("Handle scrolls the production article", scroll > 0 && selectionEnd() > reversedEnd)
         verifySameRecord()
@@ -286,7 +299,29 @@ class ReaderFlowInstrumentedTest {
       tap("Back")
       waitFor("source returned to same review") { node("Share") != null && node(saved.quote) != null }
       verifyQuoteSharing(saved.quote)
-      tap("Next")
+      if (InstrumentationRegistry.getArguments().getString("qaReviewGestures") == "true") {
+        fun swipeReview(right: Boolean) {
+          val metrics = context.resources.displayMetrics
+          val start = metrics.widthPixels * if (right) .2f else .8f
+          val end = metrics.widthPixels * if (right) .8f else .2f
+          val y = metrics.heightPixels * .45f
+          val gesture = SystemClock.uptimeMillis()
+          event(MotionEvent.ACTION_DOWN, start, y, gesture)
+          for (step in 1..25) {
+            event(MotionEvent.ACTION_MOVE, start + (end - start) * step / 25f, y, gesture)
+            SystemClock.sleep(20)
+          }
+          event(MotionEvent.ACTION_UP, end, y, gesture)
+        }
+        val beforeSwipe = db.highlights().byId(saved.id)!!
+        swipeReview(true)
+        waitFor("right swipe changes importance without advancing") {
+          runBlocking { db.highlights().byId(saved.id)?.important == false } && node(saved.quote) != null
+        }
+        assertEquals(beforeSwipe.reviewCount, db.highlights().byId(saved.id)?.reviewCount)
+        screenshot("reader-review-right-swipe")
+        swipeReview(false)
+      } else tap("Next")
       waitFor("next review card") { node(title) == null && (node("Share") != null || node("You’re caught up") != null) }
       waitFor("review counted") { runBlocking { (db.highlights().byId(saved.id)?.reviewCount ?: 0) > 0 } }
       val reviewed = db.highlights().byId(saved.id)!!
@@ -331,6 +366,108 @@ class ReaderFlowInstrumentedTest {
       }
     } finally {
       db.highlights().byId(saved.id)?.let { db.highlights().deleteAtRevision(it.id, it.revision) }
+    }
+  }
+
+  @Test fun largeArticleViewportPerformance() = runBlocking {
+    assumeTrue(InstrumentationRegistry.getArguments().getString("qaReaderPerf") == "true")
+    check(context.packageName == "com.reader.app.qa")
+    val db = ReaderDb.get(context)
+    val unique = System.nanoTime()
+    val title = "Large viewport check $unique"
+    val markdown = ReaderCore.canonicalize("# Large article viewport\n\n" + (1..1000).joinToString("\n\n") {
+      "Paragraph $it. A long article must remain readable while native handles, ordinary scrolling, and semantic progress share one viewport. Unicode: café 日本語 🌱."
+    } + "\n\nRun $unique\n")
+    val id = ReaderCore.documentId(markdown)
+    val now = System.currentTimeMillis()
+    val originalSettings = Prefs(context).load()
+    Prefs(context).save(ReaderSettings(themeMode = ThemeMode.LIGHT))
+    db.documents().insert(DocumentEntity(id, title, "web", null, "https://example.org/reader-synthetic", null, null,
+      now, null, markdown, ReaderCore.wordCount(markdown), 1, "unread", "inbox", "b0", 0, 0f, 0, now, now))
+    val frameThread = android.os.HandlerThread("reader-qa-frames").apply { start() }
+    val frames = java.util.concurrent.ConcurrentLinkedQueue<Long>()
+    val listener = android.view.Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
+      frames.add(metrics.getMetric(android.view.FrameMetrics.TOTAL_DURATION))
+    }
+    fun pssKb(): Int = android.os.Debug.MemoryInfo().also { android.os.Debug.getMemoryInfo(it) }.totalPss
+    fun shellReport(command: String): String = ParcelFileDescriptor.AutoCloseInputStream(
+      runner.uiAutomation.executeShellCommand(command)
+    ).bufferedReader().use { it.readText() }
+    try {
+      ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+        tap("Inbox")
+        val beforePss = pssKb()
+        shellReport("dumpsys gfxinfo ${context.packageName} reset")
+        scenario.onActivity { it.window.addOnFrameMetricsAvailableListener(listener, android.os.Handler(frameThread.looper)) }
+        var native: NativeArticleView? = null
+        fun find(view: View): NativeArticleView? {
+          if (view is NativeArticleView) return view
+          if (view is ViewGroup) for (i in 0 until view.childCount) find(view.getChildAt(i))?.let { return it }
+          return null
+        }
+        val openedAt = SystemClock.elapsedRealtime()
+        tap(title)
+        waitFor("large native layout") {
+          scenario.onActivity { native = find(it.window.decorView) }
+          var ready = false
+          runner.runOnMainSync {
+            ready = native?.let { (it.getChildAt(0) as TextView).let { body -> body.length() > 100000 && body.layout != null } } == true
+          }
+          ready
+        }
+        val openMillis = SystemClock.elapsedRealtime() - openedAt
+        val body = native!!.getChildAt(0) as TextView
+        val bounds = Rect()
+        runner.runOnMainSync { native!!.getGlobalVisibleRect(bounds) }
+        var beforeCursor: com.reader.app.cursor.SemanticCursor? = null
+        runner.runOnMainSync { beforeCursor = native!!.currentCursor() }
+        var maxScroll = 0
+        repeat(6) {
+          val x = bounds.exactCenterX()
+          val start = bounds.top + bounds.height() * .8f
+          val end = bounds.top + bounds.height() * .25f
+          val down = SystemClock.uptimeMillis()
+          event(MotionEvent.ACTION_DOWN, x, start, down)
+          for (step in 1..20) {
+            event(MotionEvent.ACTION_MOVE, x, start + (end - start) * step / 20f, down)
+            SystemClock.sleep(15)
+          }
+          event(MotionEvent.ACTION_UP, x, end, down)
+          SystemClock.sleep(250)
+          runner.runOnMainSync { maxScroll = maxOf(maxScroll, body.scrollY) }
+        }
+        var afterCursor: com.reader.app.cursor.SemanticCursor? = null
+        runner.runOnMainSync { afterCursor = native!!.currentCursor(); native!!.reportCursor() }
+        val articlePss = pssKb()
+        screenshot("reader-large-viewport")
+        File(context.getExternalFilesDir("qa"), "reader-large-gfxinfo.txt")
+          .writeText(shellReport("dumpsys gfxinfo ${context.packageName} framestats"))
+        File(context.getExternalFilesDir("qa"), "reader-large-meminfo.txt")
+          .writeText(shellReport("dumpsys meminfo ${context.packageName}"))
+        scenario.onActivity { it.window.removeOnFrameMetricsAvailableListener(listener) }
+        val timings = frames.filter { it > 0 }.sorted()
+        val result = JSONObject().apply {
+          put("canonicalChars", markdown.length); put("canonicalBytes", markdown.toByteArray().size)
+          put("renderedChars", body.length()); put("lineCount", body.lineCount)
+          put("viewportHeight", body.height); put("layoutHeight", body.layout.height)
+          put("openToReadyMillisIncludingTestTapWait", openMillis); put("scrollGestures", 6); put("maxScrollY", maxScroll)
+          put("pssBeforeKb", beforePss); put("pssArticleKb", articlePss)
+          put("frameCount", timings.size); put("framesOver100ms", timings.count { it > 100000000 })
+          put("maxFrameMillis", (timings.lastOrNull() ?: 0) / 1000000.0)
+          put("p95FrameMillis", if (timings.isEmpty()) 0.0 else timings[((timings.size - 1) * .95).toInt()] / 1000000.0)
+          put("cursorMoved", beforeCursor != afterCursor)
+          put("build", "debug isolated QA"); put("runs", 1)
+        }
+        File(context.getExternalFilesDir("qa"), "reader-large-viewport.json").writeText(result.toString(2))
+        assertTrue("Ordinary finger scrolling moves the large native article", maxScroll > 0)
+        assertNotEquals(beforeCursor, afterCursor)
+        tap("Back")
+        waitFor("library after large article") { node("Inbox") != null }
+      }
+    } finally {
+      frameThread.quitSafely()
+      db.documents().deleteById(id)
+      Prefs(context).save(originalSettings)
     }
   }
 }

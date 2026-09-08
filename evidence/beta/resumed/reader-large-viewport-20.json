@@ -1,0 +1,20 @@
+{
+  "canonicalChars": 157939,
+  "canonicalBytes": 166939,
+  "renderedChars": 157938,
+  "lineCount": 5006,
+  "viewportHeight": 1755,
+  "layoutHeight": 399492,
+  "openToReadyMillisIncludingTestTapWait": 1160,
+  "scrollGestures": 6,
+  "maxScrollY": 5758,
+  "pssBeforeKb": 254066,
+  "pssArticleKb": 275019,
+  "frameCount": 390,
+  "framesOver100ms": 6,
+  "maxFrameMillis": 303.972296,
+  "p95FrameMillis": 9.411249,
+  "cursorMoved": true,
+  "build": "debug isolated QA",
+  "runs": 1
+}
