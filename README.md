@@ -15,7 +15,7 @@ Encrypted delivery over Nostr. No Reader account. No Reader-operated backend.</p
   <a href="LICENSE">MIT license</a>
 </p>
 
-**Current status: 0.9.0-beta.1.** Chrome → Android is implemented and has focused physical-device verification. This is a source-build beta, not a store release. macOS is a reference package; iOS is not implemented. See [known limitations](KNOWN_LIMITATIONS.md) before relying on it.
+**Current status: 0.9.0-beta.1.** Chrome → Android is implemented and has focused physical-device verification. This is a source-build beta, not a store release. macOS is a reference package; iOS is not implemented. See [known limitations](KNOWN_LIMITATIONS.md) before relying on it. The current reliability candidate, exact artifacts and scoped acceptance are recorded in [the hardening test report](HARDENING_TEST_REPORT.md).
 
 ## Why Reader?
 
@@ -31,7 +31,7 @@ What makes it special is the combination:
 
 ## Screenshots
 
-Actual screenshots from the current Android build on a TCL T807D, captured on 8 September 2026 using original demonstration text. These are app screens, not mockups.
+Actual screenshots from the baseline Android build on a TCL T807D, captured on 8 September 2026 using original demonstration text. These are app screens, not mockups.
 
 <table>
   <tr>
@@ -49,7 +49,7 @@ Actual screenshots from the current Android build on a TCL T807D, captured on 8 
 
 - Save selected text or extract an article from the current page using the toolbar, context menu, or **Alt+Shift+R**.
 - Preserve structured text as Markdown. Uncertain article extraction asks for preview confirmation.
-- Capture is stored locally before transmission. Pending items can retry or export their text.
+- Capture is stored locally before transmission. Pending items can retry or export their text. Older retained plaintext copies have their own recovery library in Settings; export or delete them independently of delivery.
 - Optional site integrations support response capture on ChatGPT, Claude, Gemini, and Perplexity. Other adapters are previews; current authenticated provider interfaces have **not** all been verified. See the [source support matrix](docs/beta/SOURCE_SUPPORT_MATRIX.md).
 - Pair by QR code or a manual pairing payload. Settings expose connection and delivery details when needed.
 
@@ -72,7 +72,7 @@ Actual screenshots from the current Android build on a TCL T807D, captured on 8 
 
 - Swipe inside an article to move it to Later or Archive, with Undo. Menu alternatives are available.
 - In Archive, swipe right to return an article to Inbox. Swipe left past the deletion threshold and release to **delete it permanently, without confirmation or Undo**. These actions work on archive rows and open archived articles.
-- Export readable Markdown/JSONL. Exports are one-way files, **not** a restorable backup or a transfer of pairing keys.
+- Export a verified ZIP of readable Markdown, versioned metadata and retained quotes to a destination you choose. Exports are one-way files, **not** a restorable backup or a transfer of pairing keys.
 
 ## How Nostr is implemented
 
@@ -160,6 +160,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 The app declares Android 8.0/API 26+; the current focused acceptance device is a TCL T807D running Android 16. This build is debug-signed. Google speech must be installed and enabled for Listen. Preserve an existing Reader installation’s data and keys when updating; do not uninstall just to bypass a signing mismatch.
 
 Open the extension’s pairing screen and use Android’s Add menu to scan or paste the pairing request. Confirm the connection, save an article from Chrome, and wait for the phone’s receipt. See the [installation and trial guide](docs/beta/INSTALL_AND_TRIAL.md) for the full workflow.
+
+Current reliability-cycle implementation and evidence: [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md).
 
 ## Development and documentation
 
