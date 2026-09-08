@@ -81,18 +81,53 @@ describe("production worker persistence and request boundaries", () => {
       };
     });
     const worker = await boot();
-    expect((await worker.queueCapture(doc, captureId)).transferId).toBe("c".repeat(32));
+    // Legacy row migrates to a retained tombstone; re-queue returns the same
+    // transfer truthfully settled (no transport payload to send).
+    const settled = await worker.queueCapture(doc, captureId);
+    expect(settled.transferId).toBe("c".repeat(32));
+    expect(settled.settled).toBe("retained");
+    expect(settled.queued).toBe(false);
     expect(await records("captures")).toMatchObject([{ markdown: doc.markdown }]);
-    expect(await records("captureIds")).toEqual([{ captureId, transferId: "c".repeat(32), createdAt: 1 }]);
+    expect(await records("captureIds")).toEqual([{ captureId, transferId: "c".repeat(32), createdAt: 1, status: "retained" }]);
     const trusted = { ...sender, url: `chrome-extension://${sender.id}/src/ui/options.html` };
     expect(await message({ kind: "reader-retained-action", action: "export", captureId }, trusted)).toMatchObject({ ok: true, markdown: doc.markdown });
     const fresh = await worker.queueCapture(doc, "b".repeat(32));
     expect(await message({ kind: "reader-transfer-action", action: "discard", transferId: fresh.transferId }, trusted)).toMatchObject({ ok: true });
     expect(await records("items")).toHaveLength(0);
     expect(await records("captures")).toHaveLength(1);
+    // Discard tombstones the fresh ID as discarded instead of deleting it.
+    expect(await records("captureIds")).toMatchObject(expect.arrayContaining([
+      expect.objectContaining({ captureId: "b".repeat(32), status: "discarded" }),
+    ]));
+    const rediscarded = await worker.queueCapture(doc, "b".repeat(32));
+    expect(rediscarded.transferId).toBe(fresh.transferId);
+    expect(rediscarded.settled).toBe("discarded");
+    expect(await records("items")).toHaveLength(0);
     expect(await message({ kind: "reader-retained-action", action: "delete", captureId }, trusted)).toMatchObject({ ok: true });
     expect(await records("captures")).toHaveLength(0);
     expect((await worker.queueCapture(doc, captureId)).transferId).toBe("c".repeat(32));
+  });
+  it("migration skips malformed legacy rows without aborting the upgrade", async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("reader-outbox", 2);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("items", { keyPath: "transferId" });
+        request.result.createObjectStore("captures", { keyPath: "captureId" });
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction("captures", "readwrite");
+        tx.objectStore("captures").put({ captureId: "not-a-valid-id", transferId: "also-bad", ...doc, createdAt: 1 });
+        tx.objectStore("captures").put({ captureId, transferId: "c".repeat(32), ...doc, createdAt: 2 });
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+    await boot();
+    // One valid tombstone migrates; the malformed library row stays for
+    // Settings export/delete but does not brick the outbox.
+    expect(await records("captureIds")).toEqual([{ captureId, transferId: "c".repeat(32), createdAt: 2, status: "retained" }]);
+    expect(await records("captures")).toHaveLength(2);
   });
   it("a lost response followed by worker replacement and message retry creates one transfer", async () => {
     let worker = await boot();
@@ -114,19 +149,69 @@ describe("production worker persistence and request boundaries", () => {
   });
   it("quota failure during capture commit cannot return saved or strand a send intent", async () => {
     await boot();
-    const original = IDBObjectStore.prototype.put;
-    vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function(this: IDBObjectStore, ...args: Parameters<typeof original>) {
-      if (this.name === "captureIds") { throw new DOMException("Storage full", "QuotaExceededError"); }
-      return original.apply(this, args);
+    const failQuota = () => { throw new DOMException("Storage full", "QuotaExceededError"); };
+    const putSpy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function(this: IDBObjectStore, ...args: Parameters<typeof IDBObjectStore.prototype.put>) {
+      if (this.name === "captureIds" || this.name === "items") failQuota();
+      return (IDBObjectStore.prototype.put as unknown as (...a: unknown[]) => never).apply(this, args as unknown as []);
     });
-    expect(await message({ kind: "reader-capture", doc, captureId })).toMatchObject({ ok: false });
+    const addSpy = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function(this: IDBObjectStore, ...args: Parameters<typeof IDBObjectStore.prototype.add>) {
+      if (this.name === "captureIds" || this.name === "items") failQuota();
+      return (IDBObjectStore.prototype.add as unknown as (...a: unknown[]) => never).apply(this, args as unknown as []);
+    });
+    try {
+      expect(await message({ kind: "reader-capture", doc, captureId })).toMatchObject({ ok: false });
+      expect(await records("items")).toHaveLength(0);
+      expect(await records("captureIds")).toHaveLength(0);
+    } finally { putSpy.mockRestore(); addSpy.mockRestore(); }
+  });
+  it("quota on the transport leg alone also rolls back the dedupe record", async () => {
+    await boot();
+    const originalAdd = IDBObjectStore.prototype.add;
+    const spy = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function(this: IDBObjectStore, ...args: Parameters<typeof originalAdd>) {
+      if (this.name === "items") throw new DOMException("Storage full", "QuotaExceededError");
+      return originalAdd.apply(this, args);
+    });
+    try {
+      expect(await message({ kind: "reader-capture", doc, captureId })).toMatchObject({ ok: false });
+      expect(await records("items")).toHaveLength(0);
+      expect(await records("captureIds")).toHaveLength(0);
+    } finally { spy.mockRestore(); }
+  });
+  it("settled capture IDs report terminal status instead of fake queueing", async () => {
+    const worker = await boot();
+    const first = await worker.queueCapture(doc, captureId);
+    expect(first.queued).toBe(true);
+    const trusted = { ...sender, url: `chrome-extension://${sender.id}/src/ui/options.html` };
+    expect(await message({ kind: "reader-transfer-action", action: "discard", transferId: first.transferId }, trusted)).toMatchObject({ ok: true });
+    const second = await worker.queueCapture(doc, captureId);
+    expect(second.transferId).toBe(first.transferId);
+    expect(second.queued).toBe(false);
+    expect(second.settled).toBe("discarded");
     expect(await records("items")).toHaveLength(0);
-    expect(await records("captureIds")).toHaveLength(0);
+  });
+  it("capture IDs require strict hex or UUID; hashes bind canonical text", async () => {
+    const worker = await boot();
+    await expect(worker.queueCapture(doc, "-------------------------------x")).rejects.toThrow();
+    await expect(worker.queueCapture(doc, "ZZ".repeat(16))).rejects.toThrow();
+    const raw = { title: doc.title, markdown: "Trailing spaces   \n\n\n", sourceType: "selection" };
+    const first = await worker.queueCapture(raw, "d".repeat(32));
+    const items = await records("items");
+    expect(items).toHaveLength(1);
+    expect(items[0].transferId).toBe(first.transferId);
+    // Canonicalization (trailing-space strip + single LF) determines the ID,
+    // not the raw markdown bytes.
+    expect(items[0].documentId).not.toBe("untrimmed");
+    expect(items[0].documentId).toMatch(/^[0-9a-f]{64}$/);
   });
   it("web content cannot invoke privileged status or identity operations", async () => {
     await boot();
-    for (const kind of ["reader-status", "reader-start-pairing", "reader-disconnect", "reader-retry"]) {
-      expect(await message({ kind })).toMatchObject({ ok: false, error: expect.stringContaining("Untrusted") });
+    for (const kind of ["reader-status", "reader-start-pairing", "reader-disconnect", "reader-retry", "reader-retained-action", "reader-transfer-action", "reader-discard-failed", "reader-check-acks", "reader-save-custom-relays"]) {
+      const payload = kind === "reader-retained-action"
+        ? { kind, action: "export", captureId }
+        : kind === "reader-transfer-action"
+          ? { kind, action: "discard", transferId: "a".repeat(32) }
+          : { kind };
+      expect(await message(payload)).toMatchObject({ ok: false, error: expect.stringContaining("Untrusted") });
     }
     expect(storage).toEqual({});
   });

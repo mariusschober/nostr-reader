@@ -232,24 +232,63 @@ async function lockDownKeyStorage(): Promise<void> {
 // Chrome persists this access level, while this closes upgrade/reload windows.
 void lockDownKeyStorage().catch(() => undefined);
 
+// Strict capture identity: 32 lowercase hex (randomHex) or canonical UUID.
+// The older permissive pattern allowed arbitrary hyphen placement; new writes
+// require one of these two exact shapes. Reads remain tolerant of legacy rows
+// via migration-time validation that skips (never aborts on) malformed rows.
+const STRICT_CAPTURE_ID = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const STRICT_TRANSFER_ID = /^[0-9a-f]{32}$/;
+
+// captureIds rows are deduplication tombstones, not transport payload:
+// { captureId, transferId, createdAt, status: 'pending'|'delivered'|'discarded'|'retained' }.
+// Repeating a capture ID returns its original terminal result even after the
+// transport payload is gone. A deliberate new capture must use a new ID.
+// Tombstones are bounded separately (see pruneCaptureIds); pending rows are
+// never pruned while their transport item still exists.
+type CaptureIdStatus = "pending" | "delivered" | "discarded" | "retained";
+
 // ---- Outbox (IndexedDB, durable across worker restarts) ----
 function idb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const r = indexedDB.open("reader-outbox", 3);
-    r.onupgradeneeded = () => {
+    r.onupgradeneeded = (event) => {
+      const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
       if (!r.result.objectStoreNames.contains("items")) r.result.createObjectStore("items", { keyPath: "transferId" });
       if (!r.result.objectStoreNames.contains("captures")) r.result.createObjectStore("captures", { keyPath: "captureId" });
-      const ids = r.result.createObjectStore("captureIds", { keyPath: "captureId" });
-      // Preserve every legacy plaintext row as an explicitly accessible recovery library.
-      // Migration is one transaction: failure leaves the old database untouched.
-      const cursor = r.transaction!.objectStore("captures").openCursor();
-      cursor.onsuccess = () => {
-        const row = cursor.result;
-        if (!row) return;
-        const { captureId, transferId, createdAt } = row.value;
-        ids.put({ captureId, transferId, createdAt });
-        row.continue();
-      };
+      if (!r.result.objectStoreNames.contains("captureIds")) r.result.createObjectStore("captureIds", { keyPath: "captureId" });
+      // Migrate only once, from v2 rows that predate lightweight dedupe.
+      // Preserve every legacy plaintext row as an explicitly accessible recovery
+      // library. Migration is one versionchange transaction: quota failure
+      // aborts and leaves version 2 intact for a later retry. Malformed rows
+      // are skipped (never abort the whole upgrade on one bad row).
+      if (oldVersion >= 2 && oldVersion < 3) {
+        try {
+          const tx = r.transaction!;
+          const capturesStore = tx.objectStore("captures");
+          const idsStore = tx.objectStore("captureIds");
+          const cursorReq = capturesStore.openCursor();
+          cursorReq.onsuccess = () => {
+            try {
+              const cur = cursorReq.result as IDBCursorWithValue | null;
+              if (!cur) return;
+              const v = cur.value as { captureId?: unknown; transferId?: unknown; createdAt?: unknown };
+              if (typeof v?.captureId === "string" && typeof v?.transferId === "string" &&
+                STRICT_CAPTURE_ID.test(v.captureId) && STRICT_TRANSFER_ID.test(v.transferId) &&
+                Number.isSafeInteger(v.createdAt)) {
+                try { idsStore.put({ captureId: v.captureId, transferId: v.transferId, createdAt: v.createdAt, status: "retained" }); } catch { /* per-row put setup failure: skip row, keep transaction alive */ }
+              }
+              // Skip invalid rows silently: the legacy library row stays for
+              // explicit Settings export/delete; only the dedupe index skips it.
+              try { cur.continue(); } catch { /* transaction will complete */ }
+            } catch {
+              try { (cursorReq.result as IDBCursorWithValue | null)?.continue(); } catch { /* complete */ }
+            }
+          };
+          cursorReq.onerror = () => { try { tx.abort(); } catch { /* leaves v2 intact */ } };
+        } catch {
+          try { r.transaction!.abort(); } catch { /* leaves v2 intact */ }
+        }
+      }
     };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
@@ -307,6 +346,73 @@ async function outboxDelete(transferId: string): Promise<void> {
   } finally { db.close(); }
 }
 
+/** Mark the dedupe tombstone for a transport payload that settled. Never deletes the ID. */
+async function markCaptureSettledByTransfer(transferId: string, status: Extract<CaptureIdStatus, "delivered" | "discarded">): Promise<void> {
+  const db = await idb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("captureIds", "readwrite");
+      tx.oncomplete = () => resolve();
+      // A missing index or cursor error must not fail ACK/discard cleanup.
+      tx.onerror = tx.onabort = () => resolve();
+      try {
+        const store = tx.objectStore("captureIds");
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = () => {
+          try {
+            const cur = cursorReq.result as IDBCursorWithValue | null;
+            if (!cur) return;
+            const v = cur.value as { captureId: string; transferId: string; createdAt: number; status?: CaptureIdStatus };
+            if (v?.transferId === transferId && v?.status !== status) {
+              try { cur.update({ ...v, status }); } catch { /* keep original tombstone */ }
+            }
+            try { cur.continue(); } catch { /* done */ }
+          } catch { /* keep transaction alive for remaining rows */ }
+        };
+      } catch { /* resolve via oncomplete */ }
+    });
+  } finally { db.close(); }
+}
+
+/** Bound tombstone growth: keep at most 2000 newest IDs, never prune pending transport. */
+async function pruneCaptureIds(): Promise<void> {
+  try {
+    const db = await idb();
+    try {
+      const tombstones = await new Promise<{ captureId: string; createdAt: number; status?: CaptureIdStatus; transferId: string }[]>((resolve, reject) => {
+        const rows: { captureId: string; createdAt: number; status?: CaptureIdStatus; transferId: string }[] = [];
+        const tx = db.transaction("captureIds", "readonly");
+        tx.onerror = tx.onabort = () => reject(tx.error);
+        const req = tx.objectStore("captureIds").openCursor();
+        req.onsuccess = () => {
+          const cur = req.result as IDBCursorWithValue | null;
+          if (!cur) { resolve(rows); return; }
+          rows.push(cur.value);
+          try { cur.continue(); } catch { resolve(rows); }
+        };
+        req.onerror = () => reject(req.error);
+      });
+      if (tombstones.length <= 2000) return;
+      // Only prune settled tombstones whose transport is already gone.
+      const settled = tombstones
+        .filter((r) => r.status === "delivered" || r.status === "discarded" || r.status === "retained")
+        .sort((a, b) => a.createdAt - b.createdAt);
+      const excess = tombstones.length - 2000;
+      const victims = settled.slice(0, Math.min(excess, settled.length));
+      if (!victims.length) return;
+      await new Promise<void>((resolve) => {
+        const tx = db.transaction("captureIds", "readwrite");
+        tx.oncomplete = () => resolve();
+        tx.onerror = tx.onabort = () => resolve();
+        try {
+          const store = tx.objectStore("captureIds");
+          for (const v of victims) { try { store.delete(v.captureId); } catch { /* continue */ } }
+        } catch { /* resolve */ }
+      });
+    } finally { db.close(); }
+  } catch { /* pruning is best-effort, never fails capture */ }
+}
+
 /** Legacy library owns its plaintext independently of transport and ACK cleanup. */
 async function retainedCaptures(action: "list" | "export" | "delete", captureId?: string): Promise<any> {
   const db = await idb();
@@ -361,6 +467,8 @@ async function recordDelivered(transferId: string, deliveredAt: number): Promise
     receipts.push({ transferId, deliveredAt, title: deliveredItem?.title.slice(0, 500), sourceUrl: String(deliveredItem?.manifest.sourceUrl ?? "").slice(0, 2000) });
     await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts.slice(-1000) });
   });
+  // Tombstone the dedupe ID as delivered (best-effort; receipt is the truth).
+  await markCaptureSettledByTransfer(transferId, "delivered").catch(() => undefined);
 }
 
 async function cleanupDelivered(): Promise<void> {
@@ -370,16 +478,17 @@ async function cleanupDelivered(): Promise<void> {
     await transferOperations.run(item.transferId, async () => {
       activePublicationStops.get(item.transferId)?.();
       await outboxDelete(item.transferId);
+      await markCaptureSettledByTransfer(item.transferId, "delivered").catch(() => undefined);
     });
   }
 }
 
 // ---- Send pipeline ----
-export async function queueCapture(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId = randomHex(16), feedbackRoute?: CaptureFeedbackRoute): Promise<{ transferId: string; queued: boolean }> {
+export async function queueCapture(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId = randomHex(16), feedbackRoute?: CaptureFeedbackRoute): Promise<{ transferId: string; queued: boolean; settled?: CaptureIdStatus }> {
   if (!raw || typeof raw.title !== "string" || typeof raw.markdown !== "string" || !raw.markdown.trim() ||
       raw.markdown.length > 20 * 1024 * 1024 || raw.title.length > 500 ||
       (raw.sourceUrl !== undefined && (typeof raw.sourceUrl !== "string" || raw.sourceUrl.length > 2000)) ||
-      !/^[a-f0-9-]{32,36}$/.test(captureId)) throw new Error("Invalid capture or content too large.");
+      !STRICT_CAPTURE_ID.test(captureId)) throw new Error("Invalid capture or content too large.");
   return captureOperations.run(async () => {
     const db = await idb();
     try {
@@ -387,14 +496,30 @@ export async function queueCapture(raw: { title: string; markdown: string; sourc
         const request = db.transaction("captureIds").objectStore("captureIds").get(captureId);
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
-      if (existing) return { transferId: existing.transferId, queued: !await loadPairedChannelState() };
+      if (existing) {
+        // Truthful terminal status: if the transport payload is gone the
+        // capture is already settled (delivered/discarded/retained library).
+        // Never pretend a settled capture is newly queued and never recreate
+        // transport for the same ID — a deliberate new capture needs a new ID.
+        const item = await new Promise<any>((resolve) => {
+          try {
+            const req = db.transaction("items").objectStore("items").get(existing.transferId);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => resolve(undefined);
+          } catch { resolve(undefined); }
+        });
+        if (!item) {
+          const status = (existing.status ?? "delivered") as CaptureIdStatus;
+          return { transferId: existing.transferId, queued: false, settled: status };
+        }
+        return { transferId: existing.transferId, queued: !await loadPairedChannelState() };
+      }
       return await queueCaptureInternal(raw, captureId, feedbackRoute);
     } finally { db.close(); }
   });
 }
 
-async function queueCaptureInternal(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId: string, feedbackRoute?: CaptureFeedbackRoute): Promise<{ transferId: string; queued: boolean }> {
-  const { seckey, pubkey } = await getDeviceKey();
+async function queueCaptureInternal(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId: string, feedbackRoute?: CaptureFeedbackRoute): Promise<{ transferId: string; queued: boolean; settled?: CaptureIdStatus }> {  const { seckey, pubkey } = await getDeviceKey();
   const canonical = canonicalize(raw.markdown);
   const canonicalBytes = new TextEncoder().encode(canonical);
   const docId = await documentId(canonical);
@@ -455,20 +580,54 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
   };
   const captureDb = await idb();
   try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = captureDb.transaction(["items", "captureIds"], "readwrite");
-      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
-      try {
-        tx.objectStore("items").put(item);
-        tx.objectStore("captureIds").put({ captureId, transferId, createdAt: now });
-      } catch (error) {
-        // Synchronous request setup failures do not automatically roll back
-        // earlier queued writes. Never leave a send without its deduplication record.
-        tx.abort();
-        reject(error);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = captureDb.transaction(["items", "captureIds"], "readwrite");
+        tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+        try {
+          // add (not put) for the dedupe index: an overlapping worker restart
+          // that raced us must fail here instead of silently overwriting the
+          // winner's mapping and orphaning its transport item.
+          tx.objectStore("items").add(item);
+          tx.objectStore("captureIds").add({ captureId, transferId, createdAt: now, status: "pending" });
+        } catch (error) {
+          // Synchronous request setup failures do not automatically roll back
+          // earlier queued writes. Never leave a send without its deduplication record.
+          try { tx.abort(); } catch { /* ignore */ }
+          reject(error);
+        }
+      });
+    } catch (error) {
+      // Lost the add race (or async ConstraintError abort): another owner won
+      // this captureId. Remove our orphan transport item if it committed, then
+      // return the winner. This keeps check+put effectively single-winner
+      // across worker restarts; within one realm captureOperations already
+      // serializes callers.
+      const winner = await new Promise<any>((resolve) => {
+        try {
+          const req = captureDb.transaction("captureIds").objectStore("captureIds").get(captureId);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(undefined);
+        } catch { resolve(undefined); }
+      }).catch(() => undefined);
+      if (winner && typeof winner.transferId === "string" && winner.transferId !== transferId) {
+        await new Promise<void>((resolve) => {
+          try {
+            const tx = captureDb.transaction("items", "readwrite");
+            tx.oncomplete = () => resolve(); tx.onerror = tx.onabort = () => resolve();
+            try { tx.objectStore("items").delete(transferId); } catch { /* resolve */ }
+          } catch { resolve(); }
+        });
+        // Return the winner with the same truthful settled/pending semantics
+        // as the fast path above.
+        const winnerItem = await outboxGet(winner.transferId).catch(() => undefined);
+        if (!winnerItem) return { transferId: winner.transferId, queued: false, settled: (winner.status ?? "delivered") as CaptureIdStatus };
+        return { transferId: winner.transferId, queued: !await loadPairedChannelState() };
       }
-    });
+      throw error;
+    }
   } finally { captureDb.close(); }
+  void pruneCaptureIds().catch(() => undefined);
   void restoreWorkAlarms().catch(() => undefined);
   if (!channelPubkey) return { transferId, queued: true }; // unpaired: stays queued
   void publishTransfer(item.transferId, seckey, channelPubkey).catch(() => { /* alarm retries */ });
@@ -1108,9 +1267,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     } else if (msg?.kind === "reader-cancel-pairing") {
       sendResponse({ ok: true, cancelled: await cancelPairing(String(msg.sessionId ?? "")) });
     } else if (msg?.kind === "reader-retained-action") {
-      if (!["export", "delete"].includes(msg.action) || !/^[a-f0-9-]{32,36}$/.test(msg.captureId)) throw new Error("Invalid library action");
+      if (typeof msg.captureId !== "string" || !STRICT_CAPTURE_ID.test(msg.captureId) || !["export", "delete"].includes(msg.action)) throw new Error("Invalid library action");
       const result = await retainedCaptures(msg.action, msg.captureId);
       if (msg.action === "export" && typeof result?.markdown !== "string") throw new Error("Retained capture is no longer available");
+      // Delete of an unknown retained ID is idempotent success: the library
+      // copy is already gone and transport was never owned by this action.
       sendResponse({ ok: true, ...(msg.action === "export" ? { title: result.title, markdown: result.markdown } : {}) });
     } else if (msg?.kind === "reader-status") {
       const paired = await loadPairedChannelState();
@@ -1122,7 +1283,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const delivery = summarizeDeliveryStates(items, receipts.length);
       sendResponse({
         ok: true,
-        retained: await retainedCaptures("list"),
+        retained: await retainedCaptures("list").catch(() => []),
         paired: !!paired,
         relays: pairedRelays,
         pending: delivery.queued + delivery.relayAccepted + delivery.awaitingDevice,
@@ -1142,7 +1303,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const item = await outboxGet(id);
       if (!item) throw new Error("This transfer is no longer pending");
       if (msg.action === "discard") {
-        await transferOperations.run(id, () => outboxDelete(id));
+        await transferOperations.run(id, async () => {
+          await outboxDelete(id);
+          await markCaptureSettledByTransfer(id, "discarded").catch(() => undefined);
+        });
         sendResponse({ ok: true });
       } else if (msg.action === "retry") {
         if (item.status === "failed") throw new Error(item.lastError || "Repair the connection, then use Resend");
@@ -1163,8 +1327,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (await documentId(markdown) !== item.documentId) throw new Error("Stored content failed its integrity check");
         if (msg.action === "export") sendResponse({ ok: true, markdown, title: item.title });
         else {
+          // Resend creates a deliberate new capture (new captureId +
+          // transferId, even for identical text) and only then deletes the
+          // old transport. A crash between the two leaves duplicates, which
+          // Android settles via documentId (duplicate ACK, single library
+          // row) — safe duplication is preferred over losing the resend.
           const result = await queueCapture({ title: item.title, markdown, sourceUrl: String(item.manifest.sourceUrl ?? ""), sourceType: String(item.manifest.sourceType ?? "web") });
-          await transferOperations.run(id, () => outboxDelete(id));
+          await transferOperations.run(id, async () => {
+            await outboxDelete(id);
+            await markCaptureSettledByTransfer(id, "discarded").catch(() => undefined);
+          });
           sendResponse({ ok: true, ...result });
         }
       } else throw new Error("Unknown transfer action");
@@ -1197,6 +1369,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const durable = await outboxGet(item.transferId);
         if (durable?.status !== "failed") return false;
         await outboxDelete(item.transferId);
+        await markCaptureSettledByTransfer(item.transferId, "discarded").catch(() => undefined);
         return true;
       })))).filter(Boolean).length;
       sendResponse({ ok: true, discarded });
