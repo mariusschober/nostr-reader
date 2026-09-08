@@ -69,11 +69,12 @@ function previewUncertain(doc: Awaited<ReturnType<typeof extractGeneric>>, captu
   panel.append(heading, description, preview, save, close); root.append(panel); document.documentElement.append(host); save.focus();
 }
 
-async function captureForToolbar(): Promise<void> {
+async function captureForToolbar(selectionSnapshot?: string): Promise<void> {
+  // Read before feedback inserts its UI into a live select-all range.
+  const sel = selectionSnapshot ?? window.getSelection()?.toString() ?? "";
   const captureId = crypto.randomUUID();
   beginCapture(captureId);
   try {
-    const sel = window.getSelection()?.toString() ?? "";
     if (meaningfulSelection(sel)) {
       await sendCapture({ ...selectionDocument(sel, location.href, document.title), sourceType: "selection" }, captureId);
       return;
@@ -145,7 +146,8 @@ if (!owner.readerCaptureInstalled) {
       return false;
     }
     if (msg?.kind !== "reader-capture-now") return false;
-    void captureForToolbar().then(() => sendResponse({ ok: true }));
+    void captureForToolbar(typeof msg.selectionSnapshot === "string" ? msg.selectionSnapshot : undefined)
+      .then(() => sendResponse({ ok: true }));
     return true;
   });
   let scheduled = false;

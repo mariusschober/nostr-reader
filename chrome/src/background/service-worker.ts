@@ -1186,8 +1186,15 @@ async function captureTab(tab: chrome.tabs.Tab): Promise<void> {
   }
   if (tab.id != null) {
     try {
+      // Installing content.js mounts inline buttons. Preserve the owner's
+      // selection before that DOM mutation can expand a select-all range.
+      const [selection] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, func: () => window.getSelection()?.toString() ?? "",
+      });
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
-      await chrome.tabs.sendMessage(tab.id, { kind: "reader-capture-now" });
+      await chrome.tabs.sendMessage(tab.id, {
+        kind: "reader-capture-now", selectionSnapshot: selection?.result ?? "",
+      });
     } catch {
       await chrome.action.setBadgeText({ text: "!", tabId: tab.id });
       await chrome.action.setTitle({ title: "Couldn’t save: this page restricts capture. Open a normal web page or select text.", tabId: tab.id });

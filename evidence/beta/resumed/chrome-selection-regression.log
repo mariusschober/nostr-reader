@@ -1,0 +1,13 @@
+
+> reader-chrome@0.1.0 test
+> vitest run tests/capture-selection.test.ts
+
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  11:32:01
+   Duration  723ms (environment 79%, tests 16%, transform 4%, import 1%, worker 1%)
+

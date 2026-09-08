@@ -27,4 +27,6 @@ Logs are under `evidence/beta/resumed/`. Early selection failures included a flo
 
 ## Still pending
 
+The first production handle-extension attempt failed its cross-paragraph assertion (`reader-handles-tcl-13.log`, 53.074 seconds). A later screen capture showed another app in the foreground; this does not establish whether it interrupted the gesture or appeared after the test closed. Handle acceptance remains unresolved. The test now checks foreground package before every injected touch and stops if an unrelated app is active.
+
 Handle extension/reversal, review gestures and process-death restoration, themes and accessibility, large-part rendering performance, TTS and lifecycle behavior, packaged Chrome provider acceptance, and final exact-candidate delivery/fault campaigns remain open. No final release or reliability acceptance is claimed. The main app and paired owner profile must retain their data and keys; destructive fault injection belongs in the isolated QA app/profile. TCL reconnected and testing continues.

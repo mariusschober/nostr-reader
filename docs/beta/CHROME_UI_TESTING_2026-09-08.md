@@ -21,8 +21,12 @@ Interim evidence from a fresh isolated Chrome for Testing 151.0.7922.34 profile.
 - Added a direct pairing entry in unpaired settings.
 - Settings refresh on focus/visibility return; a version counter prevents an older status reply from replacing a newer one.
 - Transfer action errors appear beside their item; general delivery messages remain visible outside Advanced.
-- Added a readable pairing-page title and viewport metadata. This final title-only change is awaiting packaged UI confirmation.
+- Added a readable pairing-page title and viewport metadata. Confirmed the actual `Pair Reader` tab title after reloading packaged v4 through Chrome's extension details and opening pairing from settings; cancelled the disposable session afterward.
 
 Most corrected-flow checks used `chrome-testing-v3.zip`, SHA-256 `a9e2af13a6d57a3041ad9f2e772a8bb6c8af0e9748d67b5e9e86a2301dbac636`. Earlier permission/theme checks used the preceding package. These are interim checkpoints, not frozen-candidate acceptance.
 
 Live provider routes, selection priority and preview flows, system-theme switching, paired delivery/recovery controls, final dependency checks and exact-candidate reliability campaigns remain pending.
+
+Packaged v4 SHA-256: `b668fd3e6299b26a2267db5d77b70aacbb51b3ef26b296b59f41f9c21e575c78`. A fresh fixture-page Select All followed by the keyboard shortcut correctly took the selection route, but its Markdown export included `Reader` from the inline button mounted during first capture. The source now snapshots selection before content-script installation and reads selection before displaying feedback.
+
+The correction **passes** the same real-browser procedure in packaged v5, SHA-256 `aee880c7830cbfc2df0b21ff6bba0078431eb49f0e75eafb66e92a98da3665f6`. The selection was read before the shortcut; the downloaded Markdown matched it exactly with a terminal newline (327 selected UTF-8 bytes, 328 export bytes; `chrome-selection-v5-check.json`). The two new runtime regression tests pass, covering pre-install snapshots and a one-character selection before feedback. The existing 132-test suite, typecheck and isolated build pass. An initial sandboxed suite attempt could not open its local relay listener; the rerun with local networking passed.

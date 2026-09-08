@@ -56,6 +56,11 @@ class ReaderFlowInstrumentedTest {
     return find(runner.uiAutomation.rootInActiveWindow)
   }
   private fun event(action: Int, x: Float, y: Float, down: Long) {
+    val foreground = runner.uiAutomation.rootInActiveWindow?.packageName?.toString()
+    check(foreground in setOf(context.packageName, "${context.packageName}.test", "android",
+      "com.android.intentresolver", "com.android.systemui")) {
+      "Stopped touch test: an unrelated app is foreground ($foreground)"
+    }
     MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0).also {
       it.source = InputDevice.SOURCE_TOUCHSCREEN
       check(runner.uiAutomation.injectInputEvent(it, true)); it.recycle()
@@ -195,6 +200,70 @@ class ReaderFlowInstrumentedTest {
       assertEquals(selected, saved.quote)
       assertTrue(saved.quote.contains("deliberate"))
       screenshot("reader-native-selection-saved")
+      if (InstrumentationRegistry.getArguments().getString("qaSelectionHandles") == "true") {
+        fun selectionEnd(): Int {
+          var end = -1
+          runner.runOnMainSync { end = maxOf(textView.selectionStart, textView.selectionEnd) }
+          return end
+        }
+        fun offsetPoint(offset: Int, handle: Boolean): Pair<Float, Float> {
+          var result = 0f to 0f
+          runner.runOnMainSync {
+            val location = IntArray(2); textView.getLocationOnScreen(location)
+            val layout = textView.layout
+            val line = layout.getLineForOffset(offset)
+            val y = if (handle) layout.getLineBottom(line) + 8 * textView.resources.displayMetrics.density
+              else (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f
+            result = location[0] + textView.totalPaddingLeft + layout.getPrimaryHorizontal(offset) to
+              location[1] + textView.totalPaddingTop + y
+          }
+          return result
+        }
+        fun dragEnd(target: Pair<Float, Float>, hold: Boolean = false) {
+          val start = offsetPoint(selectionEnd(), true)
+          val gesture = SystemClock.uptimeMillis()
+          event(MotionEvent.ACTION_DOWN, start.first, start.second, gesture)
+          for (step in 1..if (hold) 100 else 30) {
+            val fraction = (step / 30f).coerceAtMost(1f)
+            event(MotionEvent.ACTION_MOVE, start.first + (target.first - start.first) * fraction,
+              start.second + (target.second - start.second) * fraction, gesture)
+            SystemClock.sleep(25)
+          }
+          event(MotionEvent.ACTION_UP, target.first, target.second, gesture)
+          SystemClock.sleep(800)
+        }
+        fun verifySameRecord() {
+          var exact = ""
+          runner.runOnMainSync {
+            exact = textView.text.substring(minOf(textView.selectionStart, textView.selectionEnd),
+              maxOf(textView.selectionStart, textView.selectionEnd))
+          }
+          waitFor("handle movement updates the original quote") {
+            runBlocking { db.highlights().observeForDocument(id).first().let {
+              it.size == 1 && it.single().id == saved.id && it.single().quote == exact
+            } }
+          }
+        }
+        val originalEnd = selectionEnd()
+        val paragraph = textView.text.indexOf("Paragraph one.")
+        dragEnd(offsetPoint(paragraph + 25, false))
+        val extendedEnd = selectionEnd()
+        assertTrue("Handle extends across paragraphs", extendedEnd > paragraph)
+        verifySameRecord()
+        screenshot("reader-handle-extended")
+        dragEnd(offsetPoint(paragraph + 5, false))
+        val reversedEnd = selectionEnd()
+        assertTrue("Handle reverses to a smaller selection", reversedEnd in (originalEnd + 1) until extendedEnd)
+        verifySameRecord()
+        val bounds = Rect()
+        runner.runOnMainSync { native!!.getGlobalVisibleRect(bounds) }
+        dragEnd(bounds.exactCenterX() to (bounds.bottom + 16 * textView.resources.displayMetrics.density), true)
+        var scroll = 0
+        runner.runOnMainSync { scroll = native!!.scrollY }
+        screenshot("reader-handle-autoscroll")
+        assertTrue("Handle scrolls the production article", scroll > 0 && selectionEnd() > reversedEnd)
+        verifySameRecord()
+      }
       tap("Undo")
       waitFor("undo removed quote") { runBlocking { db.highlights().observeForDocument(id).first().isEmpty() } }
       tap("Speed")
