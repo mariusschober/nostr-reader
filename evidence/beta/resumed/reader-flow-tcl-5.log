@@ -1,0 +1,41 @@
+
+com.reader.app.ReaderFlowInstrumentedTest:
+Error in nativeSelectionPersistsOneQuoteAndUndoRemovesIt(com.reader.app.ReaderFlowInstrumentedTest):
+java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at com.reader.app.ReaderFlowInstrumentedTest$nativeSelectionPersistsOneQuoteAndUndoRemovesIt$1.invokeSuspend(ReaderFlowInstrumentedTest.kt:129)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:102)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+	at com.reader.app.ReaderFlowInstrumentedTest.nativeSelectionPersistsOneQuoteAndUndoRemovesIt(ReaderFlowInstrumentedTest.kt:71)
+
+
+Time: 61,486
+There was 1 failure:
+1) nativeSelectionPersistsOneQuoteAndUndoRemovesIt(com.reader.app.ReaderFlowInstrumentedTest)
+java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at com.reader.app.ReaderFlowInstrumentedTest$nativeSelectionPersistsOneQuoteAndUndoRemovesIt$1.invokeSuspend(ReaderFlowInstrumentedTest.kt:129)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:102)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+	at com.reader.app.ReaderFlowInstrumentedTest.nativeSelectionPersistsOneQuoteAndUndoRemovesIt(ReaderFlowInstrumentedTest.kt:71)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

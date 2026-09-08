@@ -1,0 +1,10 @@
+
+com.reader.app.ReaderDbMigrationInstrumentedTest:....
+com.reader.app.ReaderLargeContentInstrumentedTest:.
+com.reader.app.ReaderGzipInstrumentedTest:..
+
+Time: 0,578
+
+OK (7 tests)
+
+

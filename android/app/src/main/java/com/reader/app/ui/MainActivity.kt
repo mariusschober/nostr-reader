@@ -317,8 +317,19 @@ class MainActivity : ComponentActivity() {
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { error = e.message ?: "Couldn’t open speed reader" }
           }
-          if (error != null) androidx.compose.material3.TextButton(onClick = { stack.pop(); tick++ }) { androidx.compose.material3.Text("$error — Back") }
-          else tokens?.let { ready ->
+          if (error != null || tokens == null) {
+            androidx.activity.compose.BackHandler { stack.pop(); tick++ }
+            val colors = com.reader.app.ui.theme.readerColors(settings.background)
+            androidx.compose.material3.Surface(modifier = Modifier.fillMaxSize(), color = colors.background, contentColor = colors.text) {
+              androidx.compose.foundation.layout.Column(Modifier.padding(androidx.compose.ui.unit.Dp(24f))) {
+                if (error != null) androidx.compose.material3.Text(error!!, color = colors.error)
+                else androidx.compose.material3.CircularProgressIndicator(color = colors.text)
+                androidx.compose.material3.TextButton(onClick = { stack.pop(); tick++ }) {
+                  androidx.compose.material3.Text("Back to article", color = colors.text)
+                }
+              }
+            }
+          } else tokens?.let { ready ->
             val candidates = ready.indices.filter { ready[it].blockId == r.from.blockId }
             val start = candidates.lastOrNull { ready[it].start <= r.from.charOffset } ?: candidates.firstOrNull() ?: 0
             RsvpScreen(tokens = ready, settings = settings, startIndex = start,

@@ -13,8 +13,6 @@ import android.view.MotionEvent
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.res.ResourcesCompat
-import androidx.core.text.PrecomputedTextCompat
-import androidx.core.widget.TextViewCompat
 import com.reader.app.R
 import com.reader.app.core.*
 import com.reader.app.cursor.SemanticCursor
@@ -38,8 +36,6 @@ class NativeArticleView(context: Context) : ScrollView(context) {
   private var selectionSession: String? = null
   private var selectionSequence = 0L
   private var pendingSelection: Runnable? = null
-  private var textGeneration = 0L
-  private var computing: java.util.concurrent.Future<*>? = null
   private var pen = false
   private var restoring = false
   private var markRanges: List<NativeMark> = emptyList()
@@ -133,22 +129,11 @@ class NativeArticleView(context: Context) : ScrollView(context) {
       restoring = true
       clearSelection()
       markRanges = emptyList()
-      val own = ++textGeneration
-      computing?.cancel(true)
-      val params = TextViewCompat.getTextMetricsParams(body)
       val immutableText = SpannableString(text)
-      computing = textExecutor.submit {
-        val measured = runCatching { PrecomputedTextCompat.create(immutableText, params) }.getOrNull()
-        post {
-          if (own != textGeneration) return@post
-          if (measured != null && TextViewCompat.getTextMetricsParams(body) == params) TextViewCompat.setPrecomputedText(body, measured)
-          else body.setText(immutableText, TextView.BufferType.SPANNABLE)
-          val pending = markRanges
-          markRanges = emptyList()
-          setMarks(pending)
-          restore()
-        }
-      }
+      // Use the same native layout for drawing and handle hit testing. On the TCL,
+      // precomputed mixed heading/body spans reported incorrect horizontal positions.
+      body.setText(immutableText, TextView.BufferType.SPANNABLE)
+      restore()
     } else restore()
   }
 
@@ -220,15 +205,12 @@ class NativeArticleView(context: Context) : ScrollView(context) {
 
   override fun onDetachedFromWindow() {
     reportCursor()
-    textGeneration++
-    computing?.cancel(true)
     pendingSelection?.let { removeCallbacks(it) }
     super.onDetachedFromWindow()
   }
   private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
   companion object {
     private const val HIGHLIGHT_ACTION = 0x52454144
-    private val textExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
   }
 }
 

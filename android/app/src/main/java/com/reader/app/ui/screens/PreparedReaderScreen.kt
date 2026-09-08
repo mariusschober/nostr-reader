@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -166,7 +167,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           }
         }
         val styleKey = listOf(ready, text, settings.font, settings.fontSizeSp, settings.margin, colors)
-        AndroidView(factory = { NativeArticleView(it).also { view = it } }, modifier = Modifier.weight(1f).fillMaxWidth(), update = { native ->
+        AndroidView(factory = { NativeArticleView(it).also { view = it } }, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(), update = { native ->
           if (native.tag != styleKey) {
             native.display(id, ready.projection, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, false), initial)
             native.tag = styleKey

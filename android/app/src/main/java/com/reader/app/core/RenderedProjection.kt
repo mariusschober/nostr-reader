@@ -117,7 +117,8 @@ object RenderedText {
 class Graphemes(private val text: String) {
   private val boundaries: IntArray
   init {
-    val iterator = BreakIterator.getCharacterInstance(Locale.ROOT).apply { setText(text) }
+    val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
+    iterator.setText(text)
     val out = ArrayList<Int>(); out += 0
     var at = 0; var regionalRun = 0
     while (at < text.length) {
