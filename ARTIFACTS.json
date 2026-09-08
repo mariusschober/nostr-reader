@@ -95,5 +95,13 @@
     "KNOWN_LIMITATIONS.md",
     "docs/beta/SOURCE_SUPPORT_MATRIX.md"
   ],
-  "publication": "Not merged, published to a store or deployed. Local artifacts only."
+  "publication": "Not merged, published to a store or deployed. Local artifacts only.",
+  "latestAndroidPatch": {
+    "change": "Follow system-default TTS engine and retain its configured voice/language",
+    "path": "artifacts/beta-0.9.0-beta.1/reader-system-default-tts.apk",
+    "sha256": "6933b3774006d7e024d9dd052fb6ed2277931b40bf94df0b2c362379409b6c3b",
+    "installedOn": "TCL T807D",
+    "evidence": "evidence/tts-default/README.md",
+    "baselineArtifactsAbove": "Retained historical beta candidate; this patch supersedes its installed Android app."
+  }
 }

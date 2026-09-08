@@ -1,0 +1,25 @@
+
+com.reader.app.SystemTtsInstrumentedTest:
+Error in followsInstalledSystemDefault(com.reader.app.SystemTtsInstrumentedTest):
+java.lang.AssertionError: expected null, but was:<Speech engine unavailable>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotNull(Assert.java:756)
+	at org.junit.Assert.assertNull(Assert.java:738)
+	at org.junit.Assert.assertNull(Assert.java:748)
+	at com.reader.app.SystemTtsInstrumentedTest.followsInstalledSystemDefault(SystemTtsInstrumentedTest.kt:37)
+
+
+Time: 45,905
+There was 1 failure:
+1) followsInstalledSystemDefault(com.reader.app.SystemTtsInstrumentedTest)
+java.lang.AssertionError: expected null, but was:<Speech engine unavailable>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotNull(Assert.java:756)
+	at org.junit.Assert.assertNull(Assert.java:738)
+	at org.junit.Assert.assertNull(Assert.java:748)
+	at com.reader.app.SystemTtsInstrumentedTest.followsInstalledSystemDefault(SystemTtsInstrumentedTest.kt:37)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

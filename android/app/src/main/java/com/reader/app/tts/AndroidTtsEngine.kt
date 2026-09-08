@@ -13,7 +13,6 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.content.ContextCompat
-import java.util.Locale
 
 /** Android callbacks are keyed to the exact utterance and delivered on the main thread. */
 class AndroidTtsEngine(ctx: Context) : TtsEngine {
@@ -76,11 +75,7 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
     if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
       active = null; request.error("Audio is in use. Try Listen again."); return
     }
-    val language = engine.setLanguage(Locale.getDefault())
-    if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
-      active = null; audio.abandonAudioFocusRequest(focus)
-      request.error("Install a voice for your device language in Android speech settings."); return
-    }
+    // Keep the system engine's configured voice/language; the UI locale is not a speech preference.
     engine.setSpeechRate(request.speed.coerceIn(.75f, 2.5f))
     if (engine.speak(request.text, TextToSpeech.QUEUE_FLUSH, Bundle(), request.id) != TextToSpeech.SUCCESS) {
       active = null; audio.abandonAudioFocusRequest(focus); request.error("Speech engine unavailable")

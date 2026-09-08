@@ -1,3 +1,5 @@
+> Latest Android update: system-default TTS visibility/voice patch is installed. See `evidence/tts-default/README.md`; NekoSpeak is selected, but its service connection failed during playback verification. Prior beta artifact results remain historical.
+
 # Reader continuation — beta candidate, 8 September 2026
 
 Start with [BETA_TEST_REPORT.md](BETA_TEST_REPORT.md),
