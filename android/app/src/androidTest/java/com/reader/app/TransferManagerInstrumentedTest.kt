@@ -277,6 +277,38 @@ class TransferManagerInstrumentedTest {
     assertNull(db.ackIntents().byTransfer(channel.channelId, f.manifest["transferId"]!!.jsonPrimitive.content))
   }
 
+  @Test fun revokedAckCannotMergeALateSuccessfulPublish() = runBlocking {
+    val sender = Secp256k1.randomPrivateKey()
+    val receiver = Secp256k1.randomPrivateKey()
+    val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(sender))
+    val relays = listOf("wss://nos.lol", "wss://relay.primal.net")
+    val channel = com.reader.app.data.ChannelEntity("revocable-ack", Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiver)), pubkey, 1, null,
+      Json.encodeToString(relays), state = "active", relaySetDigest = com.reader.app.nostr.PairingProtocol.relaySetDigest(relays))
+    db.channels().upsert(channel)
+    val f = fixture(sender, receiver, "71")
+    for (payload in f.chunks + f.manifest) manager.ingestForSync(wrap(payload, sender, receiver), channel.channelId, pubkey, receiver)
+    val entered = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    val dispatcher = com.reader.app.sync.AckDispatcher(db, manager, com.reader.app.nostr.RelayClient()) { url, event, _ ->
+      withContext(NonCancellable) {
+        entered.complete(Unit); release.await()
+        com.reader.app.nostr.RelayClient.PublishResult(url, event.id, true, com.reader.app.nostr.RelayClient.PublishState.OK_TRUE, null, emptyList())
+      }
+    }
+    val job = launch(Dispatchers.IO) {
+      val lease = com.reader.app.sync.ChannelLease.acquire(channel, coroutineContext[Job]!!)
+      try { dispatcher.dispatch(channel, receiver, relays, lease) } finally { lease.close() }
+    }
+    withTimeout(5000) { entered.await() }
+    val transferId = f.manifest["transferId"]!!.jsonPrimitive.content
+    val reserved = db.ackIntents().byTransfer(channel.channelId, transferId)
+    db.channels().revoke(channel.channelId, System.currentTimeMillis())
+    release.complete(Unit); job.join()
+    assertTrue(job.isCancelled)
+    assertEquals(reserved, db.ackIntents().byTransfer(channel.channelId, transferId))
+    assertTrue(db.documents().exists(f.documentId))
+  }
+
   @Test fun deletedTransferCannotResurrectButExplicitNewCaptureCan() = runBlocking {
     val sender = Secp256k1.randomPrivateKey()
     val receiver = Secp256k1.randomPrivateKey()

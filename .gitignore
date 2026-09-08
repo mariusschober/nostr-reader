@@ -31,3 +31,6 @@ android/local.properties
 
 # Local UI refresh packages and on-device screenshots.
 /artifacts/ui-refresh/
+
+# Isolated reliability-cycle artifacts and local diagnostics.
+/artifacts/hardening/

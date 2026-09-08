@@ -1,7 +1,11 @@
 name: Verify Reader
-# Manual during beta qualification so pushing documentation does not rerun
-# already-passing campaigns. Physical and authenticated-site checks stay separate.
-on: workflow_dispatch
+# Host checks follow executable changes; physical/live campaigns remain explicit.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['chrome/**', 'android/**', 'rust-core/**', 'mac/**', 'shared/**', 'scripts/**', '.github/workflows/verify.yml']
+  push:
+    paths: ['chrome/**', 'android/**', 'rust-core/**', 'mac/**', 'shared/**', 'scripts/**', '.github/workflows/verify.yml']
 permissions:
   contents: read
 jobs:

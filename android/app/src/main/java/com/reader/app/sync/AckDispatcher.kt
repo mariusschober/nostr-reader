@@ -13,7 +13,10 @@ import kotlinx.serialization.json.Json
 internal class AckDispatcher(
   private val db: ReaderDb,
   private val manager: TransferManager,
-  private val relayClient: RelayClient,
+  relayClient: RelayClient,
+  private val publish: suspend (String, com.reader.app.nostr.NostrEvent, ByteArray) -> RelayClient.PublishResult = { url, event, key ->
+    runInterruptible { relayClient.publishDetailed(url, event, 10, key) }
+  },
 ) {
   suspend fun dispatch(channel: ChannelEntity, key: ByteArray, relayList: List<String>, lease: ChannelLease): Boolean {
     require(validatedChannelRelays(channel, key) == relayList)
@@ -41,7 +44,7 @@ internal class AckDispatcher(
         relayList.filterNot { it in acceptedBefore }.map { url -> async(Dispatchers.IO) {
           lease.check(db)
           val result = try {
-            runInterruptible { relayClient.publishDetailed(url, manager.buildAck(reserved, key), 10, key) }
+            publish(url, manager.buildAck(reserved, key), key)
           } catch (error: CancellationException) { throw error }
           catch (_: Exception) { null }
           db.withTransaction {
@@ -58,6 +61,7 @@ internal class AckDispatcher(
               failedAt = if (!complete && latest.attemptCount >= 168) System.currentTimeMillis() else null,
               lastErrorCode = if (complete) null else result?.terminalState?.name?.lowercase() ?: "socket_error",
             ))
+            lease.check(db)
           }
         } }.awaitAll()
       }

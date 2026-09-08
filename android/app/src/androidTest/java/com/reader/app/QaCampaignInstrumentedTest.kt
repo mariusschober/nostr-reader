@@ -44,6 +44,7 @@ class QaCampaignInstrumentedTest {
     val db = ReaderDb.get(runner.targetContext)
     val channels = db.channels().active()
     buildJsonObject {
+      put("phoneTimeMillis", System.currentTimeMillis())
       put("activeChannels", channels.size)
       put("channels", buildJsonArray { channels.forEach { channel -> add(buildJsonObject {
         put("receiverPubkey", channel.receiverPubkey); put("senderPubkey", channel.trustedSenderPubkey)
@@ -60,6 +61,7 @@ class QaCampaignInstrumentedTest {
             if (document != null) {
               put("sha256", ReaderCore.sha256Hex(document.canonicalMarkdown.toByteArray(Charsets.UTF_8)))
               put("bytes", document.canonicalMarkdown.toByteArray(Charsets.UTF_8).size)
+              put("storedAtMillis", document.createdAt)
               put("list", document.list); put("progressBlockId", document.progressBlockId)
               put("progressCharOffset", document.progressCharOffset)
             }
