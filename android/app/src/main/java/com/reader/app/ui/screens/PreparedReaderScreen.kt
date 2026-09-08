@@ -5,11 +5,14 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +37,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Loads metadata independently from the library and parses only the visible bounded part. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSettings,
                          onSettingsChange: (ReaderSettings) -> Unit, onBack: () -> Unit,
@@ -211,9 +215,40 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   }, bottomBar = {
     Column {
       player()
-      if (pen) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        HighlightColor.entries.forEach { color ->
-          FilterChip(selected = selectedColor == color.name, onClick = { selectedColor = color.name }, label = { Text(color.label) })
+      if (pen) {
+        // Wrapping swatch row: actual highlight fills plus accessible names
+        // and a check indicator. Logical color identity (YELLOW/GREEN/CYAN/
+        // PURPLE) is persisted as a name, independently of theme.
+        FlowRow(
+          Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+          horizontalArrangement = Arrangement.Center,
+          verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+          HighlightColor.entries.forEach { color ->
+            val selected = selectedColor == color.name
+            FilterChip(
+              selected = selected,
+              onClick = { selectedColor = color.name },
+              modifier = Modifier.padding(horizontal = 4.dp).semantics {
+                contentDescription = "Highlight color ${color.label}"
+                stateDescription = if (selected) "Selected" else "Not selected"
+              },
+              leadingIcon = {
+                Box(
+                  Modifier.size(16.dp)
+                    .background(color.background(dark), CircleShape)
+                    .border(1.dp, colors.text.copy(alpha = 0.4f), CircleShape),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  if (selected) Icon(
+                    Icons.Default.Check, contentDescription = null,
+                    tint = HighlightColor.text(dark), modifier = Modifier.size(12.dp),
+                  )
+                }
+              },
+              label = { Text(color.label) },
+            )
+          }
         }
       }
       Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -221,17 +256,24 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         TextButton(onClick = { prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } }, enabled = prepared != null && !playerVisible && !transitioning) {
           Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Listen")
         }
-        ElevatedFilterChip(selected = pen, onClick = {
+        // Calm dock: the Highlight control matches Listen/Speed weight when
+        // inactive (no elevation, no color fill). The active state keeps the
+        // selected highlight fill plus an explicit on/off label. The 48 dp
+        // touch target is unchanged.
+        val activeHighlight = HighlightColor.parse(selectedColor)
+        FilterChip(selected = pen, onClick = {
           pen = !pen
           if (pen && !hints.getBoolean("highlight_seen", false)) {
             hints.edit().putBoolean("highlight_seen", true).apply()
             scope.launch { snackbar.showSnackbar("Select text to highlight. Drag the handles to adjust.") }
           }
         }, modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (pen) "Highlighting on" else "Highlighting off" },
-          shape = RoundedCornerShape(28.dp),
           leadingIcon = { Icon(Icons.Default.BorderColor, null, Modifier.size(20.dp)) },
-          label = { Text(if (pen) "Highlight on" else "Highlight", color = HighlightColor.text(dark),
-            modifier = Modifier.background(HighlightColor.YELLOW.background(dark), RoundedCornerShape(3.dp)).padding(horizontal = 3.dp)) })
+          label = {
+            if (pen) Text("Highlight on", color = HighlightColor.text(dark),
+              modifier = Modifier.background(activeHighlight.background(dark), RoundedCornerShape(3.dp)).padding(horizontal = 3.dp))
+            else Text("Highlight")
+          })
         TextButton(onClick = { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } }, enabled = prepared != null && !transitioning) {
           Icon(Icons.Default.Speed, "Speed reading", Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Speed")
         }
@@ -320,10 +362,32 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     AlertDialog(onDismissRequest = { actions = emptyList(); activeQuote = null }, title = { Text("Highlight") }, text = {
       Column {
         if (actions.size > 1) TextButton(onClick = { actions = actions.drop(1) + actions.first() }) { Text("Next overlapping highlight") }
-        HighlightColor.entries.forEach { color -> TextButton(onClick = { scope.launch {
-          try { undo = highlights.recolor(quote.id, color.name); actions = emptyList(); activeQuote = null }
-          catch (_: Exception) { snackbar.showSnackbar("Couldn’t save highlight color. Try again.") }
-        } }) { Text(color.label) } }
+        // Recolor uses the same actual swatches, accessible names and check
+        // indicator as the pen row. The stored value remains the logical
+        // color name, independent of theme.
+        HighlightColor.entries.forEach { color ->
+          val selected = quote.color == color.name
+          TextButton(onClick = { scope.launch {
+            try { undo = highlights.recolor(quote.id, color.name); actions = emptyList(); activeQuote = null }
+            catch (_: Exception) { snackbar.showSnackbar("Couldn’t save highlight color. Try again.") }
+          } }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Box(
+                Modifier.size(16.dp)
+                  .background(color.background(dark), CircleShape)
+                  .border(1.dp, colors.text.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center,
+              ) {
+                if (selected) Icon(
+                  Icons.Default.Check, contentDescription = null,
+                  tint = HighlightColor.text(dark), modifier = Modifier.size(12.dp),
+                )
+              }
+              Spacer(Modifier.width(8.dp))
+              Text(color.label + if (selected) " — selected" else "")
+            }
+          }
+        }
         TextButton(onClick = { scope.launch { activeQuote = review.toggleImportant(quote.id) } }) { Text(if (quote.important) "Remove importance" else "Mark important") }
         TextButton(onClick = { share(quote) }) { Text("Share quote") }
         TextButton(onClick = { scope.launch { undo = highlights.remove(quote.id); actions = emptyList(); activeQuote = null } }) { Text("Delete highlight") }
