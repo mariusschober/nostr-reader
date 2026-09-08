@@ -18,3 +18,12 @@ is not established. No successful-audio claim, engine reset, default-setting cha
 or hidden-API workaround. Only the new speech check was exercised.
 
 Reference: https://developer.android.com/reference/android/speech/tts/TextToSpeech
+
+## Follow-up playback check
+
+Opened the updated isolated Reader QA app and attempted the short sample through
+the system-default engine. Android again refused the NekoSpeak connection.
+NekoSpeak's own existing sample, "Hello, I am NekoSpeak", played through a 24-kHz
+AudioTrack: start 13:03:52.793 and normal stop 13:03:54.344 (device local time).
+Thus the selected engine can synthesize/play its own sample; Reader inter-app
+service binding remains the failing boundary. No settings were changed.
