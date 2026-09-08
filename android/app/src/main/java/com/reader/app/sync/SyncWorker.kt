@@ -4,6 +4,7 @@ import android.content.Context
 import com.reader.app.readerRelayClient
 import android.util.Log
 import androidx.work.*
+import androidx.room.withTransaction
 import com.reader.app.core.ReaderCore
 import com.reader.app.data.ChannelEntity
 import com.reader.app.data.ReaderDb
@@ -101,18 +102,8 @@ class ReaderSyncSession(private val applicationContext: Context) {
           continue
         }
         val receiverPubkey = ch.receiverPubkey
-        val relayList = runCatching {
-          Json.parseToJsonElement(ch.relaysJson).jsonArray.map { it.jsonPrimitive.content }
-        }.getOrDefault(emptyList())
-        if (relayList.isEmpty()) { receiveFailed = true; continue }
-        // Each connection resolves through guarded, bounded DNS. One failed
-        // relay must not veto every healthy relay before any connection opens.
-        if (runCatching {
-          require(relayList.size in 2..8 && relayList.distinct().size == relayList.size)
-          relayList.forEach { require(PairingProtocol.normalizeRelayUrl(it) == it) }
-        }.isFailure) {
+        val relayList = try { validatedChannelRelays(ch, seckey) } catch (_: Exception) {
           receiveFailed = true
-          Log.w("NostrReaderSync", "channel=${ch.channelId.take(8)} relayValidation=failed")
           continue
         }
         Log.i("NostrReaderSync", "channel=${ch.channelId.take(8)} relays=${relayList.size}")
@@ -120,11 +111,14 @@ class ReaderSyncSession(private val applicationContext: Context) {
         // Small bounded queue: process while sockets receive, not after the
         // slowest relay's collection window. Producers backpressure individually.
         coroutineScope {
+          val lease = ChannelLease.acquire(ch, kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]!!)
+          try {
+          lease.check(db)
           val intakeQueue = Channel<com.reader.app.nostr.NostrEvent>(16)
           val ackSignals = Channel<Unit>(Channel.CONFLATED)
           val acknowledger = launch(Dispatchers.IO) {
             for (signal in ackSignals) {
-              if (ackDispatcher.dispatch(ch, seckey, relayList)) ackRetryNeeded = true
+              if (ackDispatcher.dispatch(ch, seckey, relayList, lease)) ackRetryNeeded = true
             }
           }
           ackSignals.trySend(Unit) // resume intents from a previous process
@@ -132,7 +126,7 @@ class ReaderSyncSession(private val applicationContext: Context) {
           val consumer = launch(Dispatchers.IO) {
             for (ev in intakeQueue) {
               try {
-                val intake = tm.ingestForSync(ev, ch.channelId, ch.trustedSenderPubkey, seckey)
+                val intake = tm.ingestForSync(ev, ch.channelId, ch.trustedSenderPubkey, seckey) { lease.check(db) }
                 if (intake != null) ackSignals.trySend(Unit)
               } catch (error: CancellationException) { throw error
               } catch (_: java.io.IOException) {
@@ -144,10 +138,40 @@ class ReaderSyncSession(private val applicationContext: Context) {
             }
           }
           consumer.invokeOnCompletion { intakeQueue.cancel() }
+          val coverage = launch(Dispatchers.IO) {
+            relayList.map { url -> async {
+              try {
+                lease.check(db)
+                val old = db.historyCoverage().get(ch.channelId, url)?.let { Json.decodeFromString<HistoryCoverage>(it.stateJson) }
+                val state = old?.takeIf { it.pending.isNotEmpty() } ?: HistoryCoverage.start(since, System.currentTimeMillis() / 1000 + 60).copy(
+                  incomplete = old?.incomplete.orEmpty().filter { it.until >= since })
+                val result = scanHistory(state, query = { window ->
+                  lease.check(db)
+                  runInterruptible { relays.subscribe(url, receiverPubkey, window.since, listOf(WRAP_KIND), 10, seckey, window.until, window.limit) }
+                }, consume = { event ->
+                  // Authentication rejection is a consumed invalid event; storage
+                  // failure/cancellation leaves the entire window uncheckpointed.
+                  try {
+                    if (tm.ingestForSync(event, ch.channelId, ch.trustedSenderPubkey, seckey) { lease.check(db) } != null) ackSignals.trySend(Unit)
+                  } catch (error: CancellationException) { throw error }
+                  catch (error: java.io.IOException) { throw error }
+                  catch (_: IllegalArgumentException) { }
+                }, checkpoint = { next ->
+                  db.withTransaction {
+                    lease.check(db)
+                    db.historyCoverage().put(com.reader.app.data.HistoryCoverageEntity(ch.channelId, url, Json.encodeToString(next)))
+                  }
+                })
+                if (result.pending.isNotEmpty() || result.incomplete.isNotEmpty()) receiveFailed = true
+              } catch (error: CancellationException) { throw error }
+              catch (_: Exception) { receiveFailed = true }
+            } }.awaitAll()
+          }
           try {
             relayList.map { url ->
               async(Dispatchers.IO) {
                 try {
+                  lease.check(db)
                   runInterruptible {
                     relays.subscribe(url, receiverPubkey, since, listOf(WRAP_KIND), 20, seckey) { event ->
                       // Bounded send; cancellation of this scope cancels the
@@ -168,8 +192,10 @@ class ReaderSyncSession(private val applicationContext: Context) {
             intakeQueue.close()
           }
           consumer.join()
+          coverage.join()
           ackSignals.close()
           acknowledger.join()
+          } finally { lease.close() }
         }
       }
       recordHealth(if (receiveFailed) "Some relay connections or incoming transfers could not be completed. Reader will retry." else null)

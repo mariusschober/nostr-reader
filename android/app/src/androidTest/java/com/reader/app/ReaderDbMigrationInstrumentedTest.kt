@@ -12,6 +12,7 @@ import com.reader.app.data.AckIntentEntity
 import com.reader.app.data.MIGRATION_3_4
 import com.reader.app.data.MIGRATION_5_6
 import com.reader.app.data.MIGRATION_6_7
+import com.reader.app.data.MIGRATION_8_9
 import com.reader.app.data.MIGRATION_7_8
 import com.reader.app.data.MIGRATION_4_5
 import com.reader.app.data.ChannelEntity
@@ -27,6 +28,30 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ReaderDbMigrationInstrumentedTest {
+  @org.junit.Rule @JvmField
+  val migrationHelper = androidx.room.testing.MigrationTestHelper(
+    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation(), ReaderDb::class.java)
+
+  @Test fun versionEightAckEvidenceMigratesWithoutInventingReceiptTime() {
+    val name = "hardening-v8-v9"
+    migrationHelper.createDatabase(name, 8).apply {
+      execSQL("""INSERT INTO ack_intents(channelId, transferId, manifestId, documentId,
+        recipientDevicePubkey, status, receivedAt, expiresAt, acceptedRelaysJson,
+        attemptCount, nextAttemptAt, completedAt, failedAt, lastErrorCode, refreshCount)
+        VALUES ('channel','transfer','manifest','deleted-source','sender','stored',123,999,'[]',0,NULL,NULL,NULL,NULL,0)""")
+      close()
+    }
+    migrationHelper.runMigrationsAndValidate(name, 9, true, MIGRATION_8_9).use { migrated ->
+      migrated.query("SELECT status, receivedAt, deletedAt FROM transfer_outcomes").use {
+        assertTrue(it.moveToFirst())
+        assertEquals("stored", it.getString(0))
+        assertEquals(123L, it.getLong(1))
+        assertEquals(123000L, it.getLong(2))
+        assertFalse(it.moveToNext())
+      }
+    }
+  }
+
   private fun channel(id: String, state: String, createdAt: Long): ChannelEntity = ChannelEntity(
     channelId = id,
     receiverPubkey = "11".repeat(32),
@@ -128,7 +153,7 @@ class ReaderDbMigrationInstrumentedTest {
     helper.close()
 
     val migrated = Room.databaseBuilder(context, ReaderDb::class.java, name)
-      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
       .build()
     try {
       migrated.openHelper.writableDatabase

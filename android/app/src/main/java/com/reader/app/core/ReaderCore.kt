@@ -58,6 +58,10 @@ object ReaderCore {
   /** Rolling sync window. NEVER last-sync (NIP-59 randomized past timestamps). */
   fun syncSince(nowSecs: Long): Long = nowSecs - SYNC_WINDOW_DAYS * 86400L
 
+  private val wordSeparator = Regex("\\s+")
+  private val listMarker = Regex("^[-*+>]+$")
+  private val numberedMarker = Regex("^\\d+[.)]$")
+
   fun wordCount(canonical: String): Int {
     var inFence = false
     var n = 0
@@ -68,10 +72,10 @@ object ReaderCore {
         continue
       }
       if (inFence) continue
-      for (w in t.split(Regex("\\s+"))) {
+      for (w in t.split(wordSeparator)) {
         if (w.isEmpty()) continue
         if (w.startsWith("http://") || w.startsWith("https://")) continue
-        if (w.matches(Regex("^[-*+>]+$")) || w.matches(Regex("^\\d+[.)]$"))) continue
+        if (listMarker.matches(w) || numberedMarker.matches(w)) continue
         n++
       }
     }

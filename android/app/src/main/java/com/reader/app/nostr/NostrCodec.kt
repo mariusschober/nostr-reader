@@ -226,6 +226,8 @@ object NostrCodec {
 }
 
 /** Minimal relay client over OkHttp WebSocket: publish w/ OK, subscribe window. */
+class ReceiveBudgetException(message: String) : java.io.IOException(message)
+
 class RelayClient internal constructor(private val http: OkHttpClient) {
   constructor() : this(sharedHttp)
 
@@ -583,6 +585,8 @@ class RelayClient internal constructor(private val http: OkHttpClient) {
     kinds: List<Int>,
     collectSecs: Long = 25,
     authSeckey: ByteArray? = null,
+    until: Long? = null,
+    limit: Int = 256,
     onEvent: ((NostrEvent) -> Unit)? = null,
   ): List<NostrEvent> {
     val out = Collections.synchronizedList(mutableListOf<NostrEvent>())
@@ -601,6 +605,7 @@ class RelayClient internal constructor(private val http: OkHttpClient) {
       put("kinds", buildJsonArray { kinds.forEach { add(it) } })
       put("#p", buildJsonArray { add(recipientPubkey) })
       put("since", since)
+      if (until != null) { put("until", until); put("limit", limit.coerceIn(1, 4096)) }
     }
     val ws = http.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
       private fun request(webSocket: WebSocket) {
@@ -630,7 +635,7 @@ class RelayClient internal constructor(private val http: OkHttpClient) {
               out.add(event)
             }
           } else if (arr.size >= 2 && arr[0].jsonPrimitive.content == "EOSE") {
-            if (arr[1].jsonPrimitive.content == subId) eose.set(true)
+            if (arr[1].jsonPrimitive.content == subId) { eose.set(true); if (until != null) latch.countDown() }
           } else if (
             arr.size >= 2 && arr[0].jsonPrimitive.content == "AUTH" && authSeckey != null
           ) {
@@ -665,7 +670,7 @@ class RelayClient internal constructor(private val http: OkHttpClient) {
             }
           }
         } catch (e: Exception) {
-          failure.set("invalid or over-budget subscription")
+          failure.set(if (e.message?.contains("budget") == true) "receive budget exceeded" else "invalid subscription")
           latch.countDown()
           webSocket.cancel()
         }
@@ -682,7 +687,7 @@ class RelayClient internal constructor(private val http: OkHttpClient) {
     })
     try {
       latch.await(collectSecs, TimeUnit.SECONDS)
-      failure.get()?.let { throw java.io.IOException(it) }
+      failure.get()?.let { if (it.contains("budget")) throw ReceiveBudgetException(it) else throw java.io.IOException(it) }
       if (!eose.get()) throw java.io.IOException("subscription coverage unconfirmed")
       return synchronized(out) { out.toList() }
     } finally {

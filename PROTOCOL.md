@@ -231,7 +231,7 @@ already applied to Room.
 
 ## Endpoint ACK and delivery truth
 
-Only durable document presence permits Android to send an ACK. It binds:
+Only a durable document commit (including a persisted historical transfer outcome after local deletion) permits Android to send an ACK. Historical receipts retain their original receipt time. It binds:
 
 - protocol and type;
 - transfer, document, manifest, and content hashes;
@@ -249,7 +249,7 @@ zero-relay success and never selects an implicit fallback channel.
 `OK=true` from a relay means only `relay_accepted`. Chrome calls an item
 `delivered` and deletes its captured payload only after a valid `stored` or
 `duplicate` device ACK. Recent delivery receipts retain only opaque transfer ID
-and time; they carry no article text.
+and time, plus bounded title/source metadata; they carry no article body.
 
 Android persists positive ACK publication results per relay. It attempts every
 configured relay once and requires two unique matching positive results before
@@ -292,3 +292,30 @@ has a recent accepted checkpoint; accepted chunks remain reusable. This fresh,
 authenticated same-transfer demand lets Android reissue a lost completed receipt
 subject to its five-minute cooldown and maximum eight refreshes. It does not mint
 a new document identity, bypass ACK binding, or treat relay OK as delivered.
+
+## Local ownership and recovery hardening
+
+Capture IDs deduplicate a browser request independently of its transport payload.
+Chrome IndexedDB v3 preserves older plaintext captures as a separately owned recovery
+library, exposed in Settings for export and deletion. New captures store only a
+lightweight ID record plus pending transport content. An ACK or pending-transfer
+discard never deletes a separate library copy.
+
+Android Room v9 persists completed logical-transfer outcomes in the same transaction
+as document/processed-event/ACK effects. Permanent deletion marks those outcomes
+locally deleted and retains quotations. Fresh authenticated wrappers for the same
+transfer cannot reconstruct deleted content. A deliberate capture with a new
+transfer ID may store identical text again. Expired historical ACK records are not
+replaced with invented current receipt timestamps.
+
+Active Android channel snapshots revalidate the stored relay digest and derived
+receiver key before network use. Revocable jobs own sockets; durable intake, history
+coverage and ACK result commits recheck the active generation. Revocation is local
+control, not remote ciphertext recall.
+
+Android history coverage runs beside foreground delivery with independent per-relay
+budgets. Its inclusive windows cover the rolling ten-day interval. It consumes
+successfully before checkpointing, subdivides capped or byte-limited reads, and
+persists saturated single-second buckets as incomplete. A failed relay does not
+cancel healthy relays. Coverage cannot prove retention by a relay that silently
+withholds events.

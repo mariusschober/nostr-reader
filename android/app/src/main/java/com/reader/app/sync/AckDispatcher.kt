@@ -15,12 +15,15 @@ internal class AckDispatcher(
   private val manager: TransferManager,
   private val relayClient: RelayClient,
 ) {
-  suspend fun dispatch(channel: ChannelEntity, key: ByteArray, relayList: List<String>): Boolean {
+  suspend fun dispatch(channel: ChannelEntity, key: ByteArray, relayList: List<String>, lease: ChannelLease): Boolean {
+    require(validatedChannelRelays(channel, key) == relayList)
+    lease.check(db)
     val dao = db.ackIntents()
     val startedAt = System.currentTimeMillis()
     for (candidate in dao.due(channel.channelId, startedAt / 1000, startedAt, 8)) {
       if (System.currentTimeMillis() - startedAt > 12_000) break
       val reserved = db.withTransaction {
+        lease.check(db)
         val current = dao.byTransfer(channel.channelId, candidate.transferId) ?: return@withTransaction null
         val now = System.currentTimeMillis()
         if (current.completedAt != null || current.failedAt != null || current.expiresAt <= now / 1000 ||
@@ -36,11 +39,13 @@ internal class AckDispatcher(
       val acceptedBefore = acceptedAckRelays(reserved.acceptedRelaysJson, relayList)
       coroutineScope {
         relayList.filterNot { it in acceptedBefore }.map { url -> async(Dispatchers.IO) {
+          lease.check(db)
           val result = try {
             runInterruptible { relayClient.publishDetailed(url, manager.buildAck(reserved, key), 10, key) }
           } catch (error: CancellationException) { throw error }
           catch (_: Exception) { null }
           db.withTransaction {
+            lease.check(db)
             val latest = dao.byTransfer(channel.channelId, reserved.transferId) ?: return@withTransaction
             if (latest.attemptCount != reserved.attemptCount || latest.refreshCount != reserved.refreshCount) return@withTransaction
             val accepted = acceptedAckRelays(latest.acceptedRelaysJson, relayList)

@@ -129,6 +129,33 @@ data class AckIntentEntity(
   @ColumnInfo(defaultValue = "0") val refreshCount: Int = 0,
 )
 
+@Entity(tableName = "history_coverage", primaryKeys = ["channelId", "relay"])
+data class HistoryCoverageEntity(val channelId: String, val relay: String, val stateJson: String)
+@Dao interface HistoryCoverageDao {
+  @Query("SELECT * FROM history_coverage WHERE channelId = :channelId AND relay = :relay")
+  suspend fun get(channelId: String, relay: String): HistoryCoverageEntity?
+  @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(value: HistoryCoverageEntity)
+}
+
+/** Historical commit proof, independent of document lifetime and ACK retry expiry. */
+@Entity(tableName = "transfer_outcomes", primaryKeys = ["channelId", "transferId"])
+data class TransferOutcomeEntity(
+  val channelId: String, val transferId: String, val manifestId: String,
+  val documentId: String, val recipientDevicePubkey: String,
+  val status: String, val receivedAt: Long, val expiresAt: Long,
+  val deletedAt: Long?,
+)
+
+@Dao
+interface TransferOutcomeDao {
+  @Query("SELECT * FROM transfer_outcomes WHERE channelId = :channelId AND transferId = :transferId")
+  suspend fun byTransfer(channelId: String, transferId: String): TransferOutcomeEntity?
+  @Insert(onConflict = OnConflictStrategy.ABORT)
+  suspend fun insert(outcome: TransferOutcomeEntity)
+  @Query("UPDATE transfer_outcomes SET deletedAt = :now WHERE documentId = :id AND deletedAt IS NULL")
+  suspend fun markDeleted(id: String, now: Long)
+}
+
 @Entity(tableName = "processed_events")
 data class ProcessedEventEntity(
   @PrimaryKey val eventId: String,
@@ -280,10 +307,20 @@ interface ChannelDao {
   suspend fun promoteAfterValidatedAck(id: String, updatedAt: Long): Int
 
   @Query("UPDATE channels SET state = 'revoked', revokedAt = :now, updatedAt = :now WHERE channelId = :id")
-  suspend fun revoke(id: String, now: Long)
+  suspend fun revokeStored(id: String, now: Long)
+
+  suspend fun revoke(id: String, now: Long) {
+    com.reader.app.sync.ChannelLease.revoke(id)
+    revokeStored(id, now)
+  }
 
   @Query("UPDATE channels SET state = 'revoked', revokedAt = :now, updatedAt = :now WHERE channelId != :keepId AND revokedAt IS NULL AND state = 'active'")
-  suspend fun revokeOtherActive(keepId: String, now: Long): Int
+  suspend fun revokeOtherActiveStored(keepId: String, now: Long): Int
+
+  suspend fun revokeOtherActive(keepId: String, now: Long): Int {
+    active().filter { it.channelId != keepId }.forEach { com.reader.app.sync.ChannelLease.revoke(it.channelId) }
+    return revokeOtherActiveStored(keepId, now)
+  }
 
   @Query("SELECT * FROM channels WHERE revokedAt IS NULL AND protocolVersion = 2 AND state != 'active' AND pendingExpiresAt IS NOT NULL AND pendingExpiresAt <= :nowSecs")
   suspend fun expiredPending(nowSecs: Long): List<ChannelEntity>
@@ -559,6 +596,23 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
   }
 }
 
+val MIGRATION_8_9 = object : Migration(8, 9) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("CREATE TABLE IF NOT EXISTS history_coverage (channelId TEXT NOT NULL, relay TEXT NOT NULL, stateJson TEXT NOT NULL, PRIMARY KEY(channelId, relay))")
+    db.execSQL("""CREATE TABLE IF NOT EXISTS transfer_outcomes (
+      channelId TEXT NOT NULL, transferId TEXT NOT NULL, manifestId TEXT NOT NULL,
+      documentId TEXT NOT NULL, recipientDevicePubkey TEXT NOT NULL, status TEXT NOT NULL,
+      receivedAt INTEGER NOT NULL, expiresAt INTEGER NOT NULL, deletedAt INTEGER,
+      PRIMARY KEY(channelId, transferId))""")
+    // ACK intents are written only in the document commit transaction. Their
+    // receipt time is evidence; never manufacture proof from staged fragments.
+    db.execSQL("""INSERT INTO transfer_outcomes SELECT channelId, transferId, manifestId,
+      documentId, recipientDevicePubkey, status, receivedAt, expiresAt,
+      CASE WHEN EXISTS(SELECT 1 FROM documents d WHERE d.documentId = ack_intents.documentId)
+        THEN NULL ELSE receivedAt * 1000 END FROM ack_intents""")
+  }
+}
+
 @Database(
   entities = [
     DocumentEntity::class,
@@ -568,11 +622,13 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     ManifestEntity::class,
     AckIntentEntity::class,
     ProcessedEventEntity::class,
+    TransferOutcomeEntity::class,
+    HistoryCoverageEntity::class,
     HighlightEntity::class,
     ReviewStatePartEntity::class,
     SyncHealthEntity::class,
   ],
-  version = 8,
+  version = 9,
   exportSchema = true,
 )
 abstract class ReaderDb : RoomDatabase() {
@@ -581,6 +637,8 @@ abstract class ReaderDb : RoomDatabase() {
   abstract fun chunks(): ChunkDao
   abstract fun manifests(): ManifestDao
   abstract fun ackIntents(): AckIntentDao
+  abstract fun historyCoverage(): HistoryCoverageDao
+  abstract fun transferOutcomes(): TransferOutcomeDao
   abstract fun processedEvents(): ProcessedEventDao
   abstract fun highlights(): HighlightDao
   abstract fun review(): ReviewDao
@@ -591,7 +649,7 @@ abstract class ReaderDb : RoomDatabase() {
     private var instance: ReaderDb? = null
     fun get(ctx: Context): ReaderDb = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(ctx.applicationContext, ReaderDb::class.java, "reader.db")
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
         .build()
         .also { instance = it }
     }

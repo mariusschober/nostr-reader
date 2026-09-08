@@ -129,3 +129,18 @@ This does not certify Android dependencies, live signers or provider DOMs. Quote
 sharing emits only the quote as text/plain, without subject, URL or stream; exact
 local receiver checks cover Unicode and line breaks. Exports exclude channel keys
 and are not restorable backups. No telemetry/backend or store publication was added.
+
+## Local retention hardening
+
+Chrome's old retained capture store remains an explicit, separately deletable recovery
+library. New captures keep plaintext/compressed transport payload only while pending;
+lightweight capture IDs survive payload cleanup. Android saves frozen pending
+selections in an app-private atomic journal until Room commits them; the journal is
+covered by existing app backup exclusions and contains no pairing keys. Article
+deletion preserves quotations and durable historical transfer outcomes. Fresh wrappers
+of a deleted transfer cannot resurrect its content; explicit new transfers remain
+possible. Revocation cancels local channel work and rechecks commit ownership but
+cannot remove ciphertext retained by relays. Export uses a user-selected SAF URI,
+checksums and readback verification, excludes keys, and remains a plaintext one-way
+export. Google speech retains its configured voice/language; Reader inspects whether
+that voice requires a network connection rather than labeling all voices offline.

@@ -1,6 +1,7 @@
 package com.reader.app.data
 
 import com.reader.app.core.*
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -31,7 +32,12 @@ class ArticleRepository(private val db: ReaderDb) {
 
   /** Content rows cascade; saved quotations deliberately remain independent. */
   suspend fun delete(id: String) = mutex.withLock {
-    withContext(Dispatchers.IO) { check(db.documents().deleteArchivedById(id) == 1) { "Article is no longer in Archive" } }
+    withContext(Dispatchers.IO) {
+      db.withTransaction {
+        check(db.documents().deleteArchivedById(id) == 1) { "Article is no longer in Archive" }
+        db.transferOutcomes().markDeleted(id, System.currentTimeMillis())
+      }
+    }
     indexes.remove(id)
     sections.entries.removeAll { it.value.index.documentId == id }
   }

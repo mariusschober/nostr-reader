@@ -14,6 +14,35 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 class RelayReceiveTest {
+  @Test fun rollingWindowRepeatsCappedPrefixWithoutHistoryCoverage() {
+    val server = MockWebServer()
+    val key = Secp256k1.randomPrivateKey()
+    val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(key))
+    val events = (1L..33L).map { NostrCodec.signEvent(pubkey, it, 1059, emptyList(), "synthetic-$it", key) }
+    repeat(2) {
+      server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+        override fun onMessage(socket: WebSocket, text: String) {
+          val frame = StrictJson.parse(text).jsonArray
+          if (frame[0].jsonPrimitive.content == "REQ") {
+            val id = frame[1].jsonPrimitive.content
+            events.take(32).forEach { socket.send("[\"EVENT\",\"$id\",${it.toJson()}]") }
+            socket.send("[\"EOSE\",\"$id\"]")
+          }
+        }
+      }))
+    }
+    server.start()
+    try {
+      val client = RelayClient(okhttp3.OkHttpClient())
+      val url = server.url("/").toString().replaceFirst("http", "ws")
+      val first = client.subscribe(url, pubkey, 0, listOf(1059), 1)
+      val second = client.subscribe(url, pubkey, 0, listOf(1059), 1)
+      assertEquals(32, first.size)
+      assertEquals(first.map { it.id }, second.map { it.id })
+      assertFalse(second.any { it.id == events.last().id })
+    } finally { server.shutdown() }
+  }
+
   @Test fun deliversOnArrivalAndClosesOnInterruption() {
     val received = CountDownLatch(1)
     val closed = CountDownLatch(1)

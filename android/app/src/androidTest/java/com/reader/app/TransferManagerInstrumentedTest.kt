@@ -12,8 +12,9 @@ import com.reader.app.nostr.StrictJson
 import com.reader.app.sync.TransferManager
 import com.reader.app.sync.StagingLimits
 import com.reader.app.sync.StagingCapacityException
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import kotlinx.serialization.encodeToString
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -51,8 +52,8 @@ class TransferManagerInstrumentedTest {
     GZIPOutputStream(output).use { it.write(input) }
   }.toByteArray().also { it[9] = 3 }
 
-  private fun fixture(senderKey: ByteArray, receiverKey: ByteArray, salt: String = "01"): Fixture {
-    val canonical = ReaderCore.canonicalize("# Transfer $salt\n\nOut-of-order chunks remain authenticated.\n")
+  private fun fixture(senderKey: ByteArray, receiverKey: ByteArray, salt: String = "01", textSalt: String = salt, text: String? = null): Fixture {
+    val canonical = ReaderCore.canonicalize(text ?: "# Transfer $textSalt\n\nOut-of-order chunks remain authenticated.\n")
     val plain = canonical.toByteArray(Charsets.UTF_8)
     val compressed = gzip(plain)
     val documentId = ReaderCore.documentId(canonical)
@@ -62,7 +63,7 @@ class TransferManagerInstrumentedTest {
     val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverKey))
     val now = System.currentTimeMillis() / 1000
     val expiresAt = now + 3600
-    val sliceSize = maxOf(1, compressed.size / 2)
+    val sliceSize = minOf(24 * 1024, maxOf(1, compressed.size / 2))
     val slices = compressed.toList().chunked(sliceSize).map { it.toByteArray() }
     val manifestId = ReaderCore.sha256Hex(buildJsonArray {
       add(ReaderCore.READER_PROTOCOL)
@@ -209,6 +210,92 @@ class TransferManagerInstrumentedTest {
     val stillFailed = db.ackIntents().byTransfer("channel", intake.transferId)!!
     assertNotNull(stillFailed.failedAt)
     assertEquals(168, stillFailed.attemptCount)
+  }
+
+  @Test fun measuresSmallMediumAndNearExpandedLimitIngestionSeparatelyFromPreparation() = runBlocking {
+    val sender = Secp256k1.randomPrivateKey()
+    val receiver = Secp256k1.randomPrivateKey()
+    val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(sender))
+    val rows = buildJsonArray {
+      for ((index, size) in listOf(4096, 256 * 1024, 19 * 1024 * 1024).withIndex()) {
+        val paragraph = "Synthetic bounded measurement paragraph with repeated words.\n\n"
+        val text = paragraph.repeat(size / paragraph.length + 1).take(size)
+        val f = fixture(sender, receiver, (71 + index).toString(), text = text)
+        val events = (f.chunks + f.manifest).map { wrap(it, sender, receiver) }
+        val before = System.nanoTime()
+        for (event in events) manager.ingestForSync(event, "measurement", pubkey, receiver)
+        val stored = System.nanoTime()
+        val ready = com.reader.app.data.ArticleRepository(db).section(f.documentId, 0)
+        val prepared = System.nanoTime()
+        assertTrue(db.documents().exists(f.documentId))
+        assertTrue(ready.projection.text.isNotEmpty())
+        add(buildJsonObject {
+          put("expandedBytes", f.manifest["uncompressedBytes"]!!)
+          put("compressedBytes", f.manifest["compressedBytes"]!!)
+          put("ingestionMillis", (stored - before) / 1_000_000.0)
+          put("firstSectionPreparationMillis", (prepared - stored) / 1_000_000.0)
+          put("renderingMeasured", false)
+        })
+      }
+    }
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    java.io.File(context.getExternalFilesDir("qa"), "ingestion-measurements.json").writeText(rows.toString())
+  }
+
+  @Test fun revokingPausedIntakeRollsBackAllNewOldLeaseEffects() = runBlocking {
+    val sender = Secp256k1.randomPrivateKey()
+    val receiver = Secp256k1.randomPrivateKey()
+    val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(sender))
+    val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiver))
+    val relays = listOf("wss://nos.lol", "wss://relay.primal.net")
+    val channel = com.reader.app.data.ChannelEntity("revocable", receiverPubkey, pubkey, 1, null,
+      Json.encodeToString(relays), state = "active", relaySetDigest = com.reader.app.nostr.PairingProtocol.relaySetDigest(relays))
+    db.channels().upsert(channel)
+    val f = fixture(sender, receiver, "61")
+    for (payload in f.chunks) manager.ingestForSync(wrap(payload, sender, receiver), channel.channelId, pubkey, receiver)
+    val manifest = wrap(f.manifest, sender, receiver)
+    val entered = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    val intake = launch(Dispatchers.IO) {
+      val lease = com.reader.app.sync.ChannelLease.acquire(channel, coroutineContext[Job]!!)
+      try {
+        manager.ingestForSync(manifest, channel.channelId, pubkey, receiver) {
+          lease.check(db)
+          entered.complete(Unit)
+          release.await()
+          lease.check(db)
+        }
+      } finally { lease.close() }
+    }
+    withTimeout(5000) { entered.await() }
+    db.channels().revoke(channel.channelId, System.currentTimeMillis())
+    release.complete(Unit)
+    intake.join()
+    assertTrue(intake.isCancelled)
+    assertFalse(db.documents().exists(f.documentId))
+    assertNull(db.processedEvents().byId(manifest.id))
+    assertNull(db.ackIntents().byTransfer(channel.channelId, f.manifest["transferId"]!!.jsonPrimitive.content))
+  }
+
+  @Test fun deletedTransferCannotResurrectButExplicitNewCaptureCan() = runBlocking {
+    val sender = Secp256k1.randomPrivateKey()
+    val receiver = Secp256k1.randomPrivateKey()
+    val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(sender))
+    val f = fixture(sender, receiver, "51")
+    val wrappers = (f.chunks + f.manifest).map { wrap(it, sender, receiver) }
+    for (event in wrappers) manager.ingestForSync(event, "channel", pubkey, receiver)
+    val article = db.documents().byId(f.documentId)!!
+    db.documents().update(article.copy(list = "archived"))
+    com.reader.app.data.ArticleRepository(db).delete(f.documentId)
+    assertNotNull(db.transferOutcomes().byTransfer("channel", f.manifest["transferId"]!!.jsonPrimitive.content)!!.deletedAt)
+    for (event in wrappers) manager.ingestForSync(event, "channel", pubkey, receiver)
+    for (payload in f.chunks + f.manifest) manager.ingestForSync(wrap(payload, sender, receiver), "channel", pubkey, receiver)
+    assertNull(db.documents().byId(f.documentId))
+    assertEquals(0L, db.chunks().stagedBytes())
+    val next = fixture(sender, receiver, "52", "51")
+    assertEquals(f.documentId, next.documentId)
+    for (payload in next.chunks + next.manifest) manager.ingestForSync(wrap(payload, sender, receiver), "channel", pubkey, receiver)
+    assertNotNull(db.documents().byId(f.documentId))
   }
 
   @Test

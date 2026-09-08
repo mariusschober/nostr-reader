@@ -1,7 +1,7 @@
 package com.reader.app.sync
 
 import androidx.room.withTransaction
-import com.reader.app.core.ArticleParser
+import com.reader.app.data.TransferOutcomeEntity
 import com.reader.app.core.ReaderCore
 import com.reader.app.core.ReaderGzip
 import com.reader.app.data.AckIntentEntity
@@ -55,21 +55,7 @@ class TransferManager(
     trustedSender: String,
     receiverSeckey: ByteArray,
   ): Intake? {
-    require(channelId.isNotBlank()) { "invalid channel" }
-    val envelope = try {
-      NostrCodec.unwrapAndVerifyEnvelope(wrap, receiverSeckey, trustedSender)
-    } catch (_: Exception) {
-      return null
-    }
-    val payload = StrictJson.parseObject(envelope.payloadJson)
-    val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverSeckey))
-    return db.withTransaction {
-      when (payload["type"]?.jsonPrimitive?.content) {
-        "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
-        "chunk" -> handleChunk(payload)
-        else -> null
-      }
-    }
+    return ingestForSync(wrap, channelId, trustedSender, receiverSeckey)
   }
 
   /**
@@ -83,6 +69,7 @@ class TransferManager(
     channelId: String,
     trustedSender: String,
     receiverSeckey: ByteArray,
+    activeGeneration: suspend () -> Unit = {},
   ): Intake? {
     require(channelId.isNotBlank()) { "invalid channel" }
     // This is a no-op for already committed content, never authentication of a
@@ -96,14 +83,39 @@ class TransferManager(
       return null
     }
     val payload = StrictJson.parseObject(envelope.payloadJson)
+    when (payload["type"]?.jsonPrimitive?.content) {
+      "manifest" -> exactKeys(payload, setOf("protocol", "type", "transferId", "manifestId", "documentId", "title", "sourceType",
+        "capturedAt", "mime", "compression", "wordCount", "uncompressedBytes", "compressedBytes", "compressedSha256", "documentSha256",
+        "chunkCount", "senderDevicePubkey", "recipientChannelPubkey", "expiresAt"),
+        setOf("sourceName", "sourceUrl", "author", "publishedAt", "language"))
+      "chunk" -> exactKeys(payload, setOf("protocol", "type", "transferId", "manifestId", "documentId", "compressedSha256",
+        "index", "count", "dataBase64", "expiresAt"))
+      else -> return null
+    }
     val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverSeckey))
     val wrapExpiresAt = wrap.tags.single { it.firstOrNull() == "expiration" }[1].toLong()
     val nowSecs = System.currentTimeMillis() / 1000
     val ledgerExpiresAt = minOf(wrapExpiresAt, nowSecs + ReaderCore.SYNC_WINDOW_DAYS * 86400L)
     return db.withTransaction {
+      activeGeneration()
       if (db.processedEvents().byId(wrap.id) != null) return@withTransaction null
       if (db.processedEvents().count() >= limits.processedEvents) throw StagingCapacityException()
-      val intake = when (payload["type"]?.jsonPrimitive?.content) {
+      val historical = payload["transferId"]?.jsonPrimitive?.content?.let { db.transferOutcomes().byTransfer(channelId, it) }
+      val intake = if (historical != null) {
+        require(payload["type"]?.jsonPrimitive?.content in setOf("manifest", "chunk"))
+        require(payload["protocol"]?.jsonPrimitive?.content == ReaderCore.READER_PROTOCOL)
+        if (payload["type"]?.jsonPrimitive?.content == "manifest") {
+          require(payload["senderDevicePubkey"]?.jsonPrimitive?.content == trustedSender &&
+            payload["recipientChannelPubkey"]?.jsonPrimitive?.content == receiverPubkey)
+        }
+        require(historical.recipientDevicePubkey == trustedSender &&
+          payload["manifestId"]?.jsonPrimitive?.content == historical.manifestId &&
+          payload["documentId"]?.jsonPrimitive?.content == historical.documentId &&
+          payload["expiresAt"]?.jsonPrimitive?.long == historical.expiresAt) { "conflicting completed transfer" }
+        // A fresh authenticated wrapper may refresh a historical receipt but
+        // never stage payload or recreate a locally deleted document.
+        Intake(historical.transferId, historical.documentId, historical.manifestId, "duplicate", historical.expiresAt)
+      } else when (payload["type"]?.jsonPrimitive?.content) {
         "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
         "chunk" -> handleChunk(payload)
         else -> return@withTransaction null
@@ -121,7 +133,13 @@ class TransferManager(
           expiresAt = ledgerExpiresAt,
         ),
       )
-      if (inserted != -1L && intake != null) queueAckIntent(channelId, trustedSender, intake, nowSecs)
+      if (inserted != -1L && intake != null) {
+        if (historical == null) db.transferOutcomes().insert(TransferOutcomeEntity(
+          channelId, intake.transferId, intake.manifestId, intake.documentId,
+          trustedSender, intake.status, nowSecs, intake.expiresAt, null))
+        queueAckIntent(channelId, trustedSender, intake, nowSecs, historical?.receivedAt ?: nowSecs)
+      }
+      activeGeneration()
       intake
     }
   }
@@ -131,6 +149,7 @@ class TransferManager(
     recipientDevicePubkey: String,
     intake: Intake,
     nowSecs: Long,
+    receivedAt: Long = nowSecs,
   ) {
     require(intake.status == "stored" || intake.status == "duplicate") { "invalid ACK status" }
     require(intake.expiresAt > nowSecs) { "cannot queue expired ACK" }
@@ -146,7 +165,7 @@ class TransferManager(
           documentId = intake.documentId,
           recipientDevicePubkey = recipientDevicePubkey,
           status = preferredStatus,
-          receivedAt = nowSecs,
+          receivedAt = receivedAt,
           expiresAt = intake.expiresAt,
           acceptedRelaysJson = "[]",
           attemptCount = 0,
@@ -382,7 +401,6 @@ class TransferManager(
     require(ReaderCore.canonicalize(canonical) == canonical) { "content is not canonical" }
     require(ReaderCore.documentId(canonical) == manifest.documentId) { "document hash mismatch" }
     require(ReaderCore.wordCount(canonical) == manifest.wordCount) { "word count mismatch" }
-    val blocks = ArticleParser.parse(canonical)
     val nowMillis = System.currentTimeMillis()
     val document = DocumentEntity(
       documentId = manifest.documentId,
@@ -398,7 +416,7 @@ class TransferManager(
       wordCount = manifest.wordCount,
       parserVersion = 2,
       state = "unread",
-      progressBlockId = blocks.firstOrNull()?.id,
+      progressBlockId = null,
       progressCharOffset = 0,
       progressFraction = 0f,
       lastOpenedAt = 0L,
