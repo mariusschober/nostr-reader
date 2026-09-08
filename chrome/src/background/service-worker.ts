@@ -1,3 +1,4 @@
+import "./site-access.js";
 // Service worker: key ownership, outbox, pairing, quorum send, E2E ACK listen.
 // Private keys never leave this scope. State is durable (storage.local +
 // IndexedDB) because MV3 workers are suspended at will.
@@ -10,7 +11,7 @@ import { getPublicKey } from "nostr-tools/pure";
 import {
   READER_PROTOCOL, escapePlainText, canonicalize, documentId, wordCount, syncSince, checkLimits,
 } from "../protocol/core.js";
-import { deterministicGzip } from "../protocol/codec.js";
+import { deterministicGzip, decodeReaderGzip } from "../protocol/codec.js";
 import {
   publishPerRelay,
   queryRelayWithAuth,
@@ -297,6 +298,8 @@ async function outboxDelete(transferId: string): Promise<void> {
 
 interface DeliveryReceipt {
   transferId: string;
+  title?: string;
+  sourceUrl?: string;
   deliveredAt: number;
 }
 
@@ -315,7 +318,8 @@ async function loadDeliveryReceipts(nowSecs = Math.floor(Date.now() / 1000)): Pr
 async function recordDelivered(transferId: string, deliveredAt: number): Promise<void> {
   await receiptOperations.run(async () => {
     const receipts = (await loadDeliveryReceipts(deliveredAt)).filter((item) => item.transferId !== transferId);
-    receipts.push({ transferId, deliveredAt });
+    const deliveredItem = await outboxGet(transferId);
+    receipts.push({ transferId, deliveredAt, title: deliveredItem?.title.slice(0, 500), sourceUrl: String(deliveredItem?.manifest.sourceUrl ?? "").slice(0, 2000) });
     await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts.slice(-1000) });
   });
 }
@@ -371,7 +375,7 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
   checkLimits({ compressedBytes: gz.length, expandedBytes: canonicalBytes.length, titleLen: raw.title.length, urlLen: (raw.sourceUrl ?? "").length, chunkCount: chunks.length });
   const transferId = randomHex(16);
   const compressedSha256 = await shaHex(gz);
-  const allowedSourceTypes = new Set(["web", "chatgpt", "claude", "gemini", "perplexity", "selection"]);
+  const allowedSourceTypes = new Set(["web", "chatgpt", "claude", "gemini", "perplexity", "notebook", "grok", "substack", "x", "selection"]);
   const sourceType = allowedSourceTypes.has(raw.sourceType ?? "") ? raw.sourceType! : "web";
   const manifest = {
     protocol: READER_PROTOCOL, type: "manifest", transferId, documentId: docId,
@@ -966,12 +970,13 @@ async function startPairingInternal(): Promise<{ qr: PairingRequestV2; sessionId
   const pairingPubkey = getPublicKey(pairingSeckey);
   const now = Math.floor(Date.now() / 1000);
   const candidates = await configuredRelaySet();
-  // Do not contact a user-supplied hostname before Android has resolved and
-  // rejected private/local destinations. The fixed public defaults bootstrap
-  // the handshake; Android then validates the complete signed set.
-  const readyRelays = await readyPairingRelays([...DEFAULT_RELAYS], pairingPubkey, pairingSeckey, now);
+  // These addresses came only from the owner's trusted settings page, never
+  // from an incoming response. Probe the entire chosen set so default-relay
+  // downtime cannot veto two healthy custom relays. Android independently
+  // enforces public DNS destinations before any connection.
+  const readyRelays = await readyPairingRelays(candidates, pairingPubkey, pairingSeckey, now);
   if (readyRelays.length < RELAY_WRITE_QUORUM) {
-    throw new Error(`Only ${readyRelays.length} of 6 default relays are reachable; at least ${RELAY_WRITE_QUORUM} are required.`);
+    throw new Error(`Only ${readyRelays.length} of ${candidates.length} configured relays are reachable; at least ${RELAY_WRITE_QUORUM} are required.`);
   }
   const request = await createPairingRequest({
     sessionId: randomHex(16),
@@ -1076,11 +1081,47 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         relays: pairedRelays,
         pending: delivery.queued + delivery.relayAccepted + delivery.awaitingDevice,
         delivery,
+        recent: [
+          ...items.map(item => ({ transferId: item.transferId, title: item.title, sourceUrl: item.manifest.sourceUrl, state: item.status, time: item.createdAt, error: item.lastError })),
+          ...receipts.map(item => ({ transferId: item.transferId, title: item.title ?? "Delivered capture", sourceUrl: item.sourceUrl, state: "delivered", time: item.deliveredAt })),
+        ].sort((a, b) => b.time - a.time).slice(0, 100),
         defaultRelays: [...DEFAULT_RELAYS],
         customRelays,
         configuredRelays: nextRelays,
         relayChangePending: !!paired && !sameRelayOrder(pairedRelays, nextRelays),
       });
+    } else if (msg?.kind === "reader-transfer-action") {
+      const id = String(msg.transferId ?? "");
+      if (!/^[0-9a-f]{32}$/.test(id)) throw new Error("Invalid transfer identity");
+      const item = await outboxGet(id);
+      if (!item) throw new Error("This transfer is no longer pending");
+      if (msg.action === "discard") {
+        await transferOperations.run(id, () => outboxDelete(id));
+        sendResponse({ ok: true });
+      } else if (msg.action === "retry") {
+        if (item.status === "failed") throw new Error(item.lastError || "Repair the connection, then use Resend");
+        const paired = await loadPairedChannelState();
+        if (!paired) throw new Error("Connect a device first");
+        await pollForAcks().catch(() => undefined);
+        const { seckey } = await getDeviceKey();
+        await publishTransfer(id, seckey, paired.channelPubkey, true);
+        sendResponse({ ok: true });
+      } else if (msg.action === "export" || msg.action === "resend") {
+        const pieces = item.chunks.map(chunk => Uint8Array.from(atob(chunk), c => c.charCodeAt(0)));
+        const size = pieces.reduce((sum, piece) => sum + piece.length, 0);
+        if (size > 5 * 1024 * 1024) throw new Error("Stored transfer exceeds its size limit");
+        const compressed = new Uint8Array(size);
+        let offset = 0;
+        for (const piece of pieces) { compressed.set(piece, offset); offset += piece.length; }
+        const markdown = new TextDecoder("utf-8", { fatal: true }).decode(decodeReaderGzip(compressed));
+        if (await documentId(markdown) !== item.documentId) throw new Error("Stored content failed its integrity check");
+        if (msg.action === "export") sendResponse({ ok: true, markdown, title: item.title });
+        else {
+          const result = await queueCapture({ title: item.title, markdown, sourceUrl: String(item.manifest.sourceUrl ?? ""), sourceType: String(item.manifest.sourceType ?? "web") });
+          await transferOperations.run(id, () => outboxDelete(id));
+          sendResponse({ ok: true, ...result });
+        }
+      } else throw new Error("Unknown transfer action");
     } else if (msg?.kind === "reader-save-custom-relays") {
       const customRelays = normalizeCustomRelays(msg.relays);
       await chrome.storage.local.set({ [CUSTOM_RELAYS_KEY]: customRelays });

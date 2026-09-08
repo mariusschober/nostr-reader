@@ -1,0 +1,75 @@
+
+> reader-chrome@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+ ❯ tests/worker-runtime.test.ts (15 tests | 15 failed) 447ms
+   ❯ production worker persistence and request boundaries (7)
+     × commits unpaired capture and outbox before returning saved; schedules no pairing poll 80ms
+     × a lost response followed by worker replacement and message retry creates one transfer 1ms
+     × concurrent repeated messages share one durable result; later deliberate capture stays possible 1ms
+     × quota failure during capture commit cannot return saved or strand a send intent 1ms
+     × web content cannot invoke privileged status or identity operations 1ms
+     × registered options page is trusted even when Chrome supplies its tab 1ms
+     × malformed capture cannot create durable content or an identity 1ms
+   ❯ context-menu capture feedback (3)
+     × installs feedback on a generic page before saving, without losing the selected scope 4ms
+     × blocked page injection does not discard selected text or prevent badge feedback 9ms
+     × receipt status never exposes capture text and never guesses delivered for an unknown ID 2ms
+   ❯ production publication and ACK interleavings (5)
+     × authenticated phone receipt settles while a redundant relay is slow; late publication cannot resurrect it 221ms
+     × wrong manifest ACK never clears a capture despite valid phone signature 18ms
+     × a receipt-before-cleanup crash stops late publication and cleans up on a new worker without the relay ACK 38ms
+     × restores receipt polling after reload and after an all-relay read failure 25ms
+     × unavailable ACK queries report failure while publishing still makes progress 43ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 15 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/worker-runtime.test.ts > production worker persistence and request boundaries > commits unpaired capture and outbox before returning saved; schedules no pairing poll
+ FAIL  tests/worker-runtime.test.ts > production worker persistence and request boundaries > a lost response followed by worker replacement and message retry creates one transfer
+ FAIL  tests/worker-runtime.test.ts > production worker persistence and request boundaries > concurrent repeated messages share one durable result; later deliberate capture stays possible
+ FAIL  tests/worker-runtime.test.ts > production worker persistence and request boundaries > quota failure during capture commit cannot return saved or strand a send intent
+ FAIL  tests/worker-runtime.test.ts > production worker persistence and request boundaries > web content cannot invoke privileged status or identity operations
+ FAIL  tests/worker-runtime.test.ts > production worker persistence and request boundaries > registered options page is trusted even when Chrome supplies its tab
+ FAIL  tests/worker-runtime.test.ts > production worker persistence and request boundaries > malformed capture cannot create durable content or an identity
+ FAIL  tests/worker-runtime.test.ts > context-menu capture feedback > installs feedback on a generic page before saving, without losing the selected scope
+ FAIL  tests/worker-runtime.test.ts > context-menu capture feedback > blocked page injection does not discard selected text or prevent badge feedback
+ FAIL  tests/worker-runtime.test.ts > context-menu capture feedback > receipt status never exposes capture text and never guesses delivered for an unknown ID
+TypeError: Cannot read properties of undefined (reading 'onAdded')
+ ❯ src/background/site-access.ts:26:20
+     24|   return pending;
+     25| }
+     26| chrome.permissions.onAdded.addListener(() => { void refreshSiteScripts…
+       |                    ^
+     27| chrome.permissions.onRemoved.addListener(() => { void refreshSiteScrip…
+     28| void refreshSiteScripts().catch(() => {});
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/15]⎯
+
+ FAIL  tests/worker-runtime.test.ts > production publication and ACK interleavings > authenticated phone receipt settles while a redundant relay is slow; late publication cannot resurrect it
+ FAIL  tests/worker-runtime.test.ts > production publication and ACK interleavings > wrong manifest ACK never clears a capture despite valid phone signature
+ FAIL  tests/worker-runtime.test.ts > production publication and ACK interleavings > a receipt-before-cleanup crash stops late publication and cleans up on a new worker without the relay ACK
+ FAIL  tests/worker-runtime.test.ts > production publication and ACK interleavings > restores receipt polling after reload and after an all-relay read failure
+ FAIL  tests/worker-runtime.test.ts > production publication and ACK interleavings > unavailable ACK queries report failure while publishing still makes progress
+TypeError: Cannot read properties of undefined (reading 'onAdded')
+ ❯ src/background/site-access.ts:26:20
+     24|   return pending;
+     25| }
+     26| chrome.permissions.onAdded.addListener(() => { void refreshSiteScripts…
+       |                    ^
+     27| chrome.permissions.onRemoved.addListener(() => { void refreshSiteScrip…
+     28| void refreshSiteScripts().catch(() => {});
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/15]⎯
+
+
+ Test Files  1 failed | 21 passed (22)
+      Tests  15 failed | 117 passed (132)
+   Start at  03:03:18
+   Duration  1.38s (tests 46%, environment 21%, transform 19%, import 11%, worker 3%)
+
+    Isolate  22 workers spawned · ~214ms startup each (spawn + environment, per file)
+             at least ~310ms faster with isolate: false — reuses workers across files instead of one per file
+

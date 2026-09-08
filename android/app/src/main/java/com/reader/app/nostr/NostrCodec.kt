@@ -226,7 +226,7 @@ object NostrCodec {
 }
 
 /** Minimal relay client over OkHttp WebSocket: publish w/ OK, subscribe window. */
-class RelayClient private constructor(private val http: OkHttpClient) {
+class RelayClient internal constructor(private val http: OkHttpClient) {
   constructor() : this(sharedHttp)
 
   companion object {
@@ -242,10 +242,13 @@ class RelayClient private constructor(private val http: OkHttpClient) {
       .callTimeout(12, TimeUnit.SECONDS).build()
   }
 
-  /** Explicit test-only route for a loopback MockWebServer. Never used by the app. */
-  internal constructor(allowLocalForTests: Boolean) : this(
-    if (allowLocalForTests) OkHttpClient() else throw IllegalArgumentException("test client must opt into local relay mode"),
-  )
+  /** Uses the same guarded DNS policy as the actual connection, including on reconnect. */
+  fun validateRelayAddresses(relays: List<String>) {
+    relays.forEach { relay ->
+      require(PairingProtocol.normalizeRelayUrl(relay) == relay)
+      require(http.dns.lookup(URI(relay).host).isNotEmpty()) { "relay DNS lookup failed" }
+    }
+  }
   data class Health(val url: String, val ok: Boolean, val nip11: String?, val note: String)
 
   enum class PublishState {

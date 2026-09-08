@@ -1,6 +1,6 @@
 <resources>
   <style name="Theme.Reader" parent="android:Theme.Material.NoActionBar">
-    <item name="android:windowBackground">#FFFCF0</item>
+    <item name="android:windowBackground">#1C1B1A</item>
     <item name="android:statusBarColor">#FFFCF0</item>
     <item name="android:navigationBarColor">#FFFCF0</item>
   </style>

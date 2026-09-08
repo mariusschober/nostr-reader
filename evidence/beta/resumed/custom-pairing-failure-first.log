@@ -1,0 +1,44 @@
+
+> reader-chrome@0.1.0 test
+> vitest run --run tests/default-relays.test.ts
+
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+ ❯ tests/default-relays.test.ts (6 tests | 1 failed) 9ms
+   ❯ cross-platform default relay contract (6)
+     × can recover both pairing messages from owner-configured custom relays when defaults fail 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/default-relays.test.ts > cross-platform default relay contract > can recover both pairing messages from owner-configured custom relays when defaults fail
+AssertionError: expected [ 'wss://nos.lol', …(5) ] to deeply equal [ 'wss://nos.lol', …(6) ]
+
+- Expected
++ Received
+
+@@ -3,7 +3,6 @@
+    "wss://relay.primal.net",
+    "wss://relay.nostr.net",
+    "wss://nostr.oxtr.dev",
+    "wss://offchain.pub",
+    "wss://nostr-pub.wellorder.net",
+-   "wss://custom.example",
+  ]
+
+ ❯ tests/default-relays.test.ts:73:60
+     71|   it("can recover both pairing messages from owner-configured custom r…
+     72|     const bound = [...DEFAULT_RELAYS, "wss://custom.example"];
+     73|     expect(pairingReadRelays("bootstrap_response", bound)).toEqual(bou…
+       |                                                            ^
+     74|     expect(pairingReadRelays("authenticated_completion", bound)).toEqu…
+     75|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  01:15:37
+   Duration  209ms (transform 62%, import 25%, tests 10%, worker 3%)
+

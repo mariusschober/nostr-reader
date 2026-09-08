@@ -1,6 +1,7 @@
 package com.reader.app.sync
 
 import android.content.Context
+import com.reader.app.readerRelayClient
 import android.util.Log
 import androidx.work.*
 import com.reader.app.core.ReaderCore
@@ -69,7 +70,18 @@ class ReaderSyncSession(private val applicationContext: Context) {
   suspend fun runOnce(): Boolean = syncMutex.withLock {
     val db = ReaderDb.get(applicationContext)
     val keys = KeystoreWrap(applicationContext)
-    val relays = RelayClient()
+    val relays = applicationContext.readerRelayClient()
+    var healthyConnections = 0
+    var failedConnections = 0
+    suspend fun recordHealth(error: String?) {
+      val previous = db.syncHealth().get()
+      val now = System.currentTimeMillis()
+      db.syncHealth().put(com.reader.app.data.SyncHealthEntity(
+        checkedAt = now, successfulAt = if (healthyConnections > 0 && error == null) now else previous?.successfulAt,
+        healthyRelays = healthyConnections, failedRelays = failedConnections,
+        pendingTransfers = db.syncHealth().pendingTransfers(), pendingReceipts = db.syncHealth().pendingReceipts(), error = error,
+      ))
+    }
     return@withLock try {
       db.chunks().purgeExpired(System.currentTimeMillis())
       db.manifests().purgeExpired(System.currentTimeMillis() / 1000)
@@ -147,7 +159,11 @@ class ReaderSyncSession(private val applicationContext: Context) {
                 } catch (error: CancellationException) { throw error
                 } catch (_: Exception) { false }
               }
-            }.awaitAll().let { results -> if (results.any { !it }) receiveFailed = true }
+            }.awaitAll().let { results ->
+              healthyConnections += results.count { it }
+              failedConnections += results.count { !it }
+              if (results.any { !it }) receiveFailed = true
+            }
           } finally {
             intakeQueue.close()
           }
@@ -156,10 +172,12 @@ class ReaderSyncSession(private val applicationContext: Context) {
           acknowledger.join()
         }
       }
+      recordHealth(if (receiveFailed) "Some relay connections or incoming transfers could not be completed. Reader will retry." else null)
       syncNeedsRetry(pairingRetryNeeded, ackRetryNeeded) || receiveFailed
     } catch (error: CancellationException) {
       throw error
     } catch (e: Exception) {
+      runCatching { recordHealth("Sync could not finish. Reader will retry.") }
       true
     }
   }

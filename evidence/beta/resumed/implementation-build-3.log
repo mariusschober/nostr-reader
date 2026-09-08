@@ -1,0 +1,54 @@
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:kspDebugKotlin
+
+> Task :app:compileDebugKotlin
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/tts/TtsMediaPlayer.kt:116:16 This declaration overrides a deprecated member but is not marked as deprecated itself. Please add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/tts/TtsMediaPlayer.kt:118:16 This declaration overrides a deprecated member but is not marked as deprecated itself. Please add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/tts/TtsMediaPlayer.kt:120:16 This declaration overrides a deprecated member but is not marked as deprecated itself. Please add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/tts/TtsMediaPlayer.kt:122:16 This declaration overrides a deprecated member but is not marked as deprecated itself. Please add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/ArticleRenderer.kt:89:7 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/ArticleRenderer.kt:105:9 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/ArticleRenderer.kt:108:11 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/ArticleRenderer.kt:126:32 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/InboxScreen.kt:121:13 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/InboxScreen.kt:213:19 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/InboxScreen.kt:344:7 'fun LinearProgressIndicator(progress: Float, modifier: Modifier = ..., color: Color = ..., trackColor: Color = ..., strokeCap: StrokeCap = ...): Unit' is deprecated. Use the overload that takes `progress` as a lambda.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/ReaderScreen.kt:103:32 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/ReaderScreen.kt:160:15 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/SettingsScreen.kt:37:30 'val Icons.Filled.ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/main/java/com/reader/app/ui/screens/SettingsScreen.kt:57:11 'fun Divider(modifier: Modifier = ..., thickness: Dp = ..., color: Color = ...): Unit' is deprecated. Renamed to HorizontalDivider.
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:processDebugJavaRes
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:kspDebugUnitTestKotlin
+
+> Task :app:compileDebugUnitTestKotlin
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/test/java/com/reader/app/Nip44Test.kt:15:27 Java type mismatch: inferred type is 'kotlin.String?', but 'kotlin.String' was expected.
+w: file:///Users/schober/Projects/Nostr%20Reader/android/app/src/test/java/com/reader/app/Nip44Test.kt:23:27 Java type mismatch: inferred type is 'kotlin.String?', but 'kotlin.String' was expected.
+
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 29s
+25 actionable tasks: 9 executed, 16 up-to-date

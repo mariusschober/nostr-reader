@@ -62,14 +62,14 @@ export function validatePairedRelaySet(value: unknown): string[] {
 }
 
 /**
- * The unauthenticated response bootstrap is read only from fixed relays. Once
- * Android's response authenticates the complete relay digest, Chrome must
- * listen for completion on the entire bound set—including custom relays.
+ * Both phases use the exact set chosen by the owner on a trusted settings
+ * page and committed into this locally-created pairing transcript. An incoming
+ * response never supplies a hostname. The envelope must still authenticate.
  */
 export function pairingReadRelays(
   phase: "bootstrap_response" | "authenticated_completion",
   value: unknown,
 ): string[] {
   const relays = validatePairedRelaySet(value);
-  return phase === "bootstrap_response" ? [...DEFAULT_RELAYS] : relays;
+  return relays;
 }

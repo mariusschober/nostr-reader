@@ -6,7 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "documents")
+@Entity(tableName = "documents", indices = [Index(value = ["list", "createdAt", "documentId"])])
 data class DocumentEntity(
   @PrimaryKey val documentId: String,
   val title: String,
@@ -29,6 +29,23 @@ data class DocumentEntity(
   val createdAt: Long,
   val updatedAt: Long,
 )
+
+/** List rows never contain article bodies or parser trees. */
+data class DocumentSummary(
+  val documentId: String, val title: String, val sourceType: String, val sourceName: String?,
+  val wordCount: Int, val state: String, val list: String, val progressFraction: Float,
+  val createdAt: Long, val updatedAt: Long,
+)
+
+/** Bounded rows avoid Android CursorWindow limits, while preserving Room atomicity. */
+@Entity(
+  tableName = "document_content", primaryKeys = ["documentId", "part"],
+  foreignKeys = [ForeignKey(entity = DocumentEntity::class, parentColumns = ["documentId"],
+    childColumns = ["documentId"], onDelete = ForeignKey.CASCADE)],
+)
+data class DocumentContentEntity(val documentId: String, val part: Int, val text: String, val startUtf16: Int, val endUtf16: Int)
+
+const val CONTENT_PART_CHARS = 32768
 
 @Entity(tableName = "channels")
 data class ChannelEntity(
@@ -122,45 +139,110 @@ data class ProcessedEventEntity(
 )
 
 @Dao
-interface DocumentDao {
+abstract class DocumentDao {
   @Query("SELECT CAST(COUNT(*) AS TEXT) || ':' || CAST(COALESCE(MAX(updatedAt), 0) AS TEXT) FROM documents")
-  fun observeRevision(): Flow<String>
+  abstract fun observeRevision(): Flow<String>
 
-  @Query("SELECT * FROM documents WHERE list = 'inbox' ORDER BY createdAt DESC")
-  suspend fun inbox(): List<DocumentEntity>
-
-  @Query("SELECT * FROM documents WHERE list = 'archived' ORDER BY updatedAt DESC")
-  suspend fun archived(): List<DocumentEntity>
-
-  @Query("SELECT * FROM documents WHERE list = :list ORDER BY createdAt DESC")
-  suspend fun byList(list: String): List<DocumentEntity>
-
-  @Query("UPDATE documents SET list = :list, updatedAt = :now WHERE documentId = :id")
-  suspend fun setList(id: String, list: String, now: Long)
-
-  @Query("DELETE FROM documents WHERE documentId = :id")
-  suspend fun deleteById(id: String)
+  @Query("SELECT documentId, title, sourceType, sourceName, wordCount, state, list, progressFraction, createdAt, updatedAt FROM documents ORDER BY createdAt DESC, documentId ASC")
+  abstract fun observeSummaries(): Flow<List<DocumentSummary>>
 
   @Query("SELECT * FROM documents WHERE documentId = :id LIMIT 1")
-  suspend fun byId(id: String): DocumentEntity?
+  abstract fun observeMetadata(id: String): Flow<DocumentEntity?>
+
+  @Query("SELECT * FROM documents WHERE list = 'inbox' ORDER BY createdAt DESC")
+  abstract suspend fun inbox(): List<DocumentEntity>
+
+  @Query("SELECT * FROM documents WHERE list = 'archived' ORDER BY updatedAt DESC")
+  abstract suspend fun archived(): List<DocumentEntity>
+
+  @Query("SELECT * FROM documents WHERE list = :list ORDER BY createdAt DESC")
+  abstract suspend fun byList(list: String): List<DocumentEntity>
+
+  @Query("UPDATE documents SET list = :list, updatedAt = :now WHERE documentId = :id")
+  abstract suspend fun setList(id: String, list: String, now: Long)
+
+  @Query("DELETE FROM documents WHERE documentId = :id")
+  abstract suspend fun deleteById(id: String)
+
+  @Query("SELECT * FROM documents WHERE documentId = :id LIMIT 1")
+  abstract suspend fun metadataById(id: String): DocumentEntity?
+
+  @Query("SELECT * FROM document_content WHERE documentId = :id ORDER BY part")
+  abstract suspend fun contentParts(id: String): List<DocumentContentEntity>
+
+  @Query("SELECT text FROM document_content WHERE documentId = :id AND part = :part")
+  abstract suspend fun contentPart(id: String, part: Int): String?
+
+  @Query("SELECT COUNT(*) FROM document_content WHERE documentId = :id")
+  abstract suspend fun contentPartCount(id: String): Int
+
+  @Query("SELECT COALESCE(MAX(endUtf16), 0) FROM document_content WHERE documentId = :id")
+  abstract suspend fun contentLength(id: String): Int
+
+  @Query("SELECT * FROM document_content WHERE documentId = :id AND startUtf16 < :end AND endUtf16 > :start ORDER BY part")
+  abstract suspend fun contentRangeParts(id: String, start: Int, end: Int): List<DocumentContentEntity>
+
+  @Transaction
+  open suspend fun contentRange(id: String, start: Int, end: Int): String = buildString {
+    for (part in contentRangeParts(id, start, end)) {
+      append(part.text.substring((start - part.startUtf16).coerceAtLeast(0), (end - part.startUtf16).coerceAtMost(part.text.length)))
+    }
+  }
+
+  @Transaction
+  open suspend fun byId(id: String): DocumentEntity? {
+    val metadata = metadataById(id) ?: return null
+    val count = contentPartCount(id)
+    return metadata.copy(canonicalMarkdown = buildString {
+      for (part in 0 until count) append(checkNotNull(contentPart(id, part)) { "Article content is incomplete" })
+    })
+  }
 
   @Query("SELECT EXISTS(SELECT 1 FROM documents WHERE documentId = :id)")
-  suspend fun exists(id: String): Boolean
+  abstract suspend fun exists(id: String): Boolean
 
   @Insert(onConflict = OnConflictStrategy.IGNORE)
-  suspend fun insert(doc: DocumentEntity): Long
+  protected abstract suspend fun insertMetadata(doc: DocumentEntity): Long
+
+  @Insert(onConflict = OnConflictStrategy.ABORT)
+  protected abstract suspend fun insertContent(part: DocumentContentEntity)
+
+  /** The surrounding intake transaction commits content, metadata and ACK intent together. */
+  @Transaction
+  open suspend fun insert(doc: DocumentEntity): Long {
+    val row = insertMetadata(doc.copy(canonicalMarkdown = ""))
+    if (row == -1L) return row
+    var start = 0
+    var part = 0
+    var bytes = 0
+    while (start < doc.canonicalMarkdown.length) {
+      var end = (start + CONTENT_PART_CHARS).coerceAtMost(doc.canonicalMarkdown.length)
+      if (end < doc.canonicalMarkdown.length && Character.isHighSurrogate(doc.canonicalMarkdown[end - 1])) end--
+      val text = doc.canonicalMarkdown.substring(start, end)
+      bytes += text.toByteArray(Charsets.UTF_8).size
+      require(bytes <= com.reader.app.core.ReaderCore.MAX_EXPANDED_BYTES) { "Article exceeds 20 MiB" }
+      insertContent(DocumentContentEntity(doc.documentId, part++, text, start, end))
+      start = end
+    }
+    return row
+  }
 
   @Update
-  suspend fun update(doc: DocumentEntity)
+  protected abstract suspend fun updateMetadata(doc: DocumentEntity)
+
+  open suspend fun update(doc: DocumentEntity) = updateMetadata(doc.copy(canonicalMarkdown = ""))
+
+  @Query("UPDATE documents SET progressBlockId = :blockId, progressCharOffset = :charOffset, progressFraction = :fraction, state = 'reading', lastOpenedAt = :now, updatedAt = :now WHERE documentId = :id")
+  abstract suspend fun setProgress(id: String, blockId: String, charOffset: Int, fraction: Float, now: Long)
 
   @Query("UPDATE documents SET state = :state, updatedAt = :now WHERE documentId = :id")
-  suspend fun setState(id: String, state: String, now: Long)
+  abstract suspend fun setState(id: String, state: String, now: Long)
 
   @Query("SELECT COALESCE(SUM(wordCount),0) FROM documents WHERE state IN ('unread','reading')")
-  suspend fun unreadWords(): Long
+  abstract suspend fun unreadWords(): Long
 
   @Query("SELECT COALESCE(SUM(wordCount),0) FROM documents WHERE list = :list")
-  suspend fun wordsInList(list: String): Long
+  abstract suspend fun wordsInList(list: String): Long
 }
 
 @Dao
@@ -418,17 +500,77 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
   }
 }
 
+val MIGRATION_6_7 = object : Migration(6, 7) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("""CREATE TABLE IF NOT EXISTS document_content (
+      documentId TEXT NOT NULL, part INTEGER NOT NULL, text TEXT NOT NULL, startUtf16 INTEGER NOT NULL, endUtf16 INTEGER NOT NULL,
+      PRIMARY KEY(documentId, part),
+      FOREIGN KEY(documentId) REFERENCES documents(documentId) ON UPDATE NO ACTION ON DELETE CASCADE
+    )""".trimIndent())
+    // SQLite slices inside the database: no old oversized body crosses a CursorWindow.
+    // SQLite substr counts Unicode code points; concatenating the parts is byte-exact.
+    db.query("SELECT documentId, length(canonicalMarkdown) FROM documents").use { cursor ->
+      while (cursor.moveToNext()) {
+        val id = cursor.getString(0)
+        val length = cursor.getLong(1)
+        var start = 0L
+        var part = 0
+        while (start < length) {
+          db.execSQL("INSERT INTO document_content(documentId, part, text, startUtf16, endUtf16) SELECT documentId, ?, substr(canonicalMarkdown, ?, ?), 0, 0 FROM documents WHERE documentId = ?",
+            arrayOf(part++, start + 1, CONTENT_PART_CHARS, id))
+          start += CONTENT_PART_CHARS
+        }
+        var utf16 = 0
+        db.query("SELECT part, text FROM document_content WHERE documentId = ? ORDER BY part", arrayOf(id)).use { parts ->
+          while (parts.moveToNext()) {
+            val end = utf16 + parts.getString(1).length
+            db.execSQL("UPDATE document_content SET startUtf16 = ?, endUtf16 = ? WHERE documentId = ? AND part = ?", arrayOf(utf16, end, id, parts.getInt(0)))
+            utf16 = end
+          }
+        }
+      }
+    }
+    db.execSQL("UPDATE documents SET canonicalMarkdown = ''")
+    db.execSQL("CREATE INDEX IF NOT EXISTS index_documents_list_createdAt_documentId ON documents(list, createdAt, documentId)")
+  }
+}
+
+val MIGRATION_7_8 = object : Migration(7, 8) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("""CREATE TABLE IF NOT EXISTS highlights (
+      id TEXT NOT NULL PRIMARY KEY, documentId TEXT NOT NULL, quote TEXT NOT NULL,
+      sourceTitle TEXT NOT NULL, sourceUrl TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
+      startBlockId TEXT NOT NULL, startOffset INTEGER NOT NULL, endBlockId TEXT NOT NULL, endOffset INTEGER NOT NULL,
+      projectionVersion INTEGER NOT NULL, canonicalStart INTEGER NOT NULL, canonicalEnd INTEGER NOT NULL,
+      prefixContext TEXT NOT NULL, suffixContext TEXT NOT NULL, color TEXT NOT NULL, important INTEGER NOT NULL,
+      reviewCount INTEGER NOT NULL, lastReviewedAt INTEGER, revision INTEGER NOT NULL
+    )""".trimIndent())
+    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_highlights_documentId_projectionVersion_startBlockId_startOffset_endBlockId_endOffset ON highlights(documentId, projectionVersion, startBlockId, startOffset, endBlockId, endOffset)")
+    db.execSQL("CREATE INDEX IF NOT EXISTS index_highlights_createdAt_id ON highlights(createdAt, id)")
+    db.execSQL("CREATE TABLE IF NOT EXISTS review_state (part INTEGER NOT NULL PRIMARY KEY, json TEXT NOT NULL)")
+    db.execSQL("""CREATE TABLE IF NOT EXISTS sync_health (
+      id INTEGER NOT NULL PRIMARY KEY, checkedAt INTEGER NOT NULL, successfulAt INTEGER,
+      healthyRelays INTEGER NOT NULL, failedRelays INTEGER NOT NULL, pendingTransfers INTEGER NOT NULL,
+      pendingReceipts INTEGER NOT NULL, error TEXT
+    )""".trimIndent())
+  }
+}
+
 @Database(
   entities = [
     DocumentEntity::class,
+    DocumentContentEntity::class,
     ChannelEntity::class,
     ChunkEntity::class,
     ManifestEntity::class,
     AckIntentEntity::class,
     ProcessedEventEntity::class,
+    HighlightEntity::class,
+    ReviewStatePartEntity::class,
+    SyncHealthEntity::class,
   ],
-  version = 6,
-  exportSchema = false,
+  version = 8,
+  exportSchema = true,
 )
 abstract class ReaderDb : RoomDatabase() {
   abstract fun documents(): DocumentDao
@@ -437,13 +579,16 @@ abstract class ReaderDb : RoomDatabase() {
   abstract fun manifests(): ManifestDao
   abstract fun ackIntents(): AckIntentDao
   abstract fun processedEvents(): ProcessedEventDao
+  abstract fun highlights(): HighlightDao
+  abstract fun review(): ReviewDao
+  abstract fun syncHealth(): SyncHealthDao
 
   companion object {
     @Volatile
     private var instance: ReaderDb? = null
     fun get(ctx: Context): ReaderDb = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(ctx.applicationContext, ReaderDb::class.java, "reader.db")
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
         .build()
         .also { instance = it }
     }

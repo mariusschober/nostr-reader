@@ -15,7 +15,7 @@ android {
     targetSdk = 34
     versionCode = 1
     versionName = "0.1.0"
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    testInstrumentationRunner = "com.reader.app.QaTestRunner"
   }
   buildTypes {
     debug {
@@ -34,9 +34,12 @@ android {
   sourceSets {
     getByName("test").resources.srcDir("../../shared/test-vectors")
     getByName("androidTest").assets.srcDir("../../shared/test-vectors")
+    getByName("androidTest").assets.srcDir("schemas")
   }
   packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
   val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
@@ -44,6 +47,7 @@ dependencies {
   androidTestImplementation(composeBom)
   implementation("androidx.core:core-ktx:1.13.1")
   implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.3")
+  implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.3")
   implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
   implementation("androidx.activity:activity-compose:1.9.2")
   implementation("androidx.compose.ui:ui")

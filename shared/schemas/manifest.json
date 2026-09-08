@@ -31,7 +31,7 @@
     "manifestId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "documentId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "title": { "type": "string", "minLength": 1, "maxLength": 500 },
-    "sourceType": { "enum": ["web", "chatgpt", "claude", "gemini", "perplexity", "selection", "android-share", "android-process-text", "file", "mac-share", "mac-quick-action"] },
+    "sourceType": { "enum": ["web", "chatgpt", "claude", "gemini", "perplexity", "notebook", "grok", "substack", "x", "selection", "android-share", "android-process-text", "file", "mac-share", "mac-quick-action"] },
     "sourceName": { "type": "string", "maxLength": 200 },
     "sourceUrl": { "type": "string", "maxLength": 2000 },
     "author": { "type": "string", "maxLength": 300 },

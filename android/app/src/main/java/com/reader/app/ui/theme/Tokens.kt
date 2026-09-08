@@ -7,6 +7,14 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import com.reader.app.prefs.ThemeMode
 import com.reader.app.R
 import com.reader.app.prefs.ArticleBackground
 import com.reader.app.prefs.ArticleFont
@@ -20,6 +28,7 @@ object Flexoki {
   val Base300 = Color(0xFFB7B5AC)
   val Base400 = Color(0xFF9F9D96)
   val Base600 = Color(0xFF6F6E69)
+  val Base700 = Color(0xFF575653)
   val Base800 = Color(0xFF403E3C)
   val Base900 = Color(0xFF282726)
   val Base950 = Color(0xFF1C1B1A)
@@ -48,10 +57,41 @@ data class ReaderColors(
 )
 
 fun colorsFor(bg: ArticleBackground): ReaderColors = when (bg) {
-  ArticleBackground.PAPER -> ReaderColors(Flexoki.Paper, Flexoki.Paper, Flexoki.Black, Flexoki.Base600, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Red600)
-  ArticleBackground.SOFT -> ReaderColors(Flexoki.Base50, Flexoki.Base50, Flexoki.Black, Flexoki.Base600, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Red600)
+  ArticleBackground.FOLLOW_APP, ArticleBackground.PAPER -> ReaderColors(Flexoki.Paper, Flexoki.Base50, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Red600)
+  ArticleBackground.SOFT -> ReaderColors(Flexoki.Base50, Flexoki.Base100, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Red600)
   ArticleBackground.INK -> ReaderColors(Flexoki.Base950, Flexoki.Base950, Flexoki.Paper, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Red400)
   ArticleBackground.BLACK -> ReaderColors(Flexoki.Black, Flexoki.Black, Flexoki.Base100, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Red400)
+}
+
+val LocalReaderDark = staticCompositionLocalOf { false }
+
+fun resolvedBackground(background: ArticleBackground, dark: Boolean): ArticleBackground =
+  if (background == ArticleBackground.FOLLOW_APP) {
+    if (dark) ArticleBackground.INK else ArticleBackground.PAPER
+  } else background
+
+@Composable
+fun readerColors(background: ArticleBackground): ReaderColors = colorsFor(resolvedBackground(background, LocalReaderDark.current))
+
+@Composable
+fun appColors(): ReaderColors = colorsFor(if (LocalReaderDark.current) ArticleBackground.INK else ArticleBackground.PAPER)
+
+@Composable
+fun ReaderTheme(mode: ThemeMode, content: @Composable () -> Unit) {
+  val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.LIGHT -> false; ThemeMode.DARK -> true }
+  val c = colorsFor(if (dark) ArticleBackground.INK else ArticleBackground.PAPER)
+  val scheme = if (dark) darkColorScheme(
+    primary = c.text, onPrimary = c.background, primaryContainer = c.divider, onPrimaryContainer = c.text,
+    secondary = c.link, onSecondary = c.background, background = c.background, onBackground = c.text,
+    surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
+    outline = c.secondary, error = c.error,
+  ) else lightColorScheme(
+    primary = c.text, onPrimary = c.background, primaryContainer = c.divider, onPrimaryContainer = c.text,
+    secondary = c.link, onSecondary = c.background, background = c.background, onBackground = c.text,
+    surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
+    outline = c.secondary, error = c.error,
+  )
+  CompositionLocalProvider(LocalReaderDark provides dark) { MaterialTheme(colorScheme = scheme, content = content) }
 }
 
 /** Bundled article fonts (assets/fonts). No network loading. */

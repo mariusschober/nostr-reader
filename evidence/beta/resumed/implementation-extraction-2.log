@@ -1,0 +1,51 @@
+
+> reader-chrome@0.1.0 test
+> vitest run --run tests/extraction.test.ts
+
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+ ❯ tests/extraction.test.ts (6 tests | 1 failed) 131ms
+   ❯ structured response capture (2)
+     × preserves emphasis, fenced code, nested lists, and table cells without button text 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/extraction.test.ts > structured response capture > preserves emphasis, fenced code, nested lists, and table cells without button text
+AssertionError: expected '**Bold** and _quiet_\n\n```\nline one…' to contain '*quiet*'
+
+- Expected
++ Received
+
+- *quiet*
++ **Bold** and _quiet_
++
++ ```
++ line one
++ line two
++ ```
++
++ 1.  First
++     *   Nested
++
++ | Name | Value |
++ | --- | --- |
++ | A | 1 \| 2 |
++
+
+ ❯ tests/extraction.test.ts:60:31
+     58|     const captured = adapter.extractResponse(adapter.findAssistantResp…
+     59|     expect(captured.markdown).toContain("**Bold**");
+     60|     expect(captured.markdown).toContain("*quiet*");
+       |                               ^
+     61|     expect(captured.markdown).toContain("```\nline one\nline two\n```"…
+     62|     expect(captured.markdown).toContain("Nested");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  03:01:53
+   Duration  868ms (environment 67%, tests 17%, import 8%, transform 7%)
+

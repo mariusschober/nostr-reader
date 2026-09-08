@@ -31,7 +31,7 @@ import com.reader.app.cursor.SemanticCursor
 import com.reader.app.data.DocumentEntity
 import com.reader.app.prefs.*
 import com.reader.app.ui.theme.ReaderFonts
-import com.reader.app.ui.theme.colorsFor
+import com.reader.app.ui.theme.readerColors
 import com.reader.app.ui.theme.fontFor
 import com.reader.app.ui.theme.marginDp
 import kotlinx.coroutines.launch
@@ -52,7 +52,7 @@ fun ReaderScreen(
   onReadLater: () -> Unit,
   onArchive: () -> Unit,
 ) {
-  val c = colorsFor(settings.background)
+  val c = readerColors(settings.background)
   val font = fontFor(settings.font)
   val scope = rememberCoroutineScope()
   val listState = rememberLazyListState()
@@ -205,7 +205,7 @@ private fun inlineLen(i: com.reader.app.core.Inline): Int = when (i) {
 
 @Composable
 fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit, onClose: () -> Unit) {
-  val c = colorsFor(settings.background)
+  val c = readerColors(settings.background)
   AlertDialog(
     onDismissRequest = onClose,
     containerColor = c.background,

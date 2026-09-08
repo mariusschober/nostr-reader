@@ -1,0 +1,21 @@
+
+com.reader.app.NativeSelectionSpikeInstrumentedTest:
+Error in nativeSelectionAcrossParagraphsAndViewport(com.reader.app.NativeSelectionSpikeInstrumentedTest):
+java.lang.AssertionError: Native handles scroll while extending the selection
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.reader.app.NativeSelectionSpikeInstrumentedTest.nativeSelectionAcrossParagraphsAndViewport(NativeSelectionSpikeInstrumentedTest.kt:131)
+
+
+Time: 8,322
+There was 1 failure:
+1) nativeSelectionAcrossParagraphsAndViewport(com.reader.app.NativeSelectionSpikeInstrumentedTest)
+java.lang.AssertionError: Native handles scroll while extending the selection
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.reader.app.NativeSelectionSpikeInstrumentedTest.nativeSelectionAcrossParagraphsAndViewport(NativeSelectionSpikeInstrumentedTest.kt:131)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

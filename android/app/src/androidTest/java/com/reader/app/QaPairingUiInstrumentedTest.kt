@@ -5,7 +5,9 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.util.Base64
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.KeyEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -17,7 +19,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class QaPairingUiInstrumentedTest {
   private val runner get() = InstrumentationRegistry.getInstrumentation()
-  private fun find(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+  internal fun find(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
     fun visit(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
       if (predicate(node)) return node
       for (i in 0 until node.childCount) node.getChild(i)?.let { visit(it)?.let { found -> return found } }
@@ -25,11 +27,11 @@ class QaPairingUiInstrumentedTest {
     }
     return runner.uiAutomation.rootInActiveWindow?.let(::visit)
   }
-  private fun waitNode(label: String, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo {
+  internal fun waitNode(label: String, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo {
     repeat(100) { find(predicate)?.let { return it }; SystemClock.sleep(100) }
-    error("QA UI control unavailable: $label")
+    error("QA UI control unavailable: $label; active package=${runner.uiAutomation.rootInActiveWindow?.packageName ?: "none"}")
   }
-  private fun click(label: String) {
+  internal fun click(label: String) {
     var node = waitNode(label) { it.text?.toString() == label || it.contentDescription?.toString() == label }
     while (!node.isClickable && node.parent != null) node = node.parent
     check(node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) { "QA UI click unavailable: $label" }
@@ -39,9 +41,12 @@ class QaPairingUiInstrumentedTest {
     assumeTrue("Opt-in isolated UI campaign", encoded != null)
     check(runner.targetContext.packageName == "com.reader.app.qa") { "QA package required" }
     val request = String(Base64.decode(encoded, Base64.NO_WRAP), Charsets.UTF_8)
-    runner.targetContext.startActivity(Intent().setClassName(runner.targetContext.packageName, "com.reader.app.ui.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    click("Import, paste, or pair")
-    click("Pair Chrome")
+    pairNative(request)
+  }
+
+  fun pairNative(request: String) {
+    check(runner.targetContext.packageName == "com.reader.app.qa") { "QA package required" }
+    openPairing()
     // Decline if Android asks. Never grant camera permission or read clipboard.
     SystemClock.sleep(500)
     if (find { it.text?.toString() == "Don't allow" } != null) click("Don't allow")
@@ -56,5 +61,11 @@ class QaPairingUiInstrumentedTest {
       SystemClock.sleep(100)
     }
     error("QA pairing did not reach library within 60 seconds")
+  }
+
+  internal fun openPairing() {
+    ActivityScenario.launch(com.reader.app.ui.MainActivity::class.java)
+    click("Import, paste, or pair")
+    click("Pair Chrome")
   }
 }

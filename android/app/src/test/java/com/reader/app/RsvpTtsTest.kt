@@ -35,7 +35,7 @@ class FakeEngine : TtsEngine {
   var lastSpeed = 1f
   override var supportsRangeCallback = false
   private var done: (() -> Unit)? = null
-  override fun speak(utteranceId: String, text: String, speed: Float, onStart: () -> Unit, onDone: () -> Unit, onRange: (Int, Int) -> Unit) {
+  override fun speak(utteranceId: String, text: String, speed: Float, onStart: () -> Unit, onDone: () -> Unit, onRange: (Int, Int) -> Unit, onError: (String) -> Unit) {
     spoken.add(text)
     onStart()
     done = onDone

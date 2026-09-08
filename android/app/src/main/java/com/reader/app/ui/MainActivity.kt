@@ -46,6 +46,8 @@ import com.reader.app.ui.screens.*
 import com.reader.app.ui.theme.colorsFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
@@ -76,8 +78,13 @@ class MainActivity : ComponentActivity() {
       }
     }
     handleIncomingIntent(intent)
+    window.setBackgroundDrawableResource(android.R.color.black)
     setContent {
-      val stack = remember { RouteStack() }
+      val loadedSettings by remember { prefs.flow }.collectAsState(initial = null)
+      val settings = loadedSettings ?: return@setContent
+      com.reader.app.ui.theme.ReaderTheme(settings.themeMode) {
+      var savedRoutes by rememberSaveable { mutableStateOf("[]") }
+      val stack = remember { RouteStack(runCatching { Json.decodeFromString<List<Route>>(savedRoutes) }.getOrDefault(emptyList())) }
       var tick by remember { mutableIntStateOf(0) }
       fun go(r: Route) { stack.push(r); tick++ }
       fun backToInbox() { stack.reset(); tick++ }
@@ -86,8 +93,13 @@ class MainActivity : ComponentActivity() {
       // schedules no recomposition, so navigation silently never renders
       // (row taps, settings, back all "did nothing" — bug #1, 2026-09-04).
       val route = remember(tick) { stack.current() }
-      var settings by remember { mutableStateOf(ReaderSettings()) }
-      var lists by remember { mutableStateOf(mapOf<String, List<com.reader.app.data.DocumentEntity>>()) }
+      SideEffect { savedRoutes = kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Route.serializer()), stack.snapshot()) }
+      var lists by remember { mutableStateOf(mapOf<String, List<com.reader.app.data.DocumentSummary>>()) }
+      var libraryLoaded by remember { mutableStateOf(false) }
+      var selectedTab by rememberSaveable { mutableStateOf(Triage.INBOX) }
+      val highlightSeed = rememberSaveable { java.security.SecureRandom().nextLong() }
+      var highlightsNewest by rememberSaveable { mutableStateOf(false) }
+      val highlightSummaries by remember { db.highlights().observeSummaries() }.collectAsState(initial = emptyList())
       var channels by remember { mutableStateOf(listOf<com.reader.app.data.ChannelEntity>()) }
       var minutesByList by remember { mutableStateOf(mapOf<String, Int>()) }
       var pairingError by remember { mutableStateOf<String?>(null) }
@@ -97,23 +109,27 @@ class MainActivity : ComponentActivity() {
       var ttsDocId by remember { mutableStateOf<String?>(null) }
       // Room invalidation keeps a visible inbox truthful when a background
       // relay sync commits a document after onResume's initial refresh.
-      val documentRevision by db.documents().observeRevision().collectAsState(initial = "initial")
+      val syncHealth by remember { db.syncHealth().observe() }.collectAsState(initial = null)
+      var syncing by remember { mutableStateOf(false) }
 
+
+      val windowColors = if (route is Route.Reader || route is Route.Rsvp) com.reader.app.ui.theme.readerColors(settings.background) else com.reader.app.ui.theme.appColors()
       SideEffect {
-        val bg = colorsFor(settings.background).background
+        val bg = windowColors.background
         window.statusBarColor = bg.toArgb()
         window.navigationBarColor = bg.toArgb()
         WindowCompat.getInsetsController(window, window.decorView)
           .isAppearanceLightStatusBars =
-          settings.background == ArticleBackground.PAPER ||
-            settings.background == ArticleBackground.SOFT
+          windowColors.text == com.reader.app.ui.theme.Flexoki.Black
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = windowColors.text == com.reader.app.ui.theme.Flexoki.Black
       }
 
       suspend fun refresh() {
         val loaded = withContext(Dispatchers.IO) {
-          Triage.TABS.associateWith { db.documents().byList(it) }
+          db.documents().observeSummaries().first().groupBy { it.list }
         }
         lists = loaded
+        libraryLoaded = true
         channels = withContext(Dispatchers.IO) { db.channels().active() }
         val mins = withContext(Dispatchers.IO) {
           Triage.TABS.associateWith { l ->
@@ -121,9 +137,18 @@ class MainActivity : ComponentActivity() {
           }
         }
         minutesByList = mins
-        settings = prefs.load()
       }
-      LaunchedEffect(refreshTick.value, documentRevision) { refresh() }
+      LaunchedEffect(refreshTick.value, route) {
+        if (route == Route.Inbox) {
+          db.documents().observeSummaries().collect { summaries ->
+            lists = summaries.groupBy { it.list }
+            minutesByList = lists.mapValues { (_, values) -> ((values.sumOf { it.wordCount.toLong() } + 224) / 225).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
+            libraryLoaded = true
+          }
+        } else if (route == Route.Settings || route == Route.Pairing) {
+          channels = withContext(Dispatchers.IO) { db.channels().active() }
+        }
+      }
 
       val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -139,34 +164,35 @@ class MainActivity : ComponentActivity() {
         }
       }
 
-      fun openTts(docId: String, from: SemanticCursor) {
+      fun openTts(docId: String, projection: com.reader.app.core.RenderedProjection, from: SemanticCursor) {
         lifecycleScope.launch {
-          val doc = withContext(Dispatchers.IO) { db.documents().byId(docId) } ?: return@launch
-          val blocks = withContext(Dispatchers.Default) { ArticleParser.parse(doc.canonicalMarkdown) }
-          val units = Narration.sentences(blocks)
-          val eng = (ttsEngine ?: AndroidTtsEngine(this@MainActivity).also { ttsEngine = it })
-          val ctl = (ttsController ?: TtsController(eng).also { ttsController = it })
-          ctl.onCursor = { blockId ->
-            lifecycleScope.launch {
-              val d = withContext(Dispatchers.IO) { db.documents().byId(docId) } ?: return@launch
-              withContext(Dispatchers.IO) {
-                db.documents().update(d.copy(progressBlockId = blockId, state = "reading", lastOpenedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
-              }
-              refresh()
-            }
+          val audioRepo = (application as com.reader.app.ReaderApp).articles
+          val audioIndex = audioRepo.index(docId)
+          val audioSection = audioRepo.section(docId, audioIndex.sectionFor(from.blockId))
+          val units = withContext(Dispatchers.Default) { Narration.sentences(projection) }
+          val eng = ttsEngine ?: AndroidTtsEngine(this@MainActivity).also { ttsEngine = it }
+          val ctl = ttsController ?: TtsController(eng).also { ttsController = it }
+          eng.onFocusLost = { ctl.pause() }
+          ctl.onPosition = { blockId, offset ->
+            val cursor = SemanticCursor(docId, blockId, offset)
+            (application as com.reader.app.ReaderApp).progress.offer(cursor,
+              audioSection.fraction(projection.offset(blockId, offset)))
           }
           ctl.onState = { ttsState = it }
-          val s = prefs.load()
-          ctl.load(units, from.blockId, s.ttsSpeed)
+          ctl.load(units, from.blockId, settings.ttsSpeed, from.charOffset)
           ttsDocId = docId
           ctl.play()
-          go(Route.Reader(docId))
         }
       }
 
       when (val r = route) {
         is Route.Inbox -> InboxScreen(
           lists = lists, minutes = minutesByList, settings = settings,
+          loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = { selectedTab = it },
+          highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, { highlightsNewest = it }) { chosen -> lifecycleScope.launch {
+            try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
+            catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn’t open review: ${e.message?.take(100)}", Toast.LENGTH_LONG).show() }
+          } } },
           onOpen = { go(Route.Reader(it)) },
           onMove = { id, target -> lifecycleScope.launch { moveToListDb(id, target); refresh() } },
           onUndoMove = { id, previous -> lifecycleScope.launch { moveToListDb(id, previous); refresh() } },
@@ -193,76 +219,117 @@ class MainActivity : ComponentActivity() {
           onPair = { go(Route.Pairing) },
           onSettings = { go(Route.Settings) },
         )
-        is Route.Reader -> {
-          val doc = Triage.TABS.firstNotNullOfOrNull { lists[it]?.find { d -> d.documentId == r.id } }
-          if (doc == null) {
-            LaunchedEffect(Unit) { backToInbox() }
-          } else {
-            val blocks = remember(doc.documentId, doc.canonicalMarkdown) { ArticleParser.parse(doc.canonicalMarkdown) }
-            ReaderWithTts(
-              docId = doc.documentId, blocks = blocks, settings = settings,
-              docState = doc,
-              ttsState = if (ttsDocId == doc.documentId) ttsState else null,
-              onSettingsChange = { lifecycleScope.launch { prefs.save(it); settings = it } },
-              onBack = {
-                ttsController?.pause()
-                ttsState = null
-                ttsDocId = null
-                backToInbox()
-                lifecycleScope.launch { refresh() }
-              },
-              onCursor = { cursor, frac ->
-                lifecycleScope.launch {
-                  withContext(Dispatchers.IO) {
-                    db.documents().byId(doc.documentId)?.let {
-                      db.documents().update(it.copy(progressBlockId = cursor.blockId, progressCharOffset = cursor.charOffset, progressFraction = frac, state = "reading", lastOpenedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
-                    }
-                  }
-                }
-              },
-              onEnterTts = { cursor -> openTts(doc.documentId, cursor) },
-              onEnterRsvp = { cursor -> go(Route.Rsvp(doc.documentId, cursor)) },
-              onReadLater = {
-                lifecycleScope.launch {
-                  moveToListDb(doc.documentId, Triage.LATER)
-                  refresh()
-                  Toast.makeText(this@MainActivity, "Saved for later", Toast.LENGTH_SHORT).show()
-                  backToInbox()
-                }
-              },
-              onArchive = { lifecycleScope.launch { moveToListDb(doc.documentId, Triage.ARCHIVED); refresh(); backToInbox() } },
-              onTtsPrev = { ttsController?.prev() },
-              onTtsToggle = {
-                val st = ttsState
-                if (st?.playing == true) ttsController?.pause() else ttsController?.play()
-              },
-              onTtsNext = { ttsController?.next() },
-              onTtsSpeed = { sp -> lifecycleScope.launch { prefs.save(prefs.load().copy(ttsSpeed = sp)); ttsController?.let { ttsState = it.state } } },
-              onTtsClose = { ttsController?.pause(); ttsState = null; ttsDocId = null },
-            )
+        is Route.Review -> {
+          val review = remember { com.reader.app.data.ReviewRepository(db) }
+          var reviewState by remember { mutableStateOf<com.reader.app.core.ReviewState?>(null) }
+          var quote by remember { mutableStateOf<com.reader.app.data.HighlightEntity?>(null) }
+          var busy by remember { mutableStateOf(true) }
+          var reviewError by remember { mutableStateOf<String?>(null) }
+          suspend fun loadReview(restart: Boolean = false) {
+            busy = true
+            try {
+              reviewState = review.resume(restart = restart)
+              quote = reviewState?.currentId?.let { db.highlights().byId(it) }
+              reviewError = null
+            } catch (e: Exception) { reviewError = "Couldn’t load review: ${e.message?.take(100)}" }
+            finally { busy = false }
           }
-        }
-        is Route.Rsvp -> {
-          val doc = Triage.TABS.firstNotNullOfOrNull { lists[it]?.find { d -> d.documentId == r.id } }
-          if (doc == null) {
-            LaunchedEffect(Unit) { backToInbox() }
-          } else {
-            val blocks = remember(doc.documentId) { ArticleParser.parse(doc.canonicalMarkdown) }
-            val tokens = remember(doc.documentId) { RsvpModel.tokens(blocks) }
-            val startIdx = tokens.indexOfFirst { it.blockId == r.from.blockId }.takeIf { it >= 0 } ?: 0
-            RsvpScreen(
-              tokens = tokens, settings = settings, startIndex = startIdx,
-              onWpm = { w -> lifecycleScope.launch { prefs.save(prefs.load().copy(rsvpWpm = w)) } },
-              onExit = { cursor ->
+          LaunchedEffect(Unit) { loadReview() }
+          ReviewScreen(reviewState, quote, busy, reviewError,
+            onBack = { stack.pop(); tick++ },
+            onNext = {
+              val id = quote?.id
+              if (!busy && id != null) {
+                busy = true
                 lifecycleScope.launch {
-                  withContext(Dispatchers.IO) {
-                    db.documents().byId(doc.documentId)?.let {
-                      db.documents().update(it.copy(progressBlockId = cursor.blockId, progressCharOffset = cursor.charOffset, state = "reading", updatedAt = System.currentTimeMillis()))
-                    }
-                  }
-                  go(Route.Reader(doc.documentId))
+                  try {
+                    reviewState = review.advance(id)
+                    quote = reviewState?.currentId?.let { db.highlights().byId(it) }
+                  } catch (e: Exception) { reviewError = "Couldn’t save review: ${e.message?.take(100)}" }
+                  finally { busy = false }
                 }
-              },
+              }
+            },
+            onImportant = {
+              val id = quote?.id
+              if (!busy && id != null) lifecycleScope.launch { quote = review.toggleImportant(id) }
+            },
+            onSource = {
+              quote?.let { selected -> lifecycleScope.launch {
+                if (db.documents().exists(selected.documentId)) {
+                  review.openedSource(selected.id)
+                  go(Route.Reader(selected.documentId, selected.id))
+                } else Toast.makeText(this@MainActivity, "Source article was deleted. Your quote is still saved.", Toast.LENGTH_LONG).show()
+              } }
+            },
+            onShare = {
+              quote?.let { selected ->
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                  type = "text/plain"
+                  putExtra(Intent.EXTRA_TEXT, selected.quote)
+                }, "Share quote"))
+              }
+            },
+            onRestart = { lifecycleScope.launch { loadReview(restart = true) } },
+          )
+        }
+        is Route.Reader -> PreparedReaderScreen(
+          id = r.id, highlightId = r.highlightId, settings = settings,
+          onSettingsChange = { lifecycleScope.launch { prefs.save(it) } },
+          onBack = {
+            ttsController?.pause(); ttsState = null; ttsDocId = null
+            stack.pop(); tick++
+          },
+          onListen = { projection, cursor -> openTts(r.id, projection, cursor) },
+          onSpeedRead = { cursor -> go(Route.Rsvp(r.id, cursor)) },
+          onLater = { lifecycleScope.launch {
+            moveToListDb(r.id, Triage.LATER); refresh(); stack.pop(); tick++
+          } },
+          onArchive = { lifecycleScope.launch {
+            moveToListDb(r.id, Triage.ARCHIVED); refresh(); stack.pop(); tick++
+          } },
+          player = {
+            if (ttsDocId == r.id) ttsState?.let { state ->
+              TtsBar(state, com.reader.app.ui.theme.readerColors(settings.background),
+                onPrev = { ttsController?.prev() },
+                onToggle = { if (state.playing) ttsController?.pause() else ttsController?.play() },
+                onNext = { ttsController?.next() },
+                onSpeed = { speed ->
+                  ttsController?.setSpeed(speed)
+                  lifecycleScope.launch { prefs.save(prefs.load().copy(ttsSpeed = speed)) }
+                },
+                onClose = { ttsController?.pause(); ttsState = null; ttsDocId = null },
+              )
+            }
+          },
+        )
+        is Route.Rsvp -> {
+          var section by remember(r.id, r.from) { mutableStateOf<com.reader.app.data.PreparedSection?>(null) }
+          var tokens by remember(r.id, r.from) { mutableStateOf<List<com.reader.app.rsvp.RsvpToken>?>(null) }
+          var error by remember { mutableStateOf<String?>(null) }
+          LaunchedEffect(r.id, r.from) {
+            try {
+              val repo = (application as com.reader.app.ReaderApp).articles
+              val index = repo.index(r.id)
+              val ready = repo.section(r.id, index.sectionFor(r.from.blockId))
+              section = ready
+              tokens = withContext(Dispatchers.Default) { RsvpModel.tokens(ready.projection) }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { error = e.message ?: "Couldn’t open speed reader" }
+          }
+          if (error != null) androidx.compose.material3.TextButton(onClick = { stack.pop(); tick++ }) { androidx.compose.material3.Text("$error — Back") }
+          else tokens?.let { ready ->
+            val candidates = ready.indices.filter { ready[it].blockId == r.from.blockId }
+            val start = candidates.lastOrNull { ready[it].start <= r.from.charOffset } ?: candidates.firstOrNull() ?: 0
+            RsvpScreen(tokens = ready, settings = settings, startIndex = start,
+              onWpm = { w -> lifecycleScope.launch { prefs.save(prefs.load().copy(rsvpWpm = w)) } },
+              onExit = { cursor -> lifecycleScope.launch {
+                val actual = cursor.copy(documentId = r.id)
+                val prepared = section
+                val writer = (application as com.reader.app.ReaderApp).progress
+                writer.offer(actual, prepared?.fraction(prepared.projection.offset(actual.blockId, actual.charOffset)) ?: 0f)
+                writer.flush(); stack.pop(); tick++
+              } },
             )
           }
         }
@@ -337,6 +404,13 @@ class MainActivity : ComponentActivity() {
         }
         is Route.Settings -> SettingsScreen(
           settings = settings, channels = channels,
+          syncHealth = syncHealth, syncing = syncing, onSync = {
+            if (!syncing) { syncing = true; lifecycleScope.launch {
+              try { withContext(Dispatchers.IO) { ReaderSyncSession(applicationContext).runOnce() } }
+              finally { syncing = false }
+            } }
+          },
+          onSettingsChange = { lifecycleScope.launch { prefs.save(it) } },
           signerLabel = "Private device key (Recommended). " + AmberSigner(this).status(),
           relaySummary = (channels.firstOrNull()?.relaysJson
             ?: "${READER_DEFAULT_RELAYS.size} default public relays (${READER_RELAY_WRITE_QUORUM} required per payload).") +
@@ -354,6 +428,7 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Random local keys by default. External signers only add provenance, never transport.", Toast.LENGTH_LONG).show()
           },
         )
+      }
       }
     }
   }
@@ -397,13 +472,17 @@ class MainActivity : ComponentActivity() {
   /** Manual archive export: ZIP of md + metadata JSON. Never keys. */
   private suspend fun exportArchive() {
     try {
-      val list = withContext(Dispatchers.IO) { Triage.TABS.flatMap { db.documents().byList(it) } }
+      val list = withContext(Dispatchers.IO) { db.documents().observeSummaries().first() }
       val out = getExternalFilesDir(null)?.resolve("reader-archive.zip") ?: throw IllegalStateException("no storage")
       withContext(Dispatchers.IO) {
         ZipOutputStream(out.outputStream()).use { zip ->
-          for (d in list) {
+          for (summary in list) {
+            val d = db.documents().observeMetadata(summary.documentId).first() ?: continue
             zip.putNextEntry(ZipEntry("${d.documentId}.md"))
-            zip.write(d.canonicalMarkdown.toByteArray())
+            for (part in 0 until db.documents().contentPartCount(d.documentId)) {
+              val text = checkNotNull(db.documents().contentPart(d.documentId, part)) { "Article content is incomplete" }
+              zip.write(text.toByteArray(Charsets.UTF_8))
+            }
             zip.closeEntry()
             zip.putNextEntry(ZipEntry("${d.documentId}.json"))
             val meta = buildJsonObject {
@@ -414,12 +493,30 @@ class MainActivity : ComponentActivity() {
             zip.write(meta.toByteArray())
             zip.closeEntry()
           }
+          zip.putNextEntry(ZipEntry("highlights.jsonl"))
+          var offset = 0
+          while (true) {
+            val page = db.highlights().exportPage(20, offset)
+            if (page.isEmpty()) break
+            for (quote in page) {
+              zip.write(Json.encodeToString(com.reader.app.data.HighlightEntity.serializer(), quote).toByteArray(Charsets.UTF_8))
+              zip.write(10)
+            }
+            offset += page.size
+          }
+          zip.closeEntry()
         }
       }
       Toast.makeText(this, "Exported ${list.size} articles. Note: exported Markdown is plaintext.", Toast.LENGTH_LONG).show()
     } catch (e: Exception) {
       Toast.makeText(this, "Export failed: ${e.message?.take(120)}", Toast.LENGTH_LONG).show()
     }
+  }
+
+  override fun onStop() {
+    ttsController?.pause()
+    runCatching { kotlinx.coroutines.runBlocking(Dispatchers.IO) { (application as com.reader.app.ReaderApp).progress.flush() } }
+    super.onStop()
   }
 
   override fun onDestroy() {

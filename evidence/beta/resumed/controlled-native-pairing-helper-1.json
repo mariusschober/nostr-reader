@@ -1,0 +1,8 @@
+{
+  "case": "controlled-native-pairing-helper-1",
+  "outcome": "FAIL",
+  "observed": "The native manual-entry helper returned IllegalStateException before it could confirm completion.",
+  "cause": "NOT ESTABLISHED. The owner also scanned the visible QR during this attempt.",
+  "subsequent_result": "Both real endpoints completed authenticated pairing; the first captured response has matching durable hashes and an authenticated receipt.",
+  "counting": "One observed pairing with owner-assisted scanning. This is not an automated pairing pass and does not satisfy the final 20-case campaign."
+}

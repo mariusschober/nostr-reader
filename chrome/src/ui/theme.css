@@ -1,0 +1,15 @@
+:root { color-scheme: light; --reader-bg:#fffcf0; --reader-surface:#f2f0e5; --reader-text:#100f0f; --reader-muted:#575653; --reader-line:#cecdc3; --reader-link:#205ea6; --reader-error:#af3029; --reader-success:#66800b; }
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) { color-scheme:dark; --reader-bg:#1c1b1a; --reader-surface:#282726; --reader-text:#fffcf0; --reader-muted:#b7b5ac; --reader-line:#575653; --reader-link:#4385be; --reader-error:#d14d41; --reader-success:#879a39; }
+}
+:root[data-theme="dark"] { color-scheme:dark; --reader-bg:#1c1b1a; --reader-surface:#282726; --reader-text:#fffcf0; --reader-muted:#b7b5ac; --reader-line:#575653; --reader-link:#4385be; --reader-error:#d14d41; --reader-success:#879a39; }
+html, body { background:var(--reader-bg)!important; color:var(--reader-text)!important; }
+p, .tag { color:var(--reader-muted)!important; }
+a { color:var(--reader-link); }
+section, .relay-list, .relay-list li { border-color:var(--reader-line)!important; }
+.relay-list, .tag, .notice { background:var(--reader-surface)!important; color:var(--reader-text)!important; }
+button, input, select, textarea { background:var(--reader-surface)!important; color:var(--reader-text)!important; border-color:var(--reader-line)!important; }
+button.primary { background:var(--reader-text)!important; color:var(--reader-bg)!important; }
+.message { color:var(--reader-success)!important; }
+.message.error { color:var(--reader-error)!important; }
+:focus-visible { outline:2px solid var(--reader-link); outline-offset:3px; }

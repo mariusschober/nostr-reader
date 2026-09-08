@@ -14,4 +14,5 @@ document.getElementById("status").innerHTML = s.paired
   : `<span class="warn">Not paired</span> — scan with Reader on Android`;
 document.getElementById("open").onclick = () => chrome.tabs.create({url: chrome.runtime.getURL("src/ui/pairing.html")});
 document.getElementById("retry").onclick = async () => { await chrome.runtime.sendMessage({kind:"reader-retry"}); location.reload(); };
-</script></body></html>
+</script>  <script type="module" src="./theme.ts"></script>
+</body></html>

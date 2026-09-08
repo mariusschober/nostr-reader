@@ -32,11 +32,13 @@
 </head>
 <body>
   <h2>Reader settings</h2>
+  <section><h3>Appearance</h3><label for="appTheme">Theme</label><select id="appTheme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></section>
   <section>
     <h3>Connected device</h3>
     <div id="dev">…</div>
     <button id="disconnect" type="button" hidden>Disconnect device</button>
   </section>
+  <details><summary>Advanced: relays and provenance</summary>
   <section>
     <h3>Relays</h3>
     <p>Reader starts with six public relays and requires any two to accept each encrypted payload. You can add up to two custom relays.</p>
@@ -55,9 +57,11 @@
       <div><button id="repair" class="primary" type="button">Re-pair to apply</button></div>
     </div>
   </section>
+  </details>
   <section>
     <h3>Site access</h3>
-    <p>Inline Reader buttons appear on supported AI sites when Chrome grants Reader access. Manage site access from Chrome's Extensions menu.</p>
+    <p>Enable inline Reader buttons only on sites you choose. Toolbar capture works on the current tab when you click Reader.</p>
+    <div id="siteAccess"></div><p id="siteAccessMessage" role="status"></p>
   </section>
   <section>
     <h3>Signing</h3>
@@ -65,7 +69,9 @@
     <div id="signer">…</div>
   </section>
   <section>
-    <h3>Advanced</h3>
+    <h3>Recent sends</h3>
+    <p>Select text, then click Reader or press Alt+Shift+R. Every nonblank selection wins. Otherwise Reader captures the focused answer or detected article.</p>
+    <div id="recentSends"></div>
     <div>Pending encrypted transfers: <span id="pend">…</span></div>
     <p id="deliveryStates">Queued … · Relay accepted … · Awaiting device … · Delivered … · Failed …</p>
     <p>“Delivered” appears only after an authenticated Android storage acknowledgement.</p>
@@ -73,6 +79,33 @@
     <button id="discardFailed" type="button" hidden>Remove failed transfers</button>
   </section>
   <script type="module">
+    const providerSites = [
+      ["ChatGPT", ["https://chatgpt.com/*", "https://chat.openai.com/*"]],
+      ["Google Notebook (preview)", ["https://notebook.google.com/*"]],
+      ["Grok (preview)", ["https://grok.com/*"]],
+      ["Substack detail (preview)", ["https://substack.com/*"]],
+      ["X detail (preview)", ["https://x.com/*"]],
+      ["Claude", ["https://claude.ai/*"]],
+      ["Gemini", ["https://gemini.google.com/*"]],
+      ["Perplexity", ["https://www.perplexity.ai/*", "https://perplexity.ai/*"]],
+    ];
+    for (const [name, origins] of providerSites) {
+      const button = document.createElement("button");
+      button.type = "button"; button.style.margin = "4px";
+      async function refreshSite() { button.textContent = (await chrome.permissions.contains({origins}) ? "Disable " : "Enable ") + name; }
+      void refreshSite();
+      button.addEventListener("click", () => {
+        // Call request synchronously from the user gesture so Chrome can prompt.
+        const disabling = button.textContent.startsWith("Disable ");
+        const operation = disabling ? chrome.permissions.remove({origins}) : chrome.permissions.request({origins});
+        void operation.then(async granted => {
+          await refreshSite();
+          document.getElementById("siteAccessMessage").textContent = disabling ? "Access removed. Reload open pages to remove existing buttons." : granted ? "Enabled. Reload the site to show Reader buttons." : "Access was not granted. Toolbar capture remains available.";
+        }).catch(() => { document.getElementById("siteAccessMessage").textContent = "Couldn’t update site access."; });
+      });
+      document.getElementById("siteAccess").append(button);
+    }
+
     const dev = document.getElementById("dev");
     const pend = document.getElementById("pend");
     const deliveryStates = document.getElementById("deliveryStates");
@@ -122,6 +155,34 @@
       const status = await chrome.runtime.sendMessage({kind:"reader-status"});
       if (!status.ok) throw new Error(status.error || "Reader status is unavailable.");
       readerStatus = status;
+      const recent = document.getElementById("recentSends");
+      recent.replaceChildren();
+      for (const item of status.recent ?? []) {
+        const row = document.createElement("section");
+        const title = document.createElement("strong"); title.textContent = item.title;
+        const detail = document.createElement("p"); detail.textContent = `${item.state} · ${new Date(item.time * 1000).toLocaleString()}${item.error ? " · " + item.error : ""}`;
+        row.append(title, detail);
+        if (item.state !== "delivered") for (const [action, label] of [[item.state === "failed" ? "resend" : "retry", item.state === "failed" ? "Resend" : "Retry"], ["export", "Export text"], ["discard", "Discard"]]) {
+          const button = document.createElement("button"); button.textContent = label; button.type = "button";
+          button.addEventListener("click", async () => {
+            if ((action === "discard" || action === "resend") && !confirm(action === "discard" ? "Discard this saved transfer?" : "Create a new transfer using the current device connection?")) return;
+            button.disabled = true;
+            try {
+              const result = await chrome.runtime.sendMessage({kind:"reader-transfer-action", transferId:item.transferId, action});
+              if (!result.ok) throw new Error(result.error);
+              if (action === "export") {
+                const url = URL.createObjectURL(new Blob([result.markdown], {type:"text/markdown;charset=utf-8"}));
+                const link = document.createElement("a"); link.href = url; link.download = "reader-capture.md"; link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 30000);
+              }
+              await refresh();
+            } catch (error) { message(error.message || "Action failed", true); }
+            finally { button.disabled = false; }
+          });
+          row.append(button);
+        }
+        recent.append(row);
+      }
       dev.textContent = status.paired ? `Connected · ${status.relays.length} relays` : "Not paired";
       disconnect.hidden = !status.paired;
       pend.textContent = String(status.pending);
@@ -183,5 +244,6 @@
 
     try { await refresh(); } catch (error) { message(String(error), true); }
   </script>
+  <script type="module" src="./theme.ts"></script>
 </body>
 </html>

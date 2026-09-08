@@ -37,7 +37,7 @@ class RelayReceiveTest {
     val executor = Executors.newSingleThreadExecutor()
     try {
       val future = executor.submit {
-        RelayClient(allowLocalForTests = true).subscribe(server.url("/").toString().replaceFirst("http", "ws"), pubkey, 0, listOf(1059), 60) {
+        RelayClient(okhttp3.OkHttpClient()).subscribe(server.url("/").toString().replaceFirst("http", "ws"), pubkey, 0, listOf(1059), 60) {
           assertEquals(event.id, it.id)
           received.countDown()
         }
@@ -59,7 +59,7 @@ class RelayReceiveTest {
     server.start()
     try {
       try {
-        RelayClient(allowLocalForTests = true).subscribe(server.url("/").toString().replaceFirst("http", "ws"), "00".repeat(32), 0, listOf(1059), 1)
+        RelayClient(okhttp3.OkHttpClient()).subscribe(server.url("/").toString().replaceFirst("http", "ws"), "00".repeat(32), 0, listOf(1059), 1)
         fail("closed subscription must fail")
       } catch (_: java.io.IOException) {}
     } finally { server.shutdown() }
@@ -84,7 +84,7 @@ class RelayReceiveTest {
     try {
       val key = Secp256k1.randomPrivateKey()
       val event = NostrCodec.signEvent(Secp256k1.bytesToHex(Secp256k1.getPublicKey(key)), 1, 1059, emptyList(), "synthetic", key)
-      val future = executor.submit { RelayClient(true).publishDetailed(server.url("/").toString().replaceFirst("http", "ws"), event, 60) }
+      val future = executor.submit { RelayClient(okhttp3.OkHttpClient()).publishDetailed(server.url("/").toString().replaceFirst("http", "ws"), event, 60) }
       assertTrue(opened.await(2, TimeUnit.SECONDS))
       future.cancel(true)
       assertTrue("cancelled publication leaked its socket", closed.await(2, TimeUnit.SECONDS))
@@ -105,7 +105,7 @@ class RelayReceiveTest {
     server.start()
     try {
       try {
-        RelayClient(true).subscribe(server.url("/").toString().replaceFirst("http", "ws"), "00".repeat(32), 0, listOf(1059), 1)
+        RelayClient(okhttp3.OkHttpClient()).subscribe(server.url("/").toString().replaceFirst("http", "ws"), "00".repeat(32), 0, listOf(1059), 1)
         fail("early close must report degraded visible receive coverage")
       } catch (_: java.io.IOException) {}
     } finally { server.shutdown() }

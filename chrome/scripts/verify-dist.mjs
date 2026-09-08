@@ -6,8 +6,8 @@ const manifest = JSON.parse(await readFile(resolve(dist, "manifest.json"), "utf8
 if (manifest.background?.service_worker !== "background.js") {
   throw new Error("built manifest does not reference background.js");
 }
-if (!manifest.content_scripts?.some((entry) => entry.js?.includes("content.js"))) {
-  throw new Error("built manifest does not reference content.js");
+if (!manifest.optional_host_permissions?.length || manifest.content_scripts?.length) {
+  throw new Error("provider access must be optional rather than a static content script grant");
 }
 
 const content = await readFile(resolve(dist, "content.js"), "utf8");

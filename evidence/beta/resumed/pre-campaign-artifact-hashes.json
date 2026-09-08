@@ -1,0 +1,21 @@
+{
+  "stage": "pre-campaign implementation checkpoint",
+  "deviceAcceptance": "NOT MEASURED for these artifacts; not installed",
+  "artifacts": [
+    {
+      "file": "reader-implementation-chrome.zip",
+      "bytes": 271828,
+      "sha256": "7f3d8f427e585ebab42ba49ce646c23fe2fd66d3e29dc06687d720cefb9b6cc2"
+    },
+    {
+      "file": "reader-implementation-debug-androidTest.apk",
+      "bytes": 560033,
+      "sha256": "a852f0c93a5fb0082ad498b056fdcc9510161659967cd9054915de5b43b2a844"
+    },
+    {
+      "file": "reader-implementation-debug.apk",
+      "bytes": 29025094,
+      "sha256": "3e5f43f7a1bd222f6fba9efa08890361be132f9cb36cf808278e39f571be3f9c"
+    }
+  ]
+}

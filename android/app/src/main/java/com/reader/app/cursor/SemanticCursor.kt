@@ -1,6 +1,7 @@
 package com.reader.app.cursor
 
 /** One semantic reading position shared by scroll, TTS, and RSVP. */
+@kotlinx.serialization.Serializable
 data class SemanticCursor(
   val documentId: String,
   val blockId: String,

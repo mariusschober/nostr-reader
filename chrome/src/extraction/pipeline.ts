@@ -15,9 +15,25 @@ export interface CapturedDocument {
 }
 
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
-turndown.addRule("cite", {
-  filter: (n) => n.nodeName === "A" && (n as HTMLElement).textContent?.trim().match(/^\[\d+\]$/) != null,
-  replacement: (content, node) => ` ${(node as HTMLAnchorElement).href} `,
+turndown.addRule("reader-code", {
+  filter: "pre",
+  replacement: (_content, node) => {
+    const text = node.textContent ?? "";
+    const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map(value => value.length));
+    const fence = "`".repeat(Math.max(3, longest + 1));
+    return `\n\n${fence}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
+  },
+});
+turndown.addRule("reader-table", {
+  filter: "table",
+  replacement: (_content, node) => {
+    const rows = [...(node as HTMLTableElement).rows].map(row => [...row.cells].map(cell =>
+      turndown.turndown(cell.innerHTML).trim().replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>")));
+    if (!rows.length) return "";
+    const width = Math.max(...rows.map(row => row.length));
+    const render = (row: string[]) => `| ${Array.from({ length: width }, (_, index) => row[index] ?? "").join(" | ")} |`;
+    return `\n\n${render(rows[0])}\n${render(Array(width).fill("---"))}\n${rows.slice(1).map(render).join("\n")}\n\n`;
+  },
 });
 
 export function meaningfulSelection(text: string): boolean {
@@ -28,7 +44,7 @@ export function meaningfulSelection(text: string): boolean {
 function sanitizeHtml(html: string): string {
   const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ["p", "h1", "h2", "h3", "h4", "br", "strong", "em", "b", "i", "a", "ul", "ol", "li", "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "th", "td", "img", "hr"],
-    ALLOWED_ATTR: ["href", "src", "alt", "title"],
+    ALLOWED_ATTR: ["href", "src", "alt", "title", "start"],
   }) as unknown as string;
   return String(clean);
 }
@@ -63,8 +79,8 @@ function stripNoise(root: ParentNode): void {
   }
 }
 
-function mdFromHtml(html: string): string {
-  return turndown.turndown(html).replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+export function mdFromHtml(html: string): string {
+  return turndown.turndown(sanitizeHtml(html)).replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
 
 function score(md: string, sourceText: string): number {
@@ -78,7 +94,7 @@ function score(md: string, sourceText: string): number {
 }
 
 export async function extractGeneric(doc: Document, url: string): Promise<CapturedDocument> {
-  const sourceText = doc.body?.innerText ?? "";
+  const sourceText = doc.body?.innerText ?? doc.body?.textContent ?? "";
   // 1. Defuddle on a cleaned clone (primary). Defuddle lifts the article
   // H1 into its title field, so keep it for the title fallback below.
   let defuddleMd = "";
@@ -86,8 +102,8 @@ export async function extractGeneric(doc: Document, url: string): Promise<Captur
   try {
     const clone = doc.cloneNode(true) as Document;
     stripNoise(clone);
-    const parsed = new Defuddle(clone, { markdown: true, url: url }).parse();
-    defuddleMd = String(parsed.content ?? "");
+    const parsed = new Defuddle(clone, { markdown: false, url: url }).parse();
+    defuddleMd = mdFromHtml(String(parsed.content ?? ""));
     defuddleTitle = String(parsed.title ?? "").trim();
   } catch { defuddleMd = ""; }
   // 2. Readability on another clone (fallback), sanitized -> markdown.
@@ -111,7 +127,7 @@ export async function extractGeneric(doc: Document, url: string): Promise<Captur
   if (!best || best.split(/\s+/).length < 30) {
     return { title, markdown: withTitle(best || ""), sourceUrl: url, confidence: "low", reason: "could not identify article confidently" };
   }
-  return { title, markdown: withTitle(best), sourceUrl: url, confidence: "high" };
+  return { title, markdown: withTitle(best), sourceUrl: url, confidence: Math.max(sD, sR) >= 1 ? "high" : "low", reason: Math.max(sD, sR) >= 1 ? undefined : "Article extraction is uncertain" };
 }
 
 export function selectionDocument(sel: string, url: string, title: string): CapturedDocument {

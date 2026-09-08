@@ -9,48 +9,17 @@ data class RsvpToken(val text: String, val blockId: String, val start: Int, val 
 object RsvpModel {
   /** Build narration/RSVP tokens from semantic blocks; skips code/URLs. */
   fun tokens(blocks: List<ArticleBlock>): List<RsvpToken> {
-    val out = mutableListOf<RsvpToken>()
-    fun inlineText(inlines: List<Inline>): String = buildString {
-      for (i in inlines) when (i) {
-        is Inline.Text -> append(i.text)
-        is Inline.Strong -> append(inlineText(i.inlines))
-        is Inline.Emphasis -> append(inlineText(i.inlines))
-        is Inline.Strike -> append(inlineText(i.inlines))
-        is Inline.InlineCode -> {}
-        is Inline.Link -> {
-          if (!(i.url.startsWith("http://") || i.url.startsWith("https://"))) append(inlineText(i.inlines))
-          else append(inlineText(i.inlines))
-        }
-        is Inline.FootnoteRef -> {}
-      }
-    }
-    for (b in blocks) {
-      when (b) {
-        is ArticleBlock.Paragraph -> emitText(out, b.id, inlineText(b.inlines), false)
-        is ArticleBlock.Heading -> emitText(out, b.id, inlineText(b.inlines), true)
-        is ArticleBlock.BulletList -> for (item in b.items) for (sb in item.blocks) {
-          if (sb is ArticleBlock.Paragraph) emitText(out, sb.id, inlineText(sb.inlines), false)
-        }
-        is ArticleBlock.OrderedList -> for (item in b.items) for (sb in item.blocks) {
-          if (sb is ArticleBlock.Paragraph) emitText(out, sb.id, inlineText(sb.inlines), false)
-        }
-        is ArticleBlock.Quote -> for (sb in b.blocks) {
-          if (sb is ArticleBlock.Paragraph) emitText(out, sb.id, inlineText(sb.inlines), false)
-        }
-        else -> {}
-      }
-    }
-    return out
+    return tokens(com.reader.app.core.RenderedText.project(blocks))
   }
 
-  private fun emitText(out: MutableList<RsvpToken>, blockId: String, text: String, heading: Boolean) {
-    var idx = 0
-    for (raw in text.split(Regex("\\s+"))) {
-      if (raw.isEmpty()) continue
-      if (raw.startsWith("http://") || raw.startsWith("https://")) continue
-      val start = text.indexOf(raw, idx).let { if (it < 0) idx else it }
-      out.add(RsvpToken(raw, blockId, start, start + raw.length, heading))
-      idx = start + raw.length
+  fun tokens(projection: com.reader.app.core.RenderedProjection): List<RsvpToken> = buildList {
+    for (unit in com.reader.app.tts.Narration.sentences(projection)) {
+      for (match in Regex("\\S+").findAll(unit.text)) {
+        if (match.value.startsWith("http://") || match.value.startsWith("https://")) continue
+        val start = unit.blockOffset(match.range.first)
+        val end = unit.blockOffset(match.range.last) + 1
+        add(RsvpToken(match.value, unit.blockId, start, end, unit.heading))
+      }
     }
   }
 

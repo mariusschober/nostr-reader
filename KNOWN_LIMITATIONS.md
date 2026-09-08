@@ -1,3 +1,5 @@
+> **2026-09-08 checkpoint:** Implementation is paused before reliability campaigns/intensive testing at the user’s request. See [PRE_CAMPAIGN_CHECKPOINT.md](docs/beta/PRE_CAMPAIGN_CHECKPOINT.md) for current source scope, exact build hashes, passing local checks and unverified limits. Older device evidence does not certify this candidate.
+
 # Known limitations
 
 Every item is evidence-based and uses the required status vocabulary.

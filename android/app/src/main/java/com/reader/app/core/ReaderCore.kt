@@ -18,19 +18,23 @@ object ReaderCore {
   fun canonicalize(input: String): String {
     val nfc = Normalizer.normalize(input, Normalizer.Form.NFC)
     val lf = nfc.replace("\r\n", "\n").replace('\r', '\n')
-    val lines = lf.split('\n').map { it.trimEnd() }
-    val collapsed = mutableListOf<String>()
-    var blanks = 0
-    for (l in lines) {
-      if (l.isBlank()) {
-        blanks++
-        if (blanks <= 2) collapsed.add("")
-      } else {
-        blanks = 0
-        collapsed.add(l)
+    return buildString {
+      var pendingBlanks = 0
+      for (line in lf.lineSequence()) {
+        val trimmed = line.trimEnd()
+        if (trimmed.isBlank()) {
+          if (isNotEmpty()) pendingBlanks = minOf(2, pendingBlanks + 1)
+        } else {
+          if (isNotEmpty()) {
+            append('\n')
+            repeat(pendingBlanks) { append('\n') }
+          }
+          append(trimmed)
+          pendingBlanks = 0
+        }
       }
+      append('\n')
     }
-    return collapsed.joinToString("\n").trim('\n') + "\n"
   }
 
   fun escapePlainText(input: String): String {
@@ -57,7 +61,7 @@ object ReaderCore {
   fun wordCount(canonical: String): Int {
     var inFence = false
     var n = 0
-    for (line in canonical.lines()) {
+    for (line in canonical.lineSequence()) {
       val t = line.trim()
       if (t.startsWith("```")) {
         inFence = !inFence

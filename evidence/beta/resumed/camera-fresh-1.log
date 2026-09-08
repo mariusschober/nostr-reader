@@ -1,0 +1,23 @@
+
+com.reader.app.QaCameraPermissionInstrumentedTest:
+Error in cameraRequestAndPermanentDenialUseRealAndroidState(com.reader.app.QaCameraPermissionInstrumentedTest):
+java.lang.IllegalStateException: QA UI control unavailable: Import, paste, or pair
+	at com.reader.app.QaPairingUiInstrumentedTest.waitNode$app_debugAndroidTest(QaPairingUiInstrumentedTest.kt:31)
+	at com.reader.app.QaPairingUiInstrumentedTest.click$app_debugAndroidTest(QaPairingUiInstrumentedTest.kt:34)
+	at com.reader.app.QaPairingUiInstrumentedTest.openPairing$app_debugAndroidTest(QaPairingUiInstrumentedTest.kt:73)
+	at com.reader.app.QaCameraPermissionInstrumentedTest.cameraRequestAndPermanentDenialUseRealAndroidState(QaCameraPermissionInstrumentedTest.kt:26)
+
+
+Time: 13,642
+There was 1 failure:
+1) cameraRequestAndPermanentDenialUseRealAndroidState(com.reader.app.QaCameraPermissionInstrumentedTest)
+java.lang.IllegalStateException: QA UI control unavailable: Import, paste, or pair
+	at com.reader.app.QaPairingUiInstrumentedTest.waitNode$app_debugAndroidTest(QaPairingUiInstrumentedTest.kt:31)
+	at com.reader.app.QaPairingUiInstrumentedTest.click$app_debugAndroidTest(QaPairingUiInstrumentedTest.kt:34)
+	at com.reader.app.QaPairingUiInstrumentedTest.openPairing$app_debugAndroidTest(QaPairingUiInstrumentedTest.kt:73)
+	at com.reader.app.QaCameraPermissionInstrumentedTest.cameraRequestAndPermanentDenialUseRealAndroidState(QaCameraPermissionInstrumentedTest.kt:26)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

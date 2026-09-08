@@ -1,0 +1,30 @@
+
+> reader-chrome@0.1.0 build
+> vite build && vite build --config vite.content.config.ts && node scripts/verify-dist.mjs
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 87 modules transformed.
+rendering chunks...
+computing gzip size...
+../artifacts/beta-work/implementation-chrome/src/ui/popup.html               0.63 kB │ gzip:  0.42 kB
+../artifacts/beta-work/implementation-chrome/src/ui/pairing.html             1.04 kB │ gzip:  0.65 kB
+../artifacts/beta-work/implementation-chrome/src/ui/options.html             4.71 kB │ gzip:  2.04 kB
+../artifacts/beta-work/implementation-chrome/assets/theme-B1hBejmL.css       1.54 kB │ gzip:  0.48 kB
+../artifacts/beta-work/implementation-chrome/popup.js                        0.72 kB │ gzip:  0.42 kB
+../artifacts/beta-work/implementation-chrome/theme-C8qsnVx4.js               0.72 kB │ gzip:  0.36 kB
+../artifacts/beta-work/implementation-chrome/rolldown-runtime-DC62tzP2.js    1.44 kB │ gzip:  0.67 kB
+../artifacts/beta-work/implementation-chrome/options.js                      8.21 kB │ gzip:  2.66 kB
+../artifacts/beta-work/implementation-chrome/pairing.js                     73.68 kB │ gzip: 18.83 kB
+../artifacts/beta-work/implementation-chrome/background.js                 327.43 kB │ gzip: 86.94 kB
+
+✓ built in 159ms
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 13 modules transformed.
+rendering chunks...
+computing gzip size...
+../artifacts/beta-work/implementation-chrome/content.js  666.88 kB │ gzip: 156.06 kB
+
+✓ built in 72ms
+Verified Chrome extension package: standalone content script, manifest assets, Chromium-safe text.

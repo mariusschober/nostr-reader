@@ -1,0 +1,116 @@
+{
+  "case": "controlled-real-button-capture-1",
+  "capture": [
+    {
+      "captureId": "a6f9fb07-db8a-43b3-bac7-6f4b0d09df76",
+      "transferId": "b6de1f6db895b83c73b82c37207043e4",
+      "sha256": "84c410a5173995eef02d829b6e87d32b740e68b860c1141e2513c0059d8c1f76",
+      "bytes": 278
+    }
+  ],
+  "phone": {
+    "activeChannels": 1,
+    "channels": [
+      {
+        "receiverPubkey": "2762f32cbf2ef239ed88b52735559dd02c83d08adcaabd43d9c10bfa5d6cd814",
+        "senderPubkey": "c77e87c411c70101cd8fb08efa52edcf050ccc362c75e1abd277223a12fa1984",
+        "sessionId": "af76c56f97558baaa7455de78c18b8a4",
+        "relayDigest": "40a19d37175f5f24bbcd1c8423ab28898af20dddb490e451db2db8531a3917f0"
+      }
+    ],
+    "documentCount": 4,
+    "documents": [
+      {
+        "documentId": "84c410a5173995eef02d829b6e87d32b740e68b860c1141e2513c0059d8c1f76",
+        "stored": true,
+        "sha256": "84c410a5173995eef02d829b6e87d32b740e68b860c1141e2513c0059d8c1f76",
+        "bytes": 278,
+        "list": "inbox",
+        "progressBlockId": "b0",
+        "progressCharOffset": 0
+      }
+    ],
+    "acks": [
+      {
+        "transferId": "b6de1f6db895b83c73b82c37207043e4",
+        "documentId": "84c410a5173995eef02d829b6e87d32b740e68b860c1141e2513c0059d8c1f76",
+        "attempts": 1,
+        "refreshes": 0,
+        "quorumComplete": true,
+        "status": "stored"
+      }
+    ]
+  },
+  "chrome": {
+    "paired": true,
+    "pending": 0,
+    "delivery": {
+      "queued": 0,
+      "relayAccepted": 0,
+      "awaitingDevice": 0,
+      "delivered": 1,
+      "failed": 0
+    }
+  },
+  "relays": {
+    "connects": 276,
+    "peakConnections": 18,
+    "bytesIn": 156456,
+    "bytesOut": 394735,
+    "publications": 36,
+    "subscriptions": 246,
+    "invalidEvents": 0,
+    "activeConnections": 6,
+    "relays": [
+      {
+        "name": "relay.nostr.net",
+        "retainedEvents": 6,
+        "retainedBytes": 18914,
+        "policy": {
+          "dropRecipients": 0
+        }
+      },
+      {
+        "name": "nostr-pub.wellorder.net",
+        "retainedEvents": 6,
+        "retainedBytes": 18914,
+        "policy": {
+          "dropRecipients": 0
+        }
+      },
+      {
+        "name": "nostr.oxtr.dev",
+        "retainedEvents": 6,
+        "retainedBytes": 18914,
+        "policy": {
+          "dropRecipients": 0
+        }
+      },
+      {
+        "name": "relay.primal.net",
+        "retainedEvents": 6,
+        "retainedBytes": 18914,
+        "policy": {
+          "dropRecipients": 0
+        }
+      },
+      {
+        "name": "nos.lol",
+        "retainedEvents": 6,
+        "retainedBytes": 18914,
+        "policy": {
+          "dropRecipients": 0
+        }
+      },
+      {
+        "name": "offchain.pub",
+        "retainedEvents": 6,
+        "retainedBytes": 18914,
+        "policy": {
+          "dropRecipients": 0
+        }
+      }
+    ]
+  },
+  "outcome": "PASS"
+}

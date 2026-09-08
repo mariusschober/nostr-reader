@@ -50,3 +50,23 @@ describe("selection", () => {
     expect(meaningfulSelection("x".repeat(80))).toBe(true);
   });
 });
+
+describe("structured response capture", () => {
+  it("preserves emphasis, fenced code, nested lists, and table cells without button text", () => {
+    const dom = new JSDOM(`<div data-message-author-role="assistant"><p><strong>Bold</strong> and <em>quiet</em></p><pre><code>line one\nline two</code></pre><ol><li>First<ul><li>Nested</li></ul></li></ol><table><tr><th>Name</th><th>Value</th></tr><tr><td>A</td><td>1 | 2</td></tr></table><button data-reader-ui="capture">Reader</button></div>`);
+    const adapter = adapterFor("https://chatgpt.com/c/1")!;
+    const captured = adapter.extractResponse(adapter.findAssistantResponses(dom.window.document)[0], "T", "https://chatgpt.com/c/1");
+    expect(captured.markdown).toContain("**Bold**");
+    expect(captured.markdown).toMatch(/(?:\*quiet\*|_quiet_)/);
+    expect(captured.markdown).toContain("```\nline one\nline two\n```");
+    expect(captured.markdown).toContain("Nested");
+    expect(captured.markdown).toContain("| Name | Value |");
+    expect(captured.markdown).toContain("1 \\| 2");
+    expect(captured.markdown).not.toContain("Reader");
+  });
+  it("rejects provider-lookalike hosts and malformed URLs", () => {
+    expect(adapterFor("https://chatgpt.com.attacker.example/")).toBeNull();
+    expect(adapterFor("https://notclaude.ai/")).toBeNull();
+    expect(adapterFor("not a URL")).toBeNull();
+  });
+});

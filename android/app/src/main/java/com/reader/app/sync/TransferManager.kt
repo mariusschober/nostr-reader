@@ -45,7 +45,7 @@ class TransferManager(
   private val hex16 = Regex("^[0-9a-f]{32}$")
   private val hex32 = Regex("^[0-9a-f]{64}$")
   private val sourceTypes = setOf(
-    "web", "chatgpt", "claude", "gemini", "perplexity", "selection",
+    "web", "chatgpt", "claude", "gemini", "perplexity", "notebook", "grok", "substack", "x", "selection",
     "android-share", "android-process-text", "file", "mac-share", "mac-quick-action",
   )
 

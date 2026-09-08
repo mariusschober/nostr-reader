@@ -68,9 +68,9 @@ describe("cross-platform default relay contract", () => {
     expect(() => validatePairedRelaySet([...DEFAULT_RELAYS, "wss://127.0.0.1"])).toThrow();
   });
 
-  it("bootstraps on fixed relays but reads authenticated completion from the full bound set", () => {
+  it("can recover both pairing messages from owner-configured custom relays when defaults fail", () => {
     const bound = [...DEFAULT_RELAYS, "wss://custom.example"];
-    expect(pairingReadRelays("bootstrap_response", bound)).toEqual([...DEFAULT_RELAYS]);
+    expect(pairingReadRelays("bootstrap_response", bound)).toEqual(bound);
     expect(pairingReadRelays("authenticated_completion", bound)).toEqual(bound);
   });
 });

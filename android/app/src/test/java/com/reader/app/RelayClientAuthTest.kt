@@ -34,7 +34,7 @@ class RelayClientAuthTest {
       val key = Secp256k1.randomPrivateKey()
       val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(key))
       val event = NostrCodec.signEvent(pubkey, System.currentTimeMillis() / 1000, 1, emptyList(), "test", key)
-      val result = RelayClient(allowLocalForTests = true).publishDetailed(url, event, 2)
+      val result = RelayClient(okhttp3.OkHttpClient()).publishDetailed(url, event, 2)
       assertFalse(result.accepted)
       assertEquals(RelayClient.PublishState.CLOSED, result.terminalState)
       assertTrue(result.trace.any { it.state == RelayClient.PublishState.EVENT_SENT })
@@ -97,7 +97,7 @@ class RelayClientAuthTest {
       val eventKey = Secp256k1.randomPrivateKey()
       val eventPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(eventKey))
       val event = NostrCodec.signEvent(eventPubkey, System.currentTimeMillis() / 1000, 1, emptyList(), "test", eventKey)
-      val result = RelayClient(allowLocalForTests = true).publishDetailed(url, event, 4, authKey)
+      val result = RelayClient(okhttp3.OkHttpClient()).publishDetailed(url, event, 4, authKey)
       assertNull(callbackError.get())
       assertTrue(result.accepted)
       assertTrue(result.trace.any { it.state == RelayClient.PublishState.AUTH_CHALLENGE })
@@ -161,7 +161,7 @@ class RelayClientAuthTest {
         "test",
         eventKey,
       )
-      val result = RelayClient(allowLocalForTests = true).publishDetailed(url, event, 3, authKey)
+      val result = RelayClient(okhttp3.OkHttpClient()).publishDetailed(url, event, 3, authKey)
       assertFalse(result.accepted)
       assertEquals(RelayClient.PublishState.PROTOCOL_ERROR, result.terminalState)
       assertEquals(1, authenticationEvents.get())
@@ -206,7 +206,7 @@ class RelayClientAuthTest {
         "test",
         eventKey,
       )
-      val result = RelayClient(allowLocalForTests = true).publishDetailed(url, event, 3, authKey)
+      val result = RelayClient(okhttp3.OkHttpClient()).publishDetailed(url, event, 3, authKey)
       assertFalse(result.accepted)
       assertEquals(RelayClient.PublishState.AUTH_REJECTED, result.terminalState)
       assertFalse(result.trace.any { it.state == RelayClient.PublishState.OK_FALSE })
@@ -262,7 +262,7 @@ class RelayClientAuthTest {
         "test",
         eventKey,
       )
-      val result = RelayClient(allowLocalForTests = true).publishDetailed(url, event, 3, authKey)
+      val result = RelayClient(okhttp3.OkHttpClient()).publishDetailed(url, event, 3, authKey)
       assertFalse(result.accepted)
       assertEquals(RelayClient.PublishState.OK_FALSE, result.terminalState)
       assertTrue(result.reasonPrefix.orEmpty().contains("[redacted-challenge]"))
@@ -298,7 +298,7 @@ class RelayClientAuthTest {
         "test",
         eventKey,
       )
-      val result = RelayClient(allowLocalForTests = true).publishDetailed(url, event, 3, authKey)
+      val result = RelayClient(okhttp3.OkHttpClient()).publishDetailed(url, event, 3, authKey)
       assertFalse(result.accepted)
       assertEquals(RelayClient.PublishState.PROTOCOL_ERROR, result.terminalState)
     } finally {
@@ -358,7 +358,7 @@ class RelayClientAuthTest {
     server.start()
     try {
       val url = server.url("/").toString().replaceFirst("http", "ws")
-      val events = RelayClient(allowLocalForTests = true).subscribe(url, recipient, 0, listOf(1059), 1, authKey)
+      val events = RelayClient(okhttp3.OkHttpClient()).subscribe(url, recipient, 0, listOf(1059), 1, authKey)
       assertTrue(authenticated.get())
       assertEquals(listOf(event.id), events.map { it.id }.distinct())
       assertEquals(2, requestCount.get())

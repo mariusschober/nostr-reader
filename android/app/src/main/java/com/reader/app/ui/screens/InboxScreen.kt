@@ -27,17 +27,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.reader.app.core.ReaderCore
-import com.reader.app.data.DocumentEntity
+import com.reader.app.data.DocumentSummary
 import com.reader.app.prefs.ReaderSettings
 import com.reader.app.ui.Triage
 import com.reader.app.ui.theme.ReaderFonts
-import com.reader.app.ui.theme.colorsFor
+import com.reader.app.ui.theme.appColors
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
 fun InboxScreen(
-  lists: Map<String, List<DocumentEntity>>,
+  lists: Map<String, List<DocumentSummary>>,
   minutes: Map<String, Int>,
   settings: ReaderSettings,
   onOpen: (String) -> Unit,
@@ -49,9 +49,17 @@ fun InboxScreen(
   onPasteText: (String) -> Unit,
   onPair: () -> Unit,
   onSettings: () -> Unit,
+  loaded: Boolean,
+  selectedTab: String,
+  onSelectTab: (String) -> Unit,
+  highlights: @Composable () -> Unit,
+
 ) {
-  val c = colorsFor(settings.background)
-  var tab by remember { mutableStateOf(Triage.INBOX) }
+  val c = appColors()
+  val tab = selectedTab
+  LaunchedEffect(loaded, lists[Triage.INBOX]?.size, tab) {
+    if (loaded && lists[Triage.INBOX].isNullOrEmpty() && tab == Triage.INBOX) onSelectTab(Triage.PRIORITY)
+  }
   var menuFor by remember { mutableStateOf<String?>(null) }
   var showAdd by remember { mutableStateOf(false) }
   var showPaste by remember { mutableStateOf(false) }
@@ -85,9 +93,9 @@ fun InboxScreen(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.Bottom,
       ) {
-        Triage.TABS.forEachIndexed { i, key ->
+        (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights", Triage.ARCHIVED).filter { it != Triage.INBOX || !loaded || !lists[Triage.INBOX].isNullOrEmpty() }).forEachIndexed { i, key ->
           if (i > 0) Spacer(Modifier.width(20.dp))
-          TabText(Triage.tabLabel(key), selected = tab == key, color = c, onClick = { tab = key })
+          TabText(Triage.tabLabel(key), selected = tab == key, color = c, onClick = { onSelectTab(key) })
         }
         Spacer(Modifier.weight(1f))
         Text(
@@ -96,7 +104,9 @@ fun InboxScreen(
         )
       }
       val list = lists[tab].orEmpty()
-      if (list.isEmpty()) {
+      if (!loaded) CircularProgressIndicator(Modifier.padding(24.dp))
+      else if (tab == "highlights") highlights()
+      else if (list.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
           Text(emptyHint(tab), fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 15.sp)
         }
@@ -110,10 +120,11 @@ fun InboxScreen(
                 doc = d, list = tab, colors = c,
                 onOpen = { onOpen(d.documentId) },
                 onSwiped = { target ->
+                  val previous = tab
                   onMove(d.documentId, target)
                   scope.launch {
                     val res = snackbar.showSnackbar(Triage.movedLabel(target), actionLabel = "Undo")
-                    if (res == SnackbarResult.ActionPerformed) onUndoMove(d.documentId, tab)
+                    if (res == SnackbarResult.ActionPerformed) onUndoMove(d.documentId, previous)
                   }
                 },
               )
@@ -216,7 +227,7 @@ private fun TabText(text: String, selected: Boolean, color: com.reader.app.ui.th
 
 @Composable
 private fun SwipeRow(
-  doc: DocumentEntity,
+  doc: DocumentSummary,
   list: String,
   colors: com.reader.app.ui.theme.ReaderColors,
   onOpen: () -> Unit,
@@ -305,7 +316,7 @@ private fun SwipeRow(
 
 @Composable
 fun ArticleRow(
-  d: DocumentEntity,
+  d: DocumentSummary,
   c: com.reader.app.ui.theme.ReaderColors,
   onOpen: () -> Unit,
   onMenu: (() -> Unit)?,

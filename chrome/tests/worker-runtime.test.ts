@@ -27,7 +27,8 @@ async function boot() {
       clear: async (name: string) => alarms.delete(name), onAlarm: event("alarm") },
     action: { onClicked: event("action"), setBadgeText: vi.fn(async () => {}), setTitle: vi.fn(async () => {}) },
     tabs: { sendMessage: vi.fn(async () => ({ ok: true })) },
-    scripting: { executeScript: vi.fn(async () => [{ frameId: 0, documentId: "document-1" }]) },
+    permissions: { contains: vi.fn(async () => false), onAdded: event("permission-added"), onRemoved: event("permission-removed") },
+    scripting: { getRegisteredContentScripts: vi.fn(async () => []), registerContentScripts: vi.fn(async () => {}), updateContentScripts: vi.fn(async () => {}), unregisterContentScripts: vi.fn(async () => {}), executeScript: vi.fn(async () => [{ frameId: 0, documentId: "document-1" }]) },
     commands: { onCommand: event("command") },
     contextMenus: { onClicked: event("menu"), create: vi.fn() },
   });

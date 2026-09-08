@@ -1,6 +1,7 @@
 package com.reader.app.sync
 
 import android.content.Context
+import com.reader.app.readerRelayClient
 import androidx.room.withTransaction
 import com.reader.app.data.ChannelEntity
 import com.reader.app.data.ReaderDb
@@ -44,7 +45,7 @@ class PairingCoordinator(
   context: Context,
   private val db: ReaderDb = ReaderDb.get(context),
   private val keys: KeystoreWrap = KeystoreWrap(context),
-  private val relayClient: RelayClient = RelayClient(),
+  private val relayClient: RelayClient = context.readerRelayClient(),
 ) {
   data class BeginResult(
     val channelId: String,
@@ -132,7 +133,7 @@ class PairingCoordinator(
   private suspend fun beginLocked(qrText: String, ackCollectSecs: Long): BeginResult {
     val nowSecs = System.currentTimeMillis() / 1000
     val request = PairingProtocol.validateRequest(qrText, nowSecs)
-    withContext(Dispatchers.IO) { PairingProtocol.validateResolvedRelayAddresses(request.relays) }
+    withContext(Dispatchers.IO) { relayClient.validateRelayAddresses(request.relays) }
 
     val existing = withContext(Dispatchers.IO) { db.channels().bySession(request.sessionId) }
     if (existing?.state == "provisioning") {
@@ -230,7 +231,7 @@ class PairingCoordinator(
     }
     val request = restoredRequest(channel)
     val relays = relayList(channel)
-    withContext(Dispatchers.IO) { PairingProtocol.validateResolvedRelayAddresses(relays) }
+    withContext(Dispatchers.IO) { relayClient.validateRelayAddresses(relays) }
     val channelSeckey = keys.openChannelKey(channelId) ?: run {
       cancelLocked(channelId, "CHANNEL_KEY_UNAVAILABLE")
       return false

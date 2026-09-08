@@ -14,6 +14,7 @@ object Triage {
     PRIORITY -> "Priority"
     LATER -> "Later"
     ARCHIVED -> "Archive"
+    "highlights" -> "Highlights"
     else -> list
   }
 

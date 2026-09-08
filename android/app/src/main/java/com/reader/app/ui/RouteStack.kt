@@ -1,8 +1,10 @@
 package com.reader.app.ui
 
 /** Tiny back stack. Inbox is the root; system back pops until root, then exits. Pure logic, unit-tested. */
-class RouteStack {
-  private val stack = mutableListOf<Route>(Route.Inbox)
+class RouteStack(restored: List<Route> = emptyList()) {
+  private val stack: MutableList<Route> = restored.takeIf { it.firstOrNull() == Route.Inbox }?.toMutableList() ?: mutableListOf(Route.Inbox)
+
+  fun snapshot(): List<Route> = stack.toList()
 
   fun current(): Route = stack.last()
   fun isRoot(): Boolean = stack.size == 1

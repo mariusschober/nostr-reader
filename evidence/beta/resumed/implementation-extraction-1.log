@@ -1,0 +1,81 @@
+
+> reader-chrome@0.1.0 test
+> vitest run --run tests/extraction.test.ts
+
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+stderr | tests/extraction.test.ts > generic extraction > keeps article, drops nav/ads/footer/comments
+Defuddle Error processing document: DOMException [SyntaxError]: ':has(p+p)):not(:has(img)' is not a valid selector
+    at emit (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:803:17)
+    at compileSelector (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1684:11)
+    at compile (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1005:16)
+    at match_collect (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1743:16)
+    at Object._matches [as match] (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1810:18)
+    at Array.Resolver (eval at compile (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1021:17), <anonymous>:3:105)
+    at collect (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1937:21)
+    at Object._querySelectorAll [as select] (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1889:38)
+    at DocumentImpl.querySelectorAll (/Users/schober/Projects/Nostr Reader/chrome/node_modules/jsdom/lib/jsdom/living/nodes/ParentNode-impl.js:78:26)
+    at Document.querySelectorAll (/Users/schober/Projects/Nostr Reader/chrome/node_modules/jsdom/lib/jsdom/living/generated/Document.js:1051:58)
+Defuddle Error processing document: DOMException [SyntaxError]: ':has(p+p)):not(:has(img)' is not a valid selector
+    at emit (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:803:17)
+    at compileSelector (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1684:11)
+    at compile (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1005:16)
+    at match_collect (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1743:16)
+    at Object._matches [as match] (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1810:18)
+    at Array.Resolver (eval at compile (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1021:17), <anonymous>:3:105)
+    at collect (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1937:21)
+    at Object._querySelectorAll [as select] (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1889:38)
+    at DocumentImpl.querySelectorAll (/Users/schober/Projects/Nostr Reader/chrome/node_modules/jsdom/lib/jsdom/living/nodes/ParentNode-impl.js:78:26)
+    at Document.querySelectorAll (/Users/schober/Projects/Nostr Reader/chrome/node_modules/jsdom/lib/jsdom/living/generated/Document.js:1051:58)
+Defuddle Error processing document: DOMException [SyntaxError]: ':has(p+p)):not(:has(img)' is not a valid selector
+    at emit (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:803:17)
+    at compileSelector (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1684:11)
+    at compile (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1005:16)
+    at match_collect (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1743:16)
+    at Object._matches [as match] (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1810:18)
+    at Array.Resolver (eval at compile (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1021:17), <anonymous>:3:105)
+    at collect (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1937:21)
+    at Object._querySelectorAll [as select] (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1889:38)
+    at DocumentImpl.querySelectorAll (/Users/schober/Projects/Nostr Reader/chrome/node_modules/jsdom/lib/jsdom/living/nodes/ParentNode-impl.js:78:26)
+    at Document.querySelectorAll (/Users/schober/Projects/Nostr Reader/chrome/node_modules/jsdom/lib/jsdom/living/generated/Document.js:1051:58)
+Defuddle Error processing document: DOMException [SyntaxError]: ':has(p+p)):not(:has(img)' is not a valid selector
+    at emit (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:803:17)
+    at compileSelector (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1684:11)
+    at compile (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1005:16)
+    at match_collect (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1743:16)
+    at Object._matches [as match] (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1810:18)
+    at Array.Resolver (eval at compile (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1021:17), <anonymous>:3:105)
+    at collect (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1937:21)
+    at Object._querySelectorAll [as select] (/Users/schober/Projects/Nostr Reader/chrome/node_modules/nwsapi/src/nwsapi.js:1889:38)
+    at DocumentImpl.querySelectorAll (/Users/schober/Projects/Nostr Reader/chrome/node_modules/jsdom/lib/jsdom/living/nodes/ParentNode-impl.js:78:26)
+    at Document.querySelectorAll (/Users/schober/Projects/Nostr Reader/chrome/node_modules/jsdom/lib/jsdom/living/generated/Document.js:1051:58)
+
+ ❯ tests/extraction.test.ts (4 tests | 1 failed) 130ms
+   ❯ generic extraction (1)
+     × keeps article, drops nav/ads/footer/comments 120ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/extraction.test.ts > generic extraction > keeps article, drops nav/ads/footer/comments
+AssertionError: expected 'low' to be 'high' // Object.is equality
+
+Expected: "high"
+Received: "low"
+
+ ❯ tests/extraction.test.ts:17:28
+     15|     const dom = new JSDOM(load("generic/article-noise.html"), { url: "…
+     16|     const doc = await extractGeneric(dom.window.document, "https://exa…
+     17|     expect(doc.confidence).toBe("high");
+       |                            ^
+     18|     expect(doc.markdown).toMatch(/Quiet Cost of Speed/);
+     19|     expect(doc.markdown).toMatch(/First real paragraph/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  02:59:28
+   Duration  827ms (environment 67%, tests 18%, import 8%, transform 7%)
+

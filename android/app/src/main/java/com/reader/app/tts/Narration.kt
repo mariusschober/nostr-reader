@@ -1,55 +1,49 @@
 package com.reader.app.tts
 
-import com.reader.app.core.ArticleBlock
-import com.reader.app.core.ArticleParser
+import com.reader.app.core.*
 
-/** Narration model: sentences from semantic blocks, code/URLs skipped. */
+/** A separate narration projection retains a map back to every rendered UTF-16 offset. */
 object Narration {
-  fun sentences(blocks: List<ArticleBlock>): List<NarrationUnit> {
+  fun sentences(blocks: List<ArticleBlock>): List<NarrationUnit> = sentences(RenderedText.project(blocks))
+
+  fun sentences(projection: RenderedProjection): List<NarrationUnit> {
     val out = mutableListOf<NarrationUnit>()
-    fun push(blockId: String, text: String) {
-      val parts = text.split(Regex("(?<=[.!?])\\s+|\\n+")).map { it.trim() }.filter { it.length > 1 }
-      for (p in parts) {
-        // Keep utterances below TTS input limits by splitting long sentences.
-        var rest = p
-        while (rest.length > 1500) {
-          val cut = rest.lastIndexOf(' ', 1500).let { if (it < 200) 1500 else it }
-          out.add(NarrationUnit(blockId, rest.substring(0, cut)))
-          rest = rest.substring(cut).trim()
+    for (block in projection.blocks) {
+      if (block.kind in setOf(TextKind.CODE, TextKind.FOOTNOTE, TextKind.DIVIDER)) continue
+      val excluded = projection.styles.filter { it.style == TextStyle.CODE && it.start < block.bodyEnd && it.end > block.bodyStart }
+      val spoken = StringBuilder()
+      val offsets = mutableListOf<Int>()
+      for (global in block.bodyStart until block.bodyEnd) {
+        if (excluded.none { global in it.start until it.end }) {
+          spoken.append(projection.text[global]); offsets += global - block.start
         }
-        if (rest.isNotEmpty()) out.add(NarrationUnit(blockId, rest))
       }
-    }
-    for (b in blocks) when (b) {
-      is ArticleBlock.Paragraph -> push(b.id, inlineText(b.inlines))
-      is ArticleBlock.Heading -> push(b.id, inlineText(b.inlines))
-      is ArticleBlock.BulletList -> for (i in b.items) for (sb in i.blocks) {
-        if (sb is ArticleBlock.Paragraph) push(sb.id, inlineText(sb.inlines))
+      for (match in Regex("[^.!?\\n]+(?:[.!?]+|(?=\\n)|$)").findAll(spoken)) {
+        var start = match.range.first
+        var end = match.range.last + 1
+        while (start < end && spoken[start].isWhitespace()) start++
+        while (end > start && spoken[end - 1].isWhitespace()) end--
+        while (start < end) {
+          var cut = (start + 1500).coerceAtMost(end)
+          if (cut < end) {
+            val word = spoken.lastIndexOf(" ", cut)
+            if (word > start + 200) cut = word
+          }
+          if (cut < spoken.length && cut > start && Character.isHighSurrogate(spoken[cut - 1])) cut--
+          if (cut > start) out += NarrationUnit(block.id, spoken.substring(start, cut), offsets.subList(start, cut).toIntArray(), block.kind == TextKind.HEADING)
+          start = cut
+          while (start < end && spoken[start].isWhitespace()) start++
+        }
       }
-      is ArticleBlock.OrderedList -> for (i in b.items) for (sb in i.blocks) {
-        if (sb is ArticleBlock.Paragraph) push(sb.id, inlineText(sb.inlines))
-      }
-      is ArticleBlock.Quote -> for (sb in b.blocks) {
-        if (sb is ArticleBlock.Paragraph) push(sb.id, inlineText(sb.inlines))
-      }
-      else -> {}
     }
     return out
   }
 
-  private fun inlineText(inlines: List<com.reader.app.core.Inline>): String = buildString {
-    for (i in inlines) when (i) {
-      is com.reader.app.core.Inline.Text -> append(i.text)
-      is com.reader.app.core.Inline.Strong -> append(inlineText(i.inlines))
-      is com.reader.app.core.Inline.Emphasis -> append(inlineText(i.inlines))
-      is com.reader.app.core.Inline.Strike -> append(inlineText(i.inlines))
-      is com.reader.app.core.Inline.InlineCode -> {}
-      is com.reader.app.core.Inline.Link -> append(inlineText(i.inlines))
-      is com.reader.app.core.Inline.FootnoteRef -> {}
-    }
-  }
-
-  fun readableForCount(blocks: List<ArticleBlock>): String = ArticleParser.readableText(blocks)
+  fun readableForCount(blocks: List<ArticleBlock>): String = sentences(blocks).joinToString("\n") { it.text }
 }
 
-data class NarrationUnit(val blockId: String, val text: String)
+data class NarrationUnit(
+  val blockId: String, val text: String, val renderedOffsets: IntArray? = null, val heading: Boolean = false,
+) {
+  fun blockOffset(at: Int): Int = renderedOffsets?.getOrNull(at.coerceIn(0, text.lastIndex.coerceAtLeast(0))) ?: at.coerceAtLeast(0)
+}

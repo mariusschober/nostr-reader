@@ -1,0 +1,8 @@
+{
+  "case": "controlled-pairing-1",
+  "outcome": "PASS",
+  "interaction": "Owner completed camera scan during native-entry helper attempt; helper failure retained separately",
+  "chromePaired": true,
+  "phoneChannels": 1,
+  "relays": 6
+}

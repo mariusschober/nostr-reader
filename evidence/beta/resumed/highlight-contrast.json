@@ -1,0 +1,66 @@
+[
+  {
+    "color": "Yellow",
+    "theme": "light",
+    "background": "#F6E2A0",
+    "foreground": "#100F0F",
+    "contrast": 14.859,
+    "status": "PASS"
+  },
+  {
+    "color": "Yellow",
+    "theme": "dark",
+    "background": "#664D01",
+    "foreground": "#FFFCF0",
+    "contrast": 7.779,
+    "status": "PASS"
+  },
+  {
+    "color": "Green",
+    "theme": "light",
+    "background": "#DDE2B2",
+    "foreground": "#100F0F",
+    "contrast": 14.213,
+    "status": "PASS"
+  },
+  {
+    "color": "Green",
+    "theme": "dark",
+    "background": "#3D4C07",
+    "foreground": "#FFFCF0",
+    "contrast": 9.142,
+    "status": "PASS"
+  },
+  {
+    "color": "Cyan",
+    "theme": "light",
+    "background": "#BFE8D9",
+    "foreground": "#100F0F",
+    "contrast": 14.363,
+    "status": "PASS"
+  },
+  {
+    "color": "Cyan",
+    "theme": "dark",
+    "background": "#164F4A",
+    "foreground": "#FFFCF0",
+    "contrast": 9.076,
+    "status": "PASS"
+  },
+  {
+    "color": "Purple",
+    "theme": "light",
+    "background": "#E2D9E9",
+    "foreground": "#100F0F",
+    "contrast": 13.976,
+    "status": "PASS"
+  },
+  {
+    "color": "Purple",
+    "theme": "dark",
+    "background": "#3C2A62",
+    "foreground": "#FFFCF0",
+    "contrast": 12.022,
+    "status": "PASS"
+  }
+]

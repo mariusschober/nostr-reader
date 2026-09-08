@@ -6,6 +6,7 @@ button{font:inherit;padding:9px 14px;margin:12px 4px;border:1px solid #b7b5ac;bo
 </style></head><body>
 <h2>Scan with Reader on Android</h2>
 <div id="qr"></div>
+<details id="manual" hidden><summary>Enter a code instead of scanning</summary><p>On your phone, paste this code in Pair Chrome. It expires with the QR code.</p><textarea id="manual-code" readonly aria-label="Pairing code" rows="4" style="width:100%;box-sizing:border-box"></textarea></details>
 <div id="state">Preparing…</div>
 <button id="cancel" hidden>Cancel pairing</button>
 <button id="restart" hidden>Create a new code</button>
@@ -22,6 +23,8 @@ async function begin() {
   cancel.hidden = true;
   restart.hidden = true;
   document.getElementById("qr").replaceChildren();
+  document.getElementById("manual").hidden = true;
+  document.getElementById("manual-code").value = "";
   state.className = "";
   state.textContent = "Checking the pairing relays…";
   const r = await chrome.runtime.sendMessage({kind:"reader-start-pairing"});
@@ -34,6 +37,8 @@ async function begin() {
   const c = document.createElement("canvas");
   document.getElementById("qr").appendChild(c);
   await QRCode.toCanvas(c, JSON.stringify(r.qr), {width: 280, errorCorrectionLevel:"M"});
+  document.getElementById("manual-code").value = JSON.stringify(r.qr);
+  document.getElementById("manual").hidden = false;
   state.textContent = "Ready to scan. This code expires in five minutes.";
   cancel.hidden = false;
   await poll();
@@ -49,12 +54,16 @@ async function poll() {
     if (r.state === "complete") {
       state.className = "ok";
       document.getElementById("qr").replaceChildren();
+      document.getElementById("manual").hidden = true;
+      document.getElementById("manual-code").value = "";
       cancel.hidden = true;
       stopped = true;
       return;
     }
     if (["expired", "cancelled", "superseded", "missing"].includes(r.state)) {
       document.getElementById("qr").replaceChildren();
+      document.getElementById("manual").hidden = true;
+      document.getElementById("manual-code").value = "";
       cancel.hidden = true;
       restart.hidden = false;
       stopped = true;
@@ -68,10 +77,13 @@ cancel.addEventListener("click", async () => {
   stopped = true;
   if (sessionId) await chrome.runtime.sendMessage({kind:"reader-cancel-pairing", sessionId});
   document.getElementById("qr").replaceChildren();
+  document.getElementById("manual").hidden = true;
+  document.getElementById("manual-code").value = "";
   state.textContent = "Pairing cancelled.";
   cancel.hidden = true;
   restart.hidden = false;
 });
 restart.addEventListener("click", begin);
 await begin();
-</script></body></html>
+</script>  <script type="module" src="./theme.ts"></script>
+</body></html>

@@ -1,0 +1,47 @@
+
+com.reader.app.ReaderLargeContentInstrumentedTest:
+Error in durableContentLargerThanCursorWindowIsReadableAfterReopen(com.reader.app.ReaderLargeContentInstrumentedTest):
+android.database.sqlite.SQLiteBlobTooBigException: Row too big to fit into CursorWindow requiredPos=0, totalRows=1
+	at android.database.sqlite.SQLiteConnection.nativeExecuteForCursorWindow(Native Method)
+	at android.database.sqlite.SQLiteConnection.executeForCursorWindow(SQLiteConnection.java:1048)
+	at android.database.sqlite.SQLiteSession.executeForCursorWindow(SQLiteSession.java:873)
+	at android.database.sqlite.SQLiteQuery.fillWindow(SQLiteQuery.java:62)
+	at android.database.sqlite.SQLiteCursor.fillWindow(SQLiteCursor.java:145)
+	at android.database.sqlite.SQLiteCursor.getCount(SQLiteCursor.java:132)
+	at android.database.AbstractCursor.moveToPosition(AbstractCursor.java:252)
+	at android.database.AbstractCursor.moveToFirst(AbstractCursor.java:291)
+	at com.reader.app.data.DocumentDao_Impl$15.call(DocumentDao_Impl.java:708)
+	at com.reader.app.data.DocumentDao_Impl$15.call(DocumentDao_Impl.java:681)
+	at androidx.room.CoroutinesRoom$Companion$execute$4$job$1.invokeSuspend(CoroutinesRoom.kt:87)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+	at java.lang.Thread.run(Thread.java:1572)
+
+
+Time: 0,16
+There was 1 failure:
+1) durableContentLargerThanCursorWindowIsReadableAfterReopen(com.reader.app.ReaderLargeContentInstrumentedTest)
+android.database.sqlite.SQLiteBlobTooBigException: Row too big to fit into CursorWindow requiredPos=0, totalRows=1
+	at android.database.sqlite.SQLiteConnection.nativeExecuteForCursorWindow(Native Method)
+	at android.database.sqlite.SQLiteConnection.executeForCursorWindow(SQLiteConnection.java:1048)
+	at android.database.sqlite.SQLiteSession.executeForCursorWindow(SQLiteSession.java:873)
+	at android.database.sqlite.SQLiteQuery.fillWindow(SQLiteQuery.java:62)
+	at android.database.sqlite.SQLiteCursor.fillWindow(SQLiteCursor.java:145)
+	at android.database.sqlite.SQLiteCursor.getCount(SQLiteCursor.java:132)
+	at android.database.AbstractCursor.moveToPosition(AbstractCursor.java:252)
+	at android.database.AbstractCursor.moveToFirst(AbstractCursor.java:291)
+	at com.reader.app.data.DocumentDao_Impl$15.call(DocumentDao_Impl.java:708)
+	at com.reader.app.data.DocumentDao_Impl$15.call(DocumentDao_Impl.java:681)
+	at androidx.room.CoroutinesRoom$Companion$execute$4$job$1.invokeSuspend(CoroutinesRoom.kt:87)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+	at java.lang.Thread.run(Thread.java:1572)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

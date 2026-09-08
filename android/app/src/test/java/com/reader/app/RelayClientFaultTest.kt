@@ -45,7 +45,7 @@ class RelayClientFaultTest {
     server.start()
     return try {
       val url = server.url("/").toString().replaceFirst("http", "ws")
-      RelayClient(allowLocalForTests = true).publishDetailed(url, event(), timeoutSecs)
+      RelayClient(okhttp3.OkHttpClient()).publishDetailed(url, event(), timeoutSecs)
     } finally {
       server.shutdown()
     }

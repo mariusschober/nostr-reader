@@ -46,6 +46,29 @@ async function sendCapture(doc: unknown, captureId: string): Promise<void> {
   watchReceipt(captureId, response.transferId);
 }
 
+function previewUncertain(doc: Awaited<ReturnType<typeof extractGeneric>>, captureId: string): void {
+  document.querySelector('[data-reader-ui="preview"]')?.remove();
+  const host = document.createElement("div"); host.dataset.readerUi = "preview";
+  const root = host.attachShadow({ mode: "closed" });
+  const panel = document.createElement("section");
+  panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Review extracted article");
+  panel.style.cssText = "position:fixed;right:20px;bottom:20px;z-index:2147483647;max-width:440px;max-height:80vh;overflow:auto;padding:20px;background:Canvas;color:CanvasText;border:1px solid GrayText;border-radius:12px;font:16px system-ui;color-scheme:light dark";
+  const heading = document.createElement("h2"); heading.textContent = "Check this capture";
+  const description = document.createElement("p"); description.textContent = "Reader is uncertain about this article. Save the extracted text below, or close this preview and select exactly what you want.";
+  const preview = document.createElement("pre"); preview.style.cssText = "white-space:pre-wrap;max-height:35vh;overflow:auto;font:14px system-ui";
+  preview.textContent = doc.markdown.slice(0, 2400) + (doc.markdown.length > 2400 ? "\n… Preview shortened; Save keeps the full extraction." : "");
+  const save = document.createElement("button"); save.textContent = "Save extracted article"; save.disabled = !doc.markdown.trim();
+  save.addEventListener("click", event => {
+    if (!event.isTrusted) return;
+    host.remove();
+    beginCapture(captureId);
+    void sendCapture(doc, captureId).catch(error => feedback.update(captureId, "error", String(error)));
+  });
+  const close = document.createElement("button"); close.textContent = "Use selection instead";
+  close.addEventListener("click", event => { if (event.isTrusted) host.remove(); });
+  panel.append(heading, description, preview, save, close); root.append(panel); document.documentElement.append(host); save.focus();
+}
+
 async function captureForToolbar(): Promise<void> {
   const captureId = crypto.randomUUID();
   beginCapture(captureId);
@@ -65,24 +88,29 @@ async function captureForToolbar(): Promise<void> {
     }
     const doc = await extractGeneric(document, location.href);
     if (doc.confidence === "low") {
-      feedback.update(captureId, "error", "Couldn’t identify an article. Select the text you want, then click Reader.");
+      feedback.update(captureId, "error", "Check the capture preview, or select the text you want.");
+      previewUncertain(doc, captureId);
       return;
     }
     await sendCapture(doc, captureId);
   } catch (error) { feedback.update(captureId, "error", `Couldn’t save — ${error instanceof Error ? error.message : "try again"}`); }
 }
 
-function mountInlineButtons(): void {
+function mountInlineButtons(root: ParentNode = document): void {
   const adapter = adapterFor(location.href);
   if (!adapter) return;
-  for (const response of adapter.findAssistantResponses(document)) {
-    if (response.querySelector(".reader-send")) continue;
+  for (const response of adapter.findAssistantResponses(root)) {
+    response.dataset.readerResponse = adapter.id;
+    const existing = response.querySelector<HTMLButtonElement>(".reader-send");
+    const streaming = !!response.closest('[aria-busy="true"], [data-is-streaming="true"]');
+    if (existing) { existing.disabled = streaming; continue; }
     const mount = adapter.findMountTarget(response);
     if (!mount) continue;
     const button = document.createElement("button");
     button.className = "reader-send";
     button.dataset.readerUi = "capture";
     button.type = "button";
+    button.disabled = streaming;
     button.textContent = "Reader";
     button.title = "Save this response to Reader";
     button.setAttribute("aria-label", button.title);
@@ -121,10 +149,21 @@ if (!owner.readerCaptureInstalled) {
     return true;
   });
   let scheduled = false;
+  const dirty = new Set<ParentNode>();
   new MutationObserver(changes => {
-    if (scheduled || changes.every(change => (change.target as Element).closest?.("[data-reader-ui]"))) return;
+    for (const change of changes) {
+      const target = change.target instanceof Element ? change.target : change.target.parentElement;
+      if (!target || target.closest("[data-reader-ui]")) continue;
+      dirty.add(target.closest("[data-reader-response]") ?? target);
+    }
+    if (scheduled || !dirty.size) return;
     scheduled = true;
-    setTimeout(() => { scheduled = false; try { mountInlineButtons(); } catch {} }, 300);
-  }).observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(() => {
+      scheduled = false;
+      const roots = [...dirty]; dirty.clear();
+      for (const root of roots) try { mountInlineButtons(root); } catch {}
+    }, 300);
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true,
+    attributes: true, attributeFilter: ["aria-busy", "data-is-streaming"] });
   try { mountInlineButtons(); } catch {}
 }

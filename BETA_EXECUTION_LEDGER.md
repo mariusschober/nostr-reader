@@ -151,3 +151,8 @@ Final physical campaigns and exact-package E2E: NOT MEASURED. No earlier build r
 Fixed missing context-menu in-page feedback and stale waiting feedback after authenticated delivery. Per-action UI routing persists with outbox intent; terminal feedback is monotonic and bounded local receipt polling recovers missed pushes. Chrome typecheck and 125/125 tests PASS. Live synthetic selection and toolbar actions on Chrome for Testing/TCL QA showed receipt feedback and timed dismissal. Evidence and exact extension package hashes: `evidence/beta/capture-feedback/`. No Android changes; broader beta execution remains paused.
 
 Owner confirmed the fix appears to work and requested no further extensive testing. Development paused for one week of real-world use; resume only with owner feedback.
+
+
+## 2026-09-08 — implementation checkpoint, campaign pause
+
+See [pre-campaign checkpoint](docs/beta/PRE_CAMPAIGN_CHECKPOINT.md). Android: 107 unit tests pass and both APKs compile. Chrome: 132 tests pass, type checking and isolated package build pass. Final physical/browser campaigns are intentionally deferred; no new owner installation or paired-profile replacement. Exact candidate build hashes are in `evidence/beta/resumed/pre-campaign-artifact-hashes.json`. This does not mark beta readiness or close unmeasured requirements.

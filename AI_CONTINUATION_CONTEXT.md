@@ -1,3 +1,5 @@
+> **2026-09-08 checkpoint:** Implementation is paused before reliability campaigns/intensive testing at the user’s request. See [PRE_CAMPAIGN_CHECKPOINT.md](docs/beta/PRE_CAMPAIGN_CHECKPOINT.md) for current source scope, exact build hashes, passing local checks and unverified limits. Older device evidence does not certify this candidate.
+
 > **Current branch update (2026-09-05):** Work is paused for the owner's 24-hour recovery trial. Read [HANDOVER_RECOVERY_TRIAL.md](HANDOVER_RECOVERY_TRIAL.md) first; it supersedes current-status and installation claims below. Tested application source: `e322c300e5b623904626812b53e75bf4949fbd8e` on `codex/reader-0.9-beta`. The full beta brief is unfinished.
 
 # AI continuation context — Nostr Reader

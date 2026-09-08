@@ -1,6 +1,9 @@
 package com.reader.app.ui.screens
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -35,7 +38,7 @@ import com.reader.app.nostr.PairingProtocol
 import com.reader.app.nostr.ValidatedPairingRequest
 import com.reader.app.prefs.ReaderSettings
 import com.reader.app.ui.theme.ReaderFonts
-import com.reader.app.ui.theme.colorsFor
+import com.reader.app.ui.theme.appColors
 import kotlinx.serialization.json.*
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
@@ -51,9 +54,11 @@ fun PairingScreen(
   status: String? = null,
 ) {
   BackHandler { onCancel() }
-  val c = colorsFor(settings.background)
+  val c = appColors()
   val ctx = LocalContext.current
   val lifecycle = LocalLifecycleOwner.current
+  val activity = remember(ctx) { ctx.cameraPermissionActivity() }
+  var permissionRequested by rememberSaveable { mutableStateOf(false) }
   var manual by remember { mutableStateOf("") }
   var scanError by remember { mutableStateOf<String?>(null) }
   var reviewText by rememberSaveable { mutableStateOf<String?>(null) }
@@ -64,16 +69,25 @@ fun PairingScreen(
     )
   }
   var cameraPermissionDenied by rememberSaveable { mutableStateOf(false) }
+  var cameraSettingsRequired by rememberSaveable { mutableStateOf(false) }
   val cameraPermissionLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.RequestPermission(),
   ) { granted ->
     cameraPermissionGranted = granted
     cameraPermissionDenied = !granted
+    cameraSettingsRequired = !granted && activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) == false
     if (granted) scanError = null
   }
 
+  fun requestCameraPermission() {
+    permissionRequested = true
+    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+  }
+
   LaunchedEffect(Unit) {
-    if (!cameraPermissionGranted) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    // Ask Android once on entry. A historical "asked" flag cannot distinguish
+    // permanent denial from permissions automatically reset by the OS.
+    if (!cameraPermissionGranted) requestCameraPermission()
   }
 
   DisposableEffect(lifecycle, ctx) {
@@ -82,6 +96,8 @@ fun PairingScreen(
         val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) ==
           PackageManager.PERMISSION_GRANTED
         cameraPermissionGranted = granted
+        cameraSettingsRequired = !granted && permissionRequested &&
+          activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) == false
         if (granted) scanError = null
       }
     }
@@ -135,7 +151,8 @@ fun PairingScreen(
           } else {
             CameraPermissionPrompt(
               denied = cameraPermissionDenied,
-              onRequest = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+              settingsRequired = cameraSettingsRequired,
+              onRequest = ::requestCameraPermission,
               onOpenSettings = {
                 ctx.startActivity(
                   Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -181,7 +198,7 @@ private fun PairingReview(
   modifier: Modifier = Modifier,
 ) {
   val busy = status != null
-  val c = colorsFor(settings.background)
+  val c = appColors()
   Column(modifier.padding(top = 20.dp)) {
     Text("Review connection", fontFamily = ReaderFonts.Ui, fontSize = 18.sp)
     Spacer(Modifier.height(8.dp))
@@ -222,6 +239,7 @@ private fun PairingReview(
 @Composable
 private fun CameraPermissionPrompt(
   denied: Boolean,
+  settingsRequired: Boolean,
   onRequest: () -> Unit,
   onOpenSettings: () -> Unit,
 ) {
@@ -237,18 +255,22 @@ private fun CameraPermissionPrompt(
     )
     Spacer(Modifier.height(8.dp))
     Text(
-      "Allow camera access to scan the pairing code. You can still paste the code below.",
+      if (settingsRequired) "Android is no longer showing the permission prompt. Enable Camera in app settings, then return here. You can also paste the code below."
+      else "Allow camera access to scan the pairing code. You can still paste the code below.",
       fontFamily = ReaderFonts.Ui,
       fontSize = 14.sp,
     )
     Spacer(Modifier.height(16.dp))
-    Button(onClick = onRequest) { Text("Allow camera", fontFamily = ReaderFonts.Ui) }
-    if (denied) {
-      TextButton(onClick = onOpenSettings) {
-        Text("Open app settings", fontFamily = ReaderFonts.Ui)
-      }
+    Button(onClick = if (settingsRequired) onOpenSettings else onRequest) {
+      Text(if (settingsRequired) "Open app settings" else "Allow camera", fontFamily = ReaderFonts.Ui)
     }
   }
+}
+
+private fun Context.cameraPermissionActivity(): Activity? = when (this) {
+  is Activity -> this
+  is ContextWrapper -> baseContext.cameraPermissionActivity()
+  else -> null
 }
 
 @Composable
