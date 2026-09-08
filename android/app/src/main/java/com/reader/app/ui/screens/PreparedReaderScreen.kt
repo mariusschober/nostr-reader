@@ -4,6 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -32,9 +39,12 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          onListen: (RenderedProjection, SemanticCursor) -> Unit,
                          onSpeedRead: (SemanticCursor) -> Unit,
                          onLater: () -> Unit, onArchive: () -> Unit,
+                         playerVisible: Boolean = false,
                          player: @Composable () -> Unit = {}) {
   val context = LocalContext.current
   val app = context.applicationContext as ReaderApp
+  val hints = remember { context.getSharedPreferences("reader_hints", android.content.Context.MODE_PRIVATE) }
+  var showSwipeHint by remember { mutableStateOf(!hints.getBoolean("article_swipe_seen", false)) }
   val db = remember { ReaderDb.get(context) }
   val highlights = remember { HighlightRepository(db) }
   val review = remember { ReviewRepository(db) }
@@ -51,6 +61,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var view by remember { mutableStateOf<NativeArticleView?>(null) }
   var pen by rememberSaveable(id) { mutableStateOf(false) }
   var selectedColor by rememberSaveable { mutableStateOf("YELLOW") }
+  var menu by remember { mutableStateOf(false) }
   var appearance by remember { mutableStateOf(false) }
   var actions by remember { mutableStateOf<List<String>>(emptyList()) }
   var activeQuote by remember { mutableStateOf<HighlightEntity?>(null) }
@@ -118,14 +129,17 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     Column {
       Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         TextButton(onClick = { leave() }) { Text("Back") }
-        TextButton(onClick = { pen = !pen }) { Text(if (pen) "Pen on" else "Highlight") }
+        Spacer(Modifier.weight(1f))
         TextButton(onClick = { appearance = true }) { Text("Appearance") }
-      }
-      if (pen) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        HighlightColor.entries.forEach { color ->
-          FilterChip(selected = selectedColor == color.name, onClick = { selectedColor = color.name }, label = { Text(color.label) })
+        Box {
+          IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More actions") }
+          DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(enabled = doc?.list != com.reader.app.ui.Triage.LATER, text = { Text("Move to Later") }, leadingIcon = { Icon(Icons.Default.Schedule, null) }, onClick = { menu = false; onLater() })
+            DropdownMenuItem(enabled = doc?.list != com.reader.app.ui.Triage.ARCHIVED, text = { Text("Archive") }, leadingIcon = { Icon(Icons.Default.Archive, null) }, onClick = { menu = false; onArchive() })
+          }
         }
       }
+
     }
   }, bottomBar = {
     Column {
@@ -139,15 +153,42 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         }) { Text("Undo") }
       }
       player()
-      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        TextButton(onClick = { prepared?.let { onListen(it.projection, view?.currentCursor() ?: initial) } }) { Text("Listen") }
-        TextButton(onClick = { onSpeedRead(view?.currentCursor() ?: initial) }) { Text("Speed") }
-        TextButton(onClick = onLater) { Text("Later") }
-        TextButton(onClick = onArchive) { Text("Archive") }
+      if (pen) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        HighlightColor.entries.forEach { color ->
+          FilterChip(selected = selectedColor == color.name, onClick = { selectedColor = color.name }, label = { Text(color.label) })
+        }
+      }
+      Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = { prepared?.let { onListen(it.projection, view?.currentCursor() ?: initial) } }, enabled = prepared != null && !playerVisible) {
+          Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Listen")
+        }
+        ElevatedFilterChip(selected = pen, onClick = {
+          pen = !pen
+          if (pen && !hints.getBoolean("highlight_seen", false)) {
+            hints.edit().putBoolean("highlight_seen", true).apply()
+            scope.launch { snackbar.showSnackbar("Select text to highlight. Drag the handles to adjust.") }
+          }
+        }, modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (pen) "Highlighting on" else "Highlighting off" },
+          shape = RoundedCornerShape(28.dp),
+          leadingIcon = { Icon(Icons.Default.BorderColor, null, Modifier.size(20.dp)) },
+          label = { Text(if (pen) "Highlight on" else "Highlight", color = HighlightColor.text(dark),
+            modifier = Modifier.background(HighlightColor.YELLOW.background(dark), RoundedCornerShape(3.dp)).padding(horizontal = 3.dp)) })
+        TextButton(onClick = { onSpeedRead(view?.currentCursor() ?: initial) }, enabled = prepared != null) {
+          Icon(Icons.Default.Speed, "Speed reading", Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Speed")
+        }
       }
     }
   }) { padding ->
     Column(Modifier.padding(padding).fillMaxSize()) {
+      if (showSwipeHint) Surface(color = colors.surface) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+          Text("Swipe inside the page: ← Archive · Later →", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+          IconButton(onClick = { showSwipeHint = false; hints.edit().putBoolean("article_swipe_seen", true).apply() }) {
+            Icon(Icons.Default.Close, contentDescription = "Dismiss swipe hint", modifier = Modifier.size(18.dp))
+          }
+        }
+      }
       Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp))
       val ready = prepared
       val text = content
@@ -172,6 +213,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             native.display(id, ready.projection, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, false), initial)
             native.tag = styleKey
           }
+          native.allowLater = doc?.list != com.reader.app.ui.Triage.LATER
+          native.allowArchive = doc?.list != com.reader.app.ui.Triage.ARCHIVED
+          native.onArticleSwipe = { later -> if (later) onLater() else onArchive() }
           native.setPenMode(pen)
           native.setMarks(nativeMarks)
           native.onCursor = { cursor, _ -> app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))) }

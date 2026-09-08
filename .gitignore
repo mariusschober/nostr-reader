@@ -28,3 +28,6 @@ android/local.properties
 /artifacts/recovery-checkpoint/
 
 /artifacts/beta-0.9.0-beta.1/
+
+# Local UI refresh packages and on-device screenshots.
+/artifacts/ui-refresh/

@@ -30,6 +30,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     }
   }
   private val body = SelectionText(context)
+  private val swipeLabel = TextView(context)
   private var projection: RenderedProjection? = null
   private var documentId = ""
   private var actionMode: ActionMode? = null
@@ -45,8 +46,78 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onLink: (String) -> Unit = {}
   var onTap: () -> Unit = {}
 
+  var onArticleSwipe: (Boolean) -> Unit = {}
+  var onSwipeProgress: (Float, Boolean) -> Unit = { _, _ -> }
+  var allowLater = true
+  var allowArchive = true
+  private var swipeX = 0f
+  private var swipeY = 0f
+  private var swipeEligible = false
+  private var swiping = false
+  private var swipeArmed = false
+
+  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    val dx = event.x - swipeX
+    val dy = event.y - swipeY
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        swipeX = event.x; swipeY = event.y; swiping = false; swipeArmed = false
+        val insets = androidx.core.view.ViewCompat.getRootWindowInsets(this)
+          ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemGestures())
+        val edge = maxOf(dp(24), insets?.left ?: 0, insets?.right ?: 0)
+        val at = body.getOffsetForPosition(event.x - paddingLeft, event.y)
+        val link = projection?.styles?.any { it.style == TextStyle.LINK && at >= it.start && at < it.end } == true
+        swipeEligible = !pen && actionMode == null && body.selectionStart == body.selectionEnd &&
+          event.x > edge && event.x < width - edge && !link
+      }
+      MotionEvent.ACTION_POINTER_DOWN -> swipeEligible = false
+      MotionEvent.ACTION_MOVE -> {
+        if (pen || actionMode != null || body.selectionStart != body.selectionEnd) swipeEligible = false
+        if (!swiping && kotlin.math.abs(dy) > dp(12)) swipeEligible = false
+        if (!swiping && swipeEligible && kotlin.math.abs(dx) > dp(20) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.7f &&
+          (if (dx > 0) allowLater else allowArchive)) {
+          swiping = true
+          val cancel = MotionEvent.obtain(event); cancel.action = MotionEvent.ACTION_CANCEL
+          super.dispatchTouchEvent(cancel); cancel.recycle()
+        }
+        if (swiping) {
+          val allowed = if (dx > 0) allowLater else allowArchive
+          val offset = if (allowed && swipeEligible) dx.coerceIn(-width.toFloat(), width.toFloat()) else 0f
+          body.translationX = offset
+          val armed = kotlin.math.abs(offset) >= width * .30f
+          if (armed && !swipeArmed) performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+          swipeArmed = armed
+          swipeLabel.layoutParams = LayoutParams(kotlin.math.abs(offset).toInt().coerceAtLeast(1), LayoutParams.WRAP_CONTENT,
+            android.view.Gravity.CENTER_VERTICAL or (if (offset > 0) android.view.Gravity.LEFT else android.view.Gravity.RIGHT))
+          swipeLabel.gravity = android.view.Gravity.CENTER
+          val icon = context.getDrawable(if (offset > 0) R.drawable.ic_swipe_later else R.drawable.ic_swipe_archive)?.mutate()
+          icon?.setTint(swipeLabel.currentTextColor)
+          swipeLabel.setCompoundDrawablesWithIntrinsicBounds(null, icon, null, null)
+          swipeLabel.compoundDrawablePadding = dp(8)
+          swipeLabel.text = if (offset == 0f) "" else if (offset > 0) { if (armed) "Release to move\nto Later" else "Later →" } else { if (armed) "Release to\narchive" else "← Archive" }
+          onSwipeProgress(offset / width.coerceAtLeast(1), armed)
+          return true
+        }
+      }
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (swiping) {
+        val commit = event.actionMasked == MotionEvent.ACTION_UP && swipeEligible && swipeArmed
+        val later = body.translationX > 0
+        body.animate().translationX(0f).setDuration(160).start()
+        swiping = false; swipeEligible = false; swipeArmed = false
+        swipeLabel.text = ""
+        swipeLabel.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)
+        onSwipeProgress(0f, false)
+        if (commit) { reportCursor(); onArticleSwipe(later) }
+        return true
+      }
+    }
+    return super.dispatchTouchEvent(event)
+  }
+
   init {
     clipToPadding = false
+    swipeLabel.textSize = 16f
+    addView(swipeLabel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     body.setTextIsSelectable(true)
     body.isVerticalScrollBarEnabled = true
     body.linksClickable = false
@@ -115,6 +186,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     body.typeface = ResourcesCompat.getFont(context, font)
     body.setTextColor(foreground)
     setBackgroundColor(background)
+    body.setBackgroundColor(background)
+    swipeLabel.setTextColor(foreground)
     setPadding(dp(margin), 0, dp(margin), 0)
     fun restore() {
       restoring = true

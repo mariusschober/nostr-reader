@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -27,9 +28,13 @@ fun TtsBar(
   onSpeed: (Float) -> Unit,
   onClose: () -> Unit,
 ) {
+  val context = LocalContext.current
   Surface(color = colors.surface, tonalElevation = 2.dp) {
     Column {
-    state.error?.let { Text(it, color = colors.error, modifier = Modifier.padding(12.dp)) }
+    state.error?.let {
+      Text(it, color = colors.error, modifier = Modifier.padding(12.dp))
+      TextButton(onClick = { runCatching { context.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS")) } }) { Text("Speech settings") }
+    }
     Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
       IconButton(onClick = onPrev) { Icon(Icons.Default.SkipPrevious, contentDescription = "Previous sentence", tint = colors.text) }
       IconButton(onClick = onToggle) {

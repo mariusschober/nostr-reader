@@ -53,6 +53,8 @@ fun InboxScreen(
   selectedTab: String,
   onSelectTab: (String) -> Unit,
   highlights: @Composable () -> Unit,
+  readerMove: Triple<String, String, String>? = null,
+  onReaderMoveConsumed: () -> Unit = {},
 
 ) {
   val c = appColors()
@@ -65,13 +67,19 @@ fun InboxScreen(
   var showPaste by remember { mutableStateOf(false) }
   val snackbar = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
+  LaunchedEffect(readerMove) {
+    val move = readerMove ?: return@LaunchedEffect
+    if (snackbar.showSnackbar(if (move.third == Triage.ARCHIVED) "Archived" else "Moved to Later", "Undo", withDismissAction = true,
+        duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) onUndoMove(move.first, move.second)
+    onReaderMoveConsumed()
+  }
   Scaffold(
     containerColor = c.background,
     snackbarHost = {
       SnackbarHost(snackbar) { data ->
         Snackbar(
           snackbarData = data, containerColor = c.text, contentColor = c.background,
-          actionColor = c.focal,
+          actionColor = if (com.reader.app.ui.theme.LocalReaderDark.current) com.reader.app.ui.theme.Flexoki.Blue600 else com.reader.app.ui.theme.Flexoki.Blue400,
         )
       }
     },
@@ -245,6 +253,7 @@ private fun SwipeRow(
   // via screenshots/DB only.)
   val offset = remember { Animatable(0f) }
   val scope = rememberCoroutineScope()
+
   var gestureDrag by remember { mutableStateOf(false) }
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val density = LocalDensity.current

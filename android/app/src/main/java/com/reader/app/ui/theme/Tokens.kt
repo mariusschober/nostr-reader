@@ -36,11 +36,11 @@ object Flexoki {
   val Red600 = Color(0xFFAF3029)
   val Orange600 = Color(0xFFBC5215)
   val Green600 = Color(0xFF66800B)
-  val Blue600 = Color(0xFF205EA6)
+  val Blue600 = Color(0xFF015A97)
   val Red400 = Color(0xFFD14D41)
   val Orange400 = Color(0xFFDA702C)
   val Green400 = Color(0xFF879A39)
-  val Blue400 = Color(0xFF4385BE)
+  val Blue400 = Color(0xFF70B5E8)
 }
 
 data class ReaderColors(
@@ -57,10 +57,10 @@ data class ReaderColors(
 )
 
 fun colorsFor(bg: ArticleBackground): ReaderColors = when (bg) {
-  ArticleBackground.FOLLOW_APP, ArticleBackground.PAPER -> ReaderColors(Flexoki.Paper, Flexoki.Base50, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Red600)
-  ArticleBackground.SOFT -> ReaderColors(Flexoki.Base50, Flexoki.Base100, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Red600)
-  ArticleBackground.INK -> ReaderColors(Flexoki.Base950, Flexoki.Base950, Flexoki.Paper, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Red400)
-  ArticleBackground.BLACK -> ReaderColors(Flexoki.Black, Flexoki.Black, Flexoki.Base100, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Red400)
+  ArticleBackground.FOLLOW_APP, ArticleBackground.PAPER -> ReaderColors(Flexoki.Paper, Flexoki.Base50, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Blue600)
+  ArticleBackground.SOFT -> ReaderColors(Flexoki.Base50, Flexoki.Base100, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Blue600)
+  ArticleBackground.INK -> ReaderColors(Flexoki.Base950, Flexoki.Base950, Flexoki.Paper, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Blue400)
+  ArticleBackground.BLACK -> ReaderColors(Flexoki.Black, Flexoki.Black, Flexoki.Base100, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Blue400)
 }
 
 val LocalReaderDark = staticCompositionLocalOf { false }
@@ -80,13 +80,18 @@ fun appColors(): ReaderColors = colorsFor(if (LocalReaderDark.current) ArticleBa
 fun ReaderTheme(mode: ThemeMode, content: @Composable () -> Unit) {
   val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.LIGHT -> false; ThemeMode.DARK -> true }
   val c = colorsFor(if (dark) ArticleBackground.INK else ArticleBackground.PAPER)
+  val accentSurface = if (dark) Color(0xFF153E5A) else Color(0xFFD8E8F2)
   val scheme = if (dark) darkColorScheme(
-    primary = c.text, onPrimary = c.background, primaryContainer = c.divider, onPrimaryContainer = c.text,
+    primary = c.link, onPrimary = c.background, primaryContainer = accentSurface, onPrimaryContainer = c.text,
+    secondaryContainer = accentSurface, onSecondaryContainer = c.text,
+    inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = if (dark) Flexoki.Blue600 else Flexoki.Blue400,
     secondary = c.link, onSecondary = c.background, background = c.background, onBackground = c.text,
     surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
     outline = c.secondary, error = c.error,
   ) else lightColorScheme(
-    primary = c.text, onPrimary = c.background, primaryContainer = c.divider, onPrimaryContainer = c.text,
+    primary = c.link, onPrimary = c.background, primaryContainer = accentSurface, onPrimaryContainer = c.text,
+    secondaryContainer = accentSurface, onSecondaryContainer = c.text,
+    inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = if (dark) Flexoki.Blue600 else Flexoki.Blue400,
     secondary = c.link, onSecondary = c.background, background = c.background, onBackground = c.text,
     surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
     outline = c.secondary, error = c.error,

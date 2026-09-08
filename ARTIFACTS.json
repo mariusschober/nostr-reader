@@ -103,5 +103,22 @@
     "installedOn": "TCL T807D",
     "evidence": "evidence/tts-default/README.md",
     "baselineArtifactsAbove": "Retained historical beta candidate; this patch supersedes its installed Android app."
+  },
+  "latestUiRefresh": {
+    "date": "2026-09-08",
+    "source": "UI refresh implementation commit; see UI_REFRESH.md",
+    "files": {
+      "reader-ui-refresh.apk": {
+        "path": "artifacts/ui-refresh/reader-ui-refresh.apk",
+        "sha256": "1aa6f7b07cd4b752bcd2d091529b7bdb6a202c23dbbdbbf08124ecbb7feb2128",
+        "bytes": 29147282
+      },
+      "reader-chrome-ui-refresh.zip": {
+        "path": "artifacts/ui-refresh/reader-chrome-ui-refresh.zip",
+        "sha256": "93896c0d6629782f988352f1a39776a863e2c73a987402ef22b5e00f7f3a5067",
+        "bytes": 277469
+      }
+    },
+    "report": "UI_REFRESH.md"
   }
 }

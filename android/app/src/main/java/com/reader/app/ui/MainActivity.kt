@@ -106,6 +106,8 @@ class MainActivity : ComponentActivity() {
       var pairingStatus by remember { mutableStateOf<String?>(null) }
       var pairingChannelId by remember { mutableStateOf<String?>(null) }
       var ttsState by remember { mutableStateOf<TtsController.State?>(null) }
+      var readerMove by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+      var readerMoving by remember { mutableStateOf(false) }
       var ttsDocId by remember { mutableStateOf<String?>(null) }
       // Room invalidation keeps a visible inbox truthful when a background
       // relay sync commits a document after onResume's initial refresh.
@@ -185,9 +187,28 @@ class MainActivity : ComponentActivity() {
         }
       }
 
+      fun moveReader(id: String, target: String) {
+        if (readerMoving) return
+        readerMoving = true
+        lifecycleScope.launch {
+          try {
+            (application as com.reader.app.ReaderApp).progress.flush()
+            val previous = db.documents().observeMetadata(id).first()?.list ?: return@launch
+            if (previous == target) return@launch
+            moveToListDb(id, target)
+            readerMove = Triple(id, previous, target)
+            ttsController?.pause(); ttsState = null; ttsDocId = null
+            refresh(); stack.pop(); tick++
+          } catch (_: Exception) {
+            Toast.makeText(this@MainActivity, "Couldn’t move article. Try again.", Toast.LENGTH_LONG).show()
+          } finally { readerMoving = false }
+        }
+      }
+
       when (val r = route) {
         is Route.Inbox -> InboxScreen(
           lists = lists, minutes = minutesByList, settings = settings,
+          readerMove = readerMove, onReaderMoveConsumed = { readerMove = null },
           loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = { selectedTab = it },
           highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, { highlightsNewest = it }) { chosen -> lifecycleScope.launch {
             try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
@@ -282,12 +303,9 @@ class MainActivity : ComponentActivity() {
           },
           onListen = { projection, cursor -> openTts(r.id, projection, cursor) },
           onSpeedRead = { cursor -> go(Route.Rsvp(r.id, cursor)) },
-          onLater = { lifecycleScope.launch {
-            moveToListDb(r.id, Triage.LATER); refresh(); stack.pop(); tick++
-          } },
-          onArchive = { lifecycleScope.launch {
-            moveToListDb(r.id, Triage.ARCHIVED); refresh(); stack.pop(); tick++
-          } },
+          onLater = { moveReader(r.id, Triage.LATER) },
+          onArchive = { moveReader(r.id, Triage.ARCHIVED) },
+          playerVisible = ttsDocId == r.id && ttsState != null,
           player = {
             if (ttsDocId == r.id) ttsState?.let { state ->
               TtsBar(state, com.reader.app.ui.theme.readerColors(settings.background),

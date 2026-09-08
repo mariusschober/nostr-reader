@@ -1,5 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-<rect x="2" y="2" width="124" height="124" rx="24" fill="#FFFCF0"/>
-<path d="M64 38 V88 M64 40 C48 30 32 32 22 44 M64 40 C80 30 96 32 106 44 M64 88 C48 78 32 80 22 90 M64 88 C80 78 96 80 106 90" stroke="#100F0F" stroke-width="7" fill="none" stroke-linecap="round"/>
-<circle cx="64" cy="56" r="9" fill="#AF3029"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1247" height="1261" viewBox="0 0 1247 1261" fill="none">
+  <title>Nostr Reader bookmark logo</title>
+  <desc>Vector reconstruction of the generated bookmark reader icon, with transparent background.</desc>
+
+  <!-- Bookmark -->
+  <path d="M269 132H975V1119L622 876L269 1119V132Z" fill="#015A97"/>
+
+  <!-- Escaping/highlighted line -->
+  <path d="M873 255L902 314L638 454L612 392L873 255Z" fill="#FAC327"/>
+
+  <!-- First text line -->
+  <path d="M361 412H574L600 473H361V412Z" fill="#FDF8EB"/>
+
+  <!-- Remaining text lines -->
+  <rect x="361" y="519" width="522" height="59" fill="#FDF8EB"/>
+  <rect x="361" y="624" width="522" height="59" fill="#FDF8EB"/>
+  <rect x="361" y="729" width="522" height="59" fill="#FDF8EB"/>
 </svg>

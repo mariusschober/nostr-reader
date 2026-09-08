@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 
 /** Android callbacks are keyed to the exact utterance and delivered on the main thread. */
 class AndroidTtsEngine(ctx: Context) : TtsEngine {
+  companion object { const val GOOGLE_ENGINE = "com.google.android.tts" }
   private val context = ctx.applicationContext
   private val handler = Handler(Looper.getMainLooper())
   private val audio = context.getSystemService(AudioManager::class.java)
@@ -41,12 +42,15 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
 
   init {
     ContextCompat.registerReceiver(context, noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
-    tts = TextToSpeech(context) { status ->
+    val googleAvailable = context.packageManager.queryIntentServices(
+      Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE).setPackage(GOOGLE_ENGINE), 0).isNotEmpty()
+    if (!googleAvailable) failed = true
+    else tts = TextToSpeech(context, { status ->
       handler.post {
         ready = status == TextToSpeech.SUCCESS; failed = !ready
-        active?.let { if (ready) submit(it) else { active = null; it.error("Speech engine unavailable") } }
+        active?.let { if (ready) submit(it) else { active = null; it.error("Google speech is unavailable. Open speech settings to enable it.") } }
       }
-    }
+    }, GOOGLE_ENGINE)
     tts?.setAudioAttributes(attributes)
     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
       override fun onStart(id: String?) = current(id) { it.start() }
@@ -65,7 +69,7 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
   override fun speak(utteranceId: String, text: String, speed: Float, onStart: () -> Unit, onDone: () -> Unit, onRange: (Int, Int) -> Unit, onError: (String) -> Unit) {
     val request = Request(utteranceId, text, speed, onStart, onDone, onRange, onError)
     active = request
-    if (failed) { active = null; onError("Speech engine unavailable") }
+    if (failed) { active = null; onError("Google speech is unavailable. Open speech settings to enable it.") }
     else if (ready) submit(request)
   }
 
@@ -78,7 +82,7 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
     // Keep the system engine's configured voice/language; the UI locale is not a speech preference.
     engine.setSpeechRate(request.speed.coerceIn(.75f, 2.5f))
     if (engine.speak(request.text, TextToSpeech.QUEUE_FLUSH, Bundle(), request.id) != TextToSpeech.SUCCESS) {
-      active = null; audio.abandonAudioFocusRequest(focus); request.error("Speech engine unavailable")
+      active = null; audio.abandonAudioFocusRequest(focus); request.error("Google speech is unavailable. Open speech settings to enable it.")
     }
   }
 
