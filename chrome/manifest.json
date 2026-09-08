@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Reader",
-  "version": "0.1.0",
+  "version": "0.9.0",
+  "version_name": "0.9.0-beta.1",
   "description": "Private one-click reading inbox over encrypted Nostr transport.",
   "action": {},
   "background": {
