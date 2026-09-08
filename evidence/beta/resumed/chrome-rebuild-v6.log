@@ -1,0 +1,30 @@
+
+> reader-chrome@0.1.0 build
+> vite build && vite build --config vite.content.config.ts && node scripts/verify-dist.mjs
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 87 modules transformed.
+rendering chunks...
+computing gzip size...
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/src/ui/popup.html               0.63 kB │ gzip:  0.42 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/src/ui/pairing.html             1.14 kB │ gzip:  0.71 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/src/ui/options.html             4.88 kB │ gzip:  2.06 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/assets/theme-B1hBejmL.css       1.54 kB │ gzip:  0.48 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/popup.js                        0.72 kB │ gzip:  0.42 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/theme-C8qsnVx4.js               0.72 kB │ gzip:  0.36 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/rolldown-runtime-DC62tzP2.js    1.44 kB │ gzip:  0.67 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/options.js                      9.16 kB │ gzip:  2.85 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/pairing.js                     73.68 kB │ gzip: 18.83 kB
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/background.js                 327.64 kB │ gzip: 86.98 kB
+
+✓ built in 87ms
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 13 modules transformed.
+rendering chunks...
+computing gzip size...
+../artifacts/beta-work/testing-resume/chrome-rebuild-v6/content.js  667.01 kB │ gzip: 156.09 kB
+
+✓ built in 100ms
+Verified Chrome extension package: standalone content script, manifest assets, Chromium-safe text.
