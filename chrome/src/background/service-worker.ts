@@ -535,6 +535,7 @@ async function publishTransfer(
     activePublicationStops.set(snapshot.transferId, () => { cancelled = true; pool.close(snapshot.relays); });
     try {
       await publishFragments({
+        refreshManifest: force && snapshot.status === "awaiting_device",
         snapshot: { relays: snapshot.relays, payloadCount: snapshot.chunks.length + 1, progress: snapshot.fragmentProgress ?? {} },
         current,
         send: async (index, relay) => {

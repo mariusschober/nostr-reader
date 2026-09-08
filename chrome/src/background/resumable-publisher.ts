@@ -13,6 +13,8 @@ export async function publishFragments(options: {
   send: (index: number, relay: string) => Promise<FragmentOutcome>;
   checkpoint: (index: number, relay: string, outcome: FragmentOutcome) => Promise<boolean>;
   now?: () => number;
+  /** Explicit receipt recovery needs fresh authenticated demand, not payload replay. */
+  refreshManifest?: boolean;
 }): Promise<boolean> {
   const now = options.now ?? Date.now;
   // Each relay advances independently. A slow redundant manifest must not
@@ -22,7 +24,8 @@ export async function publishFragments(options: {
     for (let index = 0; index < options.snapshot.payloadCount; index++) {
       if (!await options.current()) return false;
       const previous = options.snapshot.progress[String(index)]?.[relay];
-      if (previous?.state === "OK_TRUE" && now() - previous.at < 15 * 60_000) continue;
+      if (previous?.state === "OK_TRUE" && now() - previous.at < 15 * 60_000 &&
+        !(index === 0 && options.refreshManifest)) continue;
       const outcome = await options.send(index, relay);
       if (!await options.checkpoint(index, relay, outcome)) return false;
     }

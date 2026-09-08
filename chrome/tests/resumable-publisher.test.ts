@@ -53,3 +53,15 @@ it("healthy relays finish all fragments while a redundant relay is still waiting
     alive = false; // authenticated device ACK wins without waiting for redundancy
   } finally { release(); await run; }
 });
+
+it("explicit receipt recovery refreshes only the manifest despite recent relay acceptance", async () => {
+  const sent: string[] = [];
+  const accepted = { a: { state: "OK_TRUE", at: 999 }, b: { state: "OK_TRUE", at: 999 } };
+  await publishFragments({
+    snapshot: { relays: ["a", "b"], payloadCount: 3, progress: { "0": accepted, "1": accepted, "2": accepted } },
+    refreshManifest: true, now: () => 1000, current: async () => true,
+    send: async (i, relay) => { sent.push(`${i}:${relay}`); return { state: "OK_TRUE", at: 1000 }; },
+    checkpoint: async () => true,
+  });
+  expect(sent.sort()).toEqual(["0:a", "0:b"]);
+});
