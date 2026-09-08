@@ -76,6 +76,7 @@ fun InboxScreen(
     if (loaded && lists[Triage.INBOX].isNullOrEmpty() && tab == Triage.INBOX) onSelectTab(Triage.PRIORITY)
   }
   var menuFor by remember { mutableStateOf<String?>(null) }
+  var rowMenu by remember { mutableStateOf<DocumentSummary?>(null) }
   var showAdd by remember { mutableStateOf(false) }
   var showPaste by remember { mutableStateOf(false) }
   val snackbar = remember { SnackbarHostState() }
@@ -104,7 +105,9 @@ fun InboxScreen(
         IconButton(onClick = { showAdd = true }) {
           Icon(Icons.Default.Add, contentDescription = "Import, paste, or pair", tint = c.text)
         }
-        IconButton(onClick = onArchiveOpen, enabled = !archiveMode) {
+        // The Archive destination has its own Back control; a disabled
+        // Archive icon here added visual noise without an action.
+        if (!archiveMode) IconButton(onClick = onArchiveOpen) {
           Icon(Icons.Default.Archive, contentDescription = "Open archive", tint = c.text)
         }
         IconButton(onClick = onSettings) {
@@ -146,6 +149,7 @@ fun InboxScreen(
               SwipeRow(
                 doc = d, list = tab, colors = c,
                 onOpen = { onOpen(d.documentId) },
+                onMenu = { rowMenu = d },
                 onSwiped = { target ->
                   val previous = tab
                   onMove(d.documentId, target)
@@ -223,6 +227,40 @@ fun InboxScreen(
       },
     )
   }
+  // Non-gesture equivalents for row swipes: every list row offers the same
+  // moves as its swipe directions plus Archive, with Undo via snackbar.
+  // Permanent deletion stays archive-only and is not offered here.
+  rowMenu?.let { d ->
+    val previous = tab
+    fun move(target: String) {
+      rowMenu = null
+      if (target == previous) return
+      onMove(d.documentId, target)
+      scope.launch {
+        val res = snackbar.showSnackbar(Triage.movedLabel(target), actionLabel = "Undo")
+        if (res == SnackbarResult.ActionPerformed) onUndoMove(d.documentId, previous)
+      }
+    }
+    AlertDialog(
+      onDismissRequest = { rowMenu = null },
+      containerColor = c.background,
+      title = { Text("Move article", fontFamily = ReaderFonts.Ui, color = c.text) },
+      text = {
+        Column {
+          if (previous != Triage.PRIORITY) TextButton(onClick = { move(Triage.PRIORITY) }) { Text("Move to Priority", fontFamily = ReaderFonts.Ui, color = c.text) }
+          if (previous != Triage.INBOX) TextButton(onClick = { move(Triage.INBOX) }) { Text("Move to Inbox", fontFamily = ReaderFonts.Ui, color = c.text) }
+          if (previous != Triage.LATER) TextButton(onClick = { move(Triage.LATER) }) { Text("Save for later", fontFamily = ReaderFonts.Ui, color = c.text) }
+          if (previous != Triage.ARCHIVED) TextButton(onClick = { move(Triage.ARCHIVED) }) { Text("Archive", fontFamily = ReaderFonts.Ui, color = c.text) }
+        }
+      },
+      confirmButton = {
+        TextButton(onClick = { rowMenu = null; onOpen(d.documentId) }) { Text("Open", fontFamily = ReaderFonts.Ui, color = c.text) }
+      },
+      dismissButton = {
+        TextButton(onClick = { rowMenu = null }) { Text("Cancel", fontFamily = ReaderFonts.Ui, color = c.text) }
+      },
+    )
+  }
 }
 
 private fun emptyHint(tab: String): String = when (tab) {
@@ -258,6 +296,7 @@ private fun SwipeRow(
   list: String,
   colors: com.reader.app.ui.theme.ReaderColors,
   onOpen: () -> Unit,
+  onMenu: () -> Unit,
   onSwiped: (target: String) -> Unit,
 ) {
   // Tap-vs-swipe arbitration, textbook pattern: stock clickable owns
@@ -337,7 +376,7 @@ private fun SwipeRow(
           )
         },
     ) {
-      ArticleRow(doc, colors, onOpen = onOpen, onMenu = null)
+      ArticleRow(doc, colors, onOpen = onOpen, onMenu = onMenu)
     }
   }
 }

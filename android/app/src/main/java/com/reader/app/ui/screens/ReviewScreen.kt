@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.reader.app.core.ReviewState
 import com.reader.app.data.HighlightEntity
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean, error: String?,
                  onBack: () -> Unit, onNext: () -> Unit, onImportant: () -> Unit,
@@ -59,7 +60,14 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
             if (!sourceAvailable) Text(quote.sourceTitle)
             TextButton(enabled = sourceAvailable, onClick = onSource) { Text(if (sourceAvailable) quote.sourceTitle.ifBlank { "Open source" } else "Source article deleted") }
           }
-          Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+          // Action bar wraps instead of clipping on narrow screens and large
+          // fonts. Next stays the emphasized button; all three remain
+          // reachable with TalkBack labels from their visible text.
+          FlowRow(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+          ) {
             TextButton(onClick = onImportant) { Text(if (quote.important) "★ Important" else "☆ Important") }
             TextButton(onClick = onShare) { Text("Share") }
             Button(onClick = onNext) { Text("Next") }

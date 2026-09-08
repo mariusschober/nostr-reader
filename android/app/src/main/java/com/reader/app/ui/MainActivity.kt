@@ -94,7 +94,11 @@ class MainActivity : ComponentActivity() {
       val stack = remember { RouteStack(runCatching { Json.decodeFromString<List<Route>>(savedRoutes) }.getOrDefault(emptyList())) }
       var tick by remember { mutableIntStateOf(0) }
       fun go(r: Route) { stack.push(r); tick++ }
-      fun backToInbox() { stack.reset(); tick++ }
+      // Pop returns to the exact prior destination (Inbox tab, Archive,
+      // Review, Reader) with its preserved scroll state. Settings, Pairing,
+      // Review and Reader all use this so round trips never reset
+      // indiscriminately to Inbox.
+      fun pop() { stack.pop(); tick++ }
       // NB: tick MUST be read here (via remember key). RouteStack is a plain
       // mutable list, not observable state: pushing without reading tick
       // schedules no recomposition, so navigation silently never renders
@@ -435,7 +439,7 @@ class MainActivity : ComponentActivity() {
                   pairingError = null
                   Toast.makeText(this@MainActivity, "Connected", Toast.LENGTH_SHORT).show()
                   refresh()
-                  backToInbox()
+                  pop()
                   break
                 }
                 "revoked" -> {
@@ -463,7 +467,7 @@ class MainActivity : ComponentActivity() {
               pairingChannelId = null
               pairingStatus = null
               pairingError = null
-              backToInbox()
+              pop()
             },
             onScanned = { qrText ->
               lifecycleScope.launch {
@@ -476,7 +480,7 @@ class MainActivity : ComponentActivity() {
                     pairingStatus = null
                     Toast.makeText(this@MainActivity, "Connected", Toast.LENGTH_SHORT).show()
                     refresh()
-                    backToInbox()
+                    pop()
                   } else {
                     pairingStatus = if (result.acceptedRelays == 0) {
                       "${result.retryReason ?: "No relay confirmed the encrypted response yet."} Reader will retry until this pairing code expires…"
@@ -505,7 +509,7 @@ class MainActivity : ComponentActivity() {
           relaySummary = (channels.firstOrNull()?.relaysJson
             ?: "${READER_DEFAULT_RELAYS.size} default public relays (${READER_RELAY_WRITE_QUORUM} required per payload).") +
             "\n\nAdd up to 2 custom relays in Chrome Settings, then re-pair so both devices authenticate the same relay set.",
-          onBack = { backToInbox(); lifecycleScope.launch { refresh() } },
+          onBack = { pop(); lifecycleScope.launch { refresh() } },
           onRevokeChannel = { id ->
             lifecycleScope.launch {
               withContext(Dispatchers.IO) { db.channels().revoke(id, System.currentTimeMillis()) }
