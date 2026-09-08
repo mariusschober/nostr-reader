@@ -40,6 +40,8 @@ class TransferManager(
     val manifestId: String,
     val status: String,
     val expiresAt: Long,
+    val compressedSha256: String = "",
+    val chunkCount: Int = 0,
   )
 
   private val hex16 = Regex("^[0-9a-f]{32}$")
@@ -112,9 +114,24 @@ class TransferManager(
           payload["manifestId"]?.jsonPrimitive?.content == historical.manifestId &&
           payload["documentId"]?.jsonPrimitive?.content == historical.documentId &&
           payload["expiresAt"]?.jsonPrimitive?.long == historical.expiresAt) { "conflicting completed transfer" }
+        // Bind the full byte identity when known (v10+ outcomes). Unknown
+        // (empty/zero from pre-v10 backfill) skips that sub-check for compat.
+        // A conflicting payload with the same IDs is rejected, never ACKed.
+        if (historical.compressedSha256.isNotEmpty()) {
+          require(payload["compressedSha256"]?.jsonPrimitive?.content == historical.compressedSha256) { "conflicting completed transfer" }
+        }
+        if (historical.chunkCount != 0) {
+          val claimedCount = if (payload["type"]?.jsonPrimitive?.content == "manifest") {
+            payload["chunkCount"]?.jsonPrimitive?.int
+          } else {
+            payload["count"]?.jsonPrimitive?.int
+          }
+          require(claimedCount == historical.chunkCount) { "conflicting completed transfer" }
+        }
         // A fresh authenticated wrapper may refresh a historical receipt but
         // never stage payload or recreate a locally deleted document.
-        Intake(historical.transferId, historical.documentId, historical.manifestId, "duplicate", historical.expiresAt)
+        Intake(historical.transferId, historical.documentId, historical.manifestId, "duplicate", historical.expiresAt,
+          historical.compressedSha256, historical.chunkCount)
       } else when (payload["type"]?.jsonPrimitive?.content) {
         "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
         "chunk" -> handleChunk(payload)
@@ -134,9 +151,28 @@ class TransferManager(
         ),
       )
       if (inserted != -1L && intake != null) {
-        if (historical == null) db.transferOutcomes().insert(TransferOutcomeEntity(
-          channelId, intake.transferId, intake.manifestId, intake.documentId,
-          trustedSender, intake.status, nowSecs, intake.expiresAt, null))
+        if (historical == null) {
+          // Concurrent live + coverage ingestion of the same transfer can both
+          // observe no outcome and race to insert. ABORT would escape as a
+          // SQLiteConstraintException and abort the window without checkpoint.
+          // Re-read the winner and treat as duplicate instead.
+          try {
+            db.transferOutcomes().insert(TransferOutcomeEntity(
+              channelId, intake.transferId, intake.manifestId, intake.documentId,
+              trustedSender, intake.status, nowSecs, intake.expiresAt, null,
+              intake.compressedSha256, intake.chunkCount))
+          } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+          catch (_: android.database.SQLException) {
+            db.transferOutcomes().byTransfer(channelId, intake.transferId)
+              ?: throw IllegalStateException("completed transfer outcome missing")
+          } catch (error: Exception) {
+            // Non-constraint failures (e.g. storage full) must escape as
+            // IOException so the window is retained, not checkpointed.
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            val winner = runCatching { db.transferOutcomes().byTransfer(channelId, intake.transferId) }.getOrNull()
+            if (winner == null) throw java.io.IOException("transfer outcome unavailable")
+          }
+        }
         queueAckIntent(channelId, trustedSender, intake, nowSecs, historical?.receivedAt ?: nowSecs)
       }
       activeGeneration()
@@ -309,7 +345,7 @@ class TransferManager(
         db.chunks().clearTransfer(transferId)
         db.manifests().clearTransfer(transferId)
       }
-      return Intake(transferId, documentId, manifestId, "duplicate", expiresAt)
+      return Intake(transferId, documentId, manifestId, "duplicate", expiresAt, compressedSha256, chunkCount)
     }
     val chunks = db.chunks().forTransfer(transferId)
     return if (chunks.size == chunkCount) assemble(manifest, chunks.sortedBy { it.index }) else null
@@ -378,7 +414,8 @@ class TransferManager(
         db.chunks().clearTransfer(manifest.transferId)
         db.manifests().clearTransfer(manifest.transferId)
       }
-      return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "duplicate", manifest.expiresAt)
+      return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "duplicate", manifest.expiresAt,
+        manifest.compressedSha256, manifest.chunkCount)
     }
     val compressed = ByteArrayOutputStream()
     var compressedTotal = 0
@@ -429,7 +466,8 @@ class TransferManager(
       db.chunks().clearTransfer(manifest.transferId)
       db.manifests().clearTransfer(manifest.transferId)
     }
-    return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "stored", manifest.expiresAt)
+    return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "stored", manifest.expiresAt,
+      manifest.compressedSha256, manifest.chunkCount)
   }
 
   /** Encrypted endpoint-bound ACK, emitted only after durable document presence. */

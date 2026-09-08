@@ -330,6 +330,39 @@ class TransferManagerInstrumentedTest {
     assertNotNull(db.documents().byId(f.documentId))
   }
 
+  @Test fun conflictingCompletedTransferPayloadIsRejectedNeverAcked() = runBlocking {
+    val sender = Secp256k1.randomPrivateKey()
+    val receiver = Secp256k1.randomPrivateKey()
+    val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(sender))
+    val f = fixture(sender, receiver, "61")
+    for (payload in f.chunks + f.manifest) manager.ingestForSync(wrap(payload, sender, receiver), "channel", pubkey, receiver)
+    val transferId = f.manifest["transferId"]!!.jsonPrimitive.content
+    val outcome = db.transferOutcomes().byTransfer("channel", transferId)!!
+    assertTrue(outcome.compressedSha256.isNotEmpty())
+    assertTrue(outcome.chunkCount > 0)
+    // Same IDs but different byte identity must be rejected, not ACKed.
+    val badManifest = JsonObject(f.manifest.toMutableMap().also {
+      it["compressedSha256"] = JsonPrimitive("00".repeat(32))
+    })
+    try {
+      manager.ingestForSync(wrap(badManifest, sender, receiver), "channel", pubkey, receiver)
+      fail("conflicting manifest must be rejected")
+    } catch (_: IllegalArgumentException) { }
+    val badChunk = JsonObject(f.chunks.first().toMutableMap().also {
+      it["compressedSha256"] = JsonPrimitive("ff".repeat(32))
+    })
+    try {
+      manager.ingestForSync(wrap(badChunk, sender, receiver), "channel", pubkey, receiver)
+      fail("conflicting chunk must be rejected")
+    } catch (_: IllegalArgumentException) { }
+    // No new ACK intent, no staging, no document mutation from conflicts.
+    assertEquals(1, db.ackIntents().let { dao ->
+      var count = 0
+      runBlocking { count = if (dao.byTransfer("channel", transferId) != null) 1 else 0 }
+      count
+    })
+  }
+
   @Test
   fun wrongSenderAndConflictingDuplicateCannotMutateTransfer() = runBlocking {
     val senderKey = Secp256k1.randomPrivateKey()

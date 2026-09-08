@@ -13,6 +13,7 @@ import com.reader.app.data.MIGRATION_3_4
 import com.reader.app.data.MIGRATION_5_6
 import com.reader.app.data.MIGRATION_6_7
 import com.reader.app.data.MIGRATION_8_9
+import com.reader.app.data.MIGRATION_9_10
 import com.reader.app.data.MIGRATION_7_8
 import com.reader.app.data.MIGRATION_4_5
 import com.reader.app.data.ChannelEntity
@@ -48,6 +49,27 @@ class ReaderDbMigrationInstrumentedTest {
         assertEquals(123L, it.getLong(1))
         assertEquals(123000L, it.getLong(2))
         assertFalse(it.moveToNext())
+      }
+    }
+  }
+
+  @Test fun versionNineToTenAddsBindingColumnsAndDocumentIndex() {
+    val name = "hardening-v9-v10"
+    migrationHelper.createDatabase(name, 9).apply {
+      // v9 table without binding columns (as created by MIGRATION_8_9).
+      execSQL("""INSERT INTO transfer_outcomes(channelId, transferId, manifestId, documentId,
+        recipientDevicePubkey, status, receivedAt, expiresAt, deletedAt)
+        VALUES ('channel','transfer','manifest','doc','sender','stored',10,99,NULL)""")
+      close()
+    }
+    migrationHelper.runMigrationsAndValidate(name, 10, true, MIGRATION_9_10).use { migrated ->
+      migrated.query("SELECT compressedSha256, chunkCount FROM transfer_outcomes").use {
+        assertTrue(it.moveToFirst())
+        assertEquals("", it.getString(0))
+        assertEquals(0, it.getInt(1))
+      }
+      migrated.query("SELECT name FROM sqlite_master WHERE type='index' AND name='index_transfer_outcomes_documentId'").use {
+        assertTrue(it.moveToFirst())
       }
     }
   }
@@ -153,7 +175,7 @@ class ReaderDbMigrationInstrumentedTest {
     helper.close()
 
     val migrated = Room.databaseBuilder(context, ReaderDb::class.java, name)
-      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
       .build()
     try {
       migrated.openHelper.writableDatabase

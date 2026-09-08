@@ -137,13 +137,25 @@ data class HistoryCoverageEntity(val channelId: String, val relay: String, val s
   @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(value: HistoryCoverageEntity)
 }
 
-/** Historical commit proof, independent of document lifetime and ACK retry expiry. */
-@Entity(tableName = "transfer_outcomes", primaryKeys = ["channelId", "transferId"])
+/** Historical commit proof, independent of document lifetime and ACK retry expiry.
+ * receivedAt is original receipt seconds; deletedAt is millis wall time (or the
+ * synthetic backfill receivedAt*1000 for pre-hardening rows whose deletion was
+ * inferred from a missing document at migration time — see MIGRATION_8_9).
+ * compressedSha256/chunkCount bind fresh wrappers to the completed transfer;
+ * empty/zero means unknown (pre-v10 backfill) and skips that sub-check. */
+@Entity(
+  tableName = "transfer_outcomes",
+  primaryKeys = ["channelId", "transferId"],
+  indices = [Index(value = ["documentId"])],
+)
 data class TransferOutcomeEntity(
   val channelId: String, val transferId: String, val manifestId: String,
   val documentId: String, val recipientDevicePubkey: String,
   val status: String, val receivedAt: Long, val expiresAt: Long,
   val deletedAt: Long?,
+  // v10 binding; unknown for rows backfilled before the producing code stored them.
+  val compressedSha256: String = "",
+  val chunkCount: Int = 0,
 )
 
 @Dao
@@ -318,8 +330,13 @@ interface ChannelDao {
   suspend fun revokeOtherActiveStored(keepId: String, now: Long): Int
 
   suspend fun revokeOtherActive(keepId: String, now: Long): Int {
+    // Cancel jobs for the pre-SQL snapshot, run the revoke, then re-snapshot:
+    // a channel created in the gap is DB-revoked but its job would otherwise
+    // live until its next lease.check (10-20s). Re-revoking is idempotent.
     active().filter { it.channelId != keepId }.forEach { com.reader.app.sync.ChannelLease.revoke(it.channelId) }
-    return revokeOtherActiveStored(keepId, now)
+    val revoked = revokeOtherActiveStored(keepId, now)
+    active().filter { it.channelId != keepId }.forEach { com.reader.app.sync.ChannelLease.revoke(it.channelId) }
+    return revoked
   }
 
   @Query("SELECT * FROM channels WHERE revokedAt IS NULL AND protocolVersion = 2 AND state != 'active' AND pendingExpiresAt IS NOT NULL AND pendingExpiresAt <= :nowSecs")
@@ -606,10 +623,23 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
       PRIMARY KEY(channelId, transferId))""")
     // ACK intents are written only in the document commit transaction. Their
     // receipt time is evidence; never manufacture proof from staged fragments.
+    // deletedAt here is synthetic (receivedAt*1000) for rows whose document was
+    // already gone at migration time — an inferred deletion, not an observed one.
+    // Pre-migration rows whose intents were already purged get no outcome; a
+    // replay of such a transfer after its document was deleted could
+    // re-stage (known pre-hardening window, documented in PROTOCOL).
     db.execSQL("""INSERT INTO transfer_outcomes SELECT channelId, transferId, manifestId,
       documentId, recipientDevicePubkey, status, receivedAt, expiresAt,
       CASE WHEN EXISTS(SELECT 1 FROM documents d WHERE d.documentId = ack_intents.documentId)
         THEN NULL ELSE receivedAt * 1000 END FROM ack_intents""")
+  }
+}
+
+val MIGRATION_9_10 = object : Migration(9, 10) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("ALTER TABLE transfer_outcomes ADD COLUMN compressedSha256 TEXT NOT NULL DEFAULT ''")
+    db.execSQL("ALTER TABLE transfer_outcomes ADD COLUMN chunkCount INTEGER NOT NULL DEFAULT 0")
+    db.execSQL("CREATE INDEX IF NOT EXISTS index_transfer_outcomes_documentId ON transfer_outcomes(documentId)")
   }
 }
 
@@ -628,7 +658,7 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     ReviewStatePartEntity::class,
     SyncHealthEntity::class,
   ],
-  version = 9,
+  version = 10,
   exportSchema = true,
 )
 abstract class ReaderDb : RoomDatabase() {
@@ -649,7 +679,7 @@ abstract class ReaderDb : RoomDatabase() {
     private var instance: ReaderDb? = null
     fun get(ctx: Context): ReaderDb = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(ctx.applicationContext, ReaderDb::class.java, "reader.db")
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
         .build()
         .also { instance = it }
     }
