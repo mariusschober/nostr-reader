@@ -127,7 +127,9 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     body.isVerticalScrollBarEnabled = true
     body.linksClickable = false
     body.setLineSpacing(0f, 1.35f)
-    body.setPadding(0, dp(8), 0, dp(96))
+    // Scaffold already places the reading dock outside this viewport. Keep
+    // only a small text inset; dock-sized padding clips usable reading space.
+    body.setPadding(0, dp(8), 0, dp(8))
     // Native selection handles scroll the TextView's own viewport. A tall
     // wrap-content TextView inside a ScrollView hides that viewport boundary
     // from Android's handle controller and prevents edge autoscrolling.

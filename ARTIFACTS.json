@@ -132,5 +132,13 @@
     "installedAndroidSha256": "280d470dc4aedd6db2fb6afa4c61760d3bfe4ff7a568a5bb5acd9167b2e50450",
     "report": "ARCHIVE_REFRESH.md",
     "verification": "Focused TCL archive gestures, highlight menu gate, storage preservation and appearance checks passed. Final icon tint visually verified."
+  },
+  "latestViewportFix": {
+    "date": "2026-09-08",
+    "path": "artifacts/ui-refresh/viewport/reader-viewport-fix.apk",
+    "sha256": "a07782a504b97b4c3b64af631960c632c69c3fe3cbc44d505325575a18ef841f",
+    "bytes": 29060881,
+    "change": "Remove redundant 96dp native text bottom inset; use 8dp because Scaffold separately reserves the reading dock.",
+    "report": "VIEWPORT_FIX.md"
   }
 }

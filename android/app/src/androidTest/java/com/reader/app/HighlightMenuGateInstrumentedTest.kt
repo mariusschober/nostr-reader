@@ -112,7 +112,9 @@ class HighlightMenuGateInstrumentedTest {
       assertTrue("A real handle drag crosses the first paragraph boundary", cross.second > text.indexOf("\n\n") + 2)
       val endHandle = point(cross.second, handle = true)
       val location = IntArray(2); runner.runOnMainSync { view.getLocationOnScreen(location) }
-      val bottom = view.width * 0.65f to (location[1] + view.height + 24 * view.resources.displayMetrics.density)
+      // Drag through the reserved 64dp dock area. Android offsets the handle
+      // from the finger, so 24dp does not cross a tightly padded text viewport.
+      val bottom = view.width * 0.65f to (location[1] + view.height + 56 * view.resources.displayMetrics.density)
       down = SystemClock.uptimeMillis(); event(MotionEvent.ACTION_DOWN, endHandle, down)
       for (step in 1..100) {
         val f = (step / 20f).coerceAtMost(1f)
