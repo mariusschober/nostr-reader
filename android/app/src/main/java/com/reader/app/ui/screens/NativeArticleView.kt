@@ -206,15 +206,18 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     fun restore() {
       restoring = true
       body.post {
-        if (generation != displayGeneration) return@post
-        val layout = body.layout
-        if (layout != null && saved != null) {
-          val offset = value.offset(saved.blockId, saved.charOffset).coerceIn(0, body.length())
-          val y = layout.getLineTop(layout.getLineForOffset(offset)) + body.paddingTop - body.height / 3
-          val maxY = (layout.height + body.totalPaddingTop + body.totalPaddingBottom - body.height).coerceAtLeast(0)
-          body.scrollTo(0, y.coerceIn(0, maxY))
+        if (generation != displayGeneration) { restoring = false; return@post }
+        try {
+          val layout = body.layout
+          if (layout != null && saved != null) {
+            val offset = value.offset(saved.blockId, saved.charOffset).coerceIn(0, body.length())
+            val y = layout.getLineTop(layout.getLineForOffset(offset)) + body.paddingTop - body.height / 3
+            val maxY = (layout.height + body.totalPaddingTop + body.totalPaddingBottom - body.height).coerceAtLeast(0)
+            body.scrollTo(0, y.coerceIn(0, maxY))
+          }
+        } finally {
+          restoring = false
         }
-        restoring = false
       }
     }
     if (changed) {

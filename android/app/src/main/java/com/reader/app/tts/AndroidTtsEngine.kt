@@ -24,9 +24,13 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
   private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
     .setAudioAttributes(attributes).setWillPauseWhenDucked(true)
-    .setOnAudioFocusChangeListener({ change -> if (change < 0) onFocusLost?.invoke() }, handler).build()
+    .setOnAudioFocusChangeListener({ change ->
+      // Ducking (CAN_DUCK) means lower volume, not pause; only real loss pauses.
+      if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) onFocusLost?.invoke()
+    }, handler).build()
   private var tts: TextToSpeech? = null
   override val voiceRequiresNetwork: Boolean? get() = tts?.voice?.isNetworkConnectionRequired
+  override var onReady: (() -> Unit)? = null
   private var ready = false
   private var failed = false
   private data class Request(
@@ -49,6 +53,7 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
     else tts = TextToSpeech(context, { status ->
       handler.post {
         ready = status == TextToSpeech.SUCCESS; failed = !ready
+        onReady?.invoke()
         active?.let { if (ready) submit(it) else { active = null; it.error("Google speech is unavailable. Open speech settings to enable it.") } }
       }
     }, GOOGLE_ENGINE)

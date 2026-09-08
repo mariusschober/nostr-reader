@@ -34,6 +34,7 @@ class FakeEngine : TtsEngine {
   val spoken = mutableListOf<String>()
   var lastSpeed = 1f
   override var supportsRangeCallback = false
+  override var onReady: (() -> Unit)? = null
   private var done: (() -> Unit)? = null
   override fun speak(utteranceId: String, text: String, speed: Float, onStart: () -> Unit, onDone: () -> Unit, onRange: (Int, Int) -> Unit, onError: (String) -> Unit) {
     spoken.add(text)

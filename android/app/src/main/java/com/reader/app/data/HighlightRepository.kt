@@ -55,6 +55,16 @@ class HighlightRepository(private val db: ReaderDb) {
     val sameRange = db.highlights().byRange(draft.documentId, draft.projectionVersion,
       draft.startBlockId, draft.startOffset, draft.endBlockId, draft.endOffset)
     val editing = db.highlights().byId(draft.id)
+    // Idempotent retry: the journal re-invokes saveDraft after Room success
+    // but before journal deletion (crash, delete failure, onSaved failure).
+    // If the stored record already equals this draft, return it without
+    // bumping revision or emitting a duplicate Undo mutation.
+    if (editing != null && editing.startBlockId == draft.startBlockId && editing.startOffset == draft.startOffset &&
+      editing.endBlockId == draft.endBlockId && editing.endOffset == draft.endOffset &&
+      editing.quote == draft.quote && editing.color == draft.color &&
+      editing.projectionVersion == draft.projectionVersion && editing.documentId == draft.documentId) {
+      return@withTransaction HighlightMutation(editing, editing)
+    }
     if (sameRange != null && sameRange.id != draft.id) {
       // Preserve differently colored overlaps; only exactly identical ranges reuse a record.
       if (editing != null) {

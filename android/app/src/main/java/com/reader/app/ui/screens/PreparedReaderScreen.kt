@@ -62,8 +62,15 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var failure by remember(id) { mutableStateOf<String?>(null) }
   var initial by rememberSaveable(id, stateSaver = androidx.compose.runtime.saveable.Saver<SemanticCursor, List<Any>>(
     save = { listOf(it.documentId, it.blockId, it.charOffset) },
-    restore = { SemanticCursor(it[0] as String, it[1] as String, it[2] as Int) }
+    restore = {
+      check(it.size == 3 && it[0] is String && it[1] is String && (it[2] is Int || it[2] is Long)) { "invalid cursor" }
+      SemanticCursor(it[0] as String, it[1] as String, (it[2] as Number).toInt())
+    }
   )) { mutableStateOf(SemanticCursor.start(id)) }
+  // Live scroll cursor (not Saveable): updated on every scroll without parcel
+  // churn. The Saveable `initial` is only written on transition/dispose and
+  // part changes, keeping recreation coherent without per-scroll overhead.
+  var liveCursor by remember { mutableStateOf<SemanticCursor?>(null) }
   var view by remember { mutableStateOf<NativeArticleView?>(null) }
   var pen by rememberSaveable(id) { mutableStateOf(false) }
   var selectedColor by rememberSaveable { mutableStateOf("YELLOW") }
@@ -112,16 +119,30 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   LaunchedEffect(actions) { activeQuote = actions.firstOrNull()?.let { db.highlights().byId(it) } }
 
   val saveError by app.reading.error.collectAsState()
-  var transitioning by remember { mutableStateOf(false) }
-  fun transition(action: () -> Unit) {
-    if (transitioning) return
+  // Survives rotation: a transition in-flight across recreation stays guarded
+  // so its action() cannot run twice. UI is disabled while true.
+  var transitioning by rememberSaveable { mutableStateOf(false) }
+  fun transition(action: suspend () -> Unit) {
+    if (transitioning) {
+      scope.launch { snackbar.showSnackbar("Saving… please wait.") }
+      return
+    }
     view?.flushSelection()
     onPauseAudio()
-    val cursor = view?.currentCursor() ?: initial
-    prepared?.let { app.progress.offer(cursor, it.fraction(it.projection.offset(cursor.blockId, cursor.charOffset))) }
+    val cursor = liveCursor ?: view?.currentCursor() ?: initial
+    initial = cursor
+    prepared?.let {
+      try { app.progress.offer(cursor, it.fraction(it.projection.offset(cursor.blockId, cursor.charOffset))) }
+      catch (_: Exception) { /* offer is coalesced; flush below surfaces failures */ }
+    }
     transitioning = true
     scope.launch {
-      try { app.reading.flush(); app.progress.flush(); action() }
+      try {
+        try { app.reading.flush() }
+        finally { app.progress.flush() }
+        action()
+      }
+      catch (error: CancellationException) { throw error }
       catch (_: Exception) { snackbar.showSnackbar("Couldn’t save reading changes. Retry before leaving.") }
       finally { transitioning = false }
     }
@@ -131,16 +152,23 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     if (view?.clearSelection() == true) return
     transition(onBack)
   }
-  BackHandler { leave() }
+  BackHandler(enabled = !transitioning) { leave() }
   val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
   DisposableEffect(id, lifecycle) {
     val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
       if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-        view?.flushSelection(); view?.reportCursor()
+        view?.flushSelection()
+        (liveCursor ?: view?.currentCursor())?.let { initial = it }
+        view?.reportCursor()
       }
     }
     lifecycle.addObserver(observer)
-    onDispose { view?.flushSelection(); view?.reportCursor(); lifecycle.removeObserver(observer) }
+    onDispose {
+      view?.flushSelection()
+      (liveCursor ?: view?.currentCursor())?.let { initial = it }
+      view?.reportCursor()
+      lifecycle.removeObserver(observer)
+    }
   }
   fun share(value: HighlightEntity) {
     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -152,11 +180,11 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   Scaffold(containerColor = colors.background, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
     Column {
       Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = { leave() }) { Text("Back") }
+        TextButton(onClick = { leave() }, enabled = !transitioning) { Text("Back") }
         Spacer(Modifier.weight(1f))
-        TextButton(onClick = { appearance = true }) { Text("Appearance") }
+        TextButton(onClick = { appearance = true }, enabled = !transitioning) { Text("Appearance") }
         Box {
-          IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More actions") }
+          IconButton(onClick = { menu = true }, enabled = !transitioning) { Icon(Icons.Default.MoreVert, contentDescription = "More actions") }
           DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             val archived = doc?.list == com.reader.app.ui.Triage.ARCHIVED
             val menuActions = if (archived) listOf(ArticleAction.Unarchive, ArticleAction.Delete) else listOf(ArticleAction.Later, ArticleAction.Archive)
@@ -167,13 +195,12 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             }
             if (undo != null) DropdownMenuItem(text = { Text("Undo highlight change") }, onClick = {
               menu = false
-              view?.flushSelection()
-              scope.launch {
-                app.reading.flush()
-                val change = undo ?: return@launch
+              transition {
                 view?.clearSelection()
-                try { if (highlights.undo(change)) undo = null else snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.") }
-                catch (_: Exception) { snackbar.showSnackbar("Couldn’t undo highlight change. Try again.") }
+                val change = undo ?: return@transition
+                try { if (highlights.undo(change)) undo = null else scope.launch { snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.") } }
+                catch (error: CancellationException) { throw error }
+                catch (_: Exception) { scope.launch { snackbar.showSnackbar("Couldn’t undo highlight change. Try again.") } }
               }
             })
           }
@@ -191,7 +218,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       }
       Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = { prepared?.let { val cursor = view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } }, enabled = prepared != null && !playerVisible) {
+        TextButton(onClick = { prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } }, enabled = prepared != null && !playerVisible && !transitioning) {
           Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Listen")
         }
         ElevatedFilterChip(selected = pen, onClick = {
@@ -205,7 +232,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           leadingIcon = { Icon(Icons.Default.BorderColor, null, Modifier.size(20.dp)) },
           label = { Text(if (pen) "Highlight on" else "Highlight", color = HighlightColor.text(dark),
             modifier = Modifier.background(HighlightColor.YELLOW.background(dark), RoundedCornerShape(3.dp)).padding(horizontal = 3.dp)) })
-        TextButton(onClick = { val cursor = view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } }, enabled = prepared != null) {
+        TextButton(onClick = { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } }, enabled = prepared != null && !transitioning) {
           Icon(Icons.Default.Speed, "Speed reading", Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Speed")
         }
       }
@@ -228,9 +255,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       else if (ready == null || text == null) CircularProgressIndicator(Modifier.padding(24.dp))
       else {
         if (ready.index.sections.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-          TextButton(enabled = part > 0, onClick = { transition { initial = SemanticCursor.start(id); part-- } }) { Text("Previous part") }
+          TextButton(enabled = part > 0 && !transitioning, onClick = { transition { initial = SemanticCursor.start(id); liveCursor = null; part-- } }) { Text("Previous part") }
           Text("${part + 1} / ${ready.index.sections.size}", modifier = Modifier.padding(12.dp))
-          TextButton(enabled = part < ready.index.sections.lastIndex, onClick = { transition { initial = SemanticCursor.start(id); part++ } }) { Text("Next part") }
+          TextButton(enabled = part < ready.index.sections.lastIndex && !transitioning, onClick = { transition { initial = SemanticCursor.start(id); liveCursor = null; part++ } }) { Text("Next part") }
         }
         val nativeMarks = remember(marks, ready, dark) {
           val blocks = ready.projection.blocks.mapTo(hashSetOf()) { it.id }
@@ -250,7 +277,14 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           native.onArticleSwipe = { action -> transition { onArticleAction(action) } }
           native.setPenMode(pen)
           native.setMarks(nativeMarks)
-          native.onCursor = { cursor, _ -> initial = cursor; if (!speechPlaying) app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))) }
+          native.onCursor = { cursor, _ ->
+            liveCursor = cursor
+            // Guard stale ready closures after a part switch: only offer
+            // progress for the currently displayed section.
+            if (native.tag == styleKey) {
+              if (!speechPlaying) app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset)))
+            }
+          }
           native.onMark = { actions = it }
           native.onLink = { url ->
             if (Uri.parse(url).scheme in listOf("http", "https")) {

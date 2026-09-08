@@ -6,6 +6,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reader.app.data.*
 import com.reader.app.core.ReaderCore
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.boolean
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,6 +20,7 @@ import java.util.zip.ZipFile
 class HardeningStorageInstrumentedTest {
   @Test fun portableSnapshotIncludesProvenanceAndOrphanQuotesAndVerifiesEveryComponent() = runBlocking {
     val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    check(context.packageName == "com.reader.app.qa") { "destructive fixtures must run in the QA package" }
     val db = Room.inMemoryDatabaseBuilder(context, ReaderDb::class.java).build()
     val directory = File(context.cacheDir, "hardening-export-test").apply { mkdirs() }
     try {
@@ -34,6 +39,21 @@ class HardeningStorageInstrumentedTest {
         assertTrue(metadata.contains("https://example.org/source"))
         assertTrue(metadata.contains("Author"))
         assertFalse(zip.entries().toList().any { it.name.contains("key", true) || it.name.contains("channel", true) })
+        // No-keys content scan (not just filenames): no 64-hex pubkey-shaped
+        // secret leakage in any component body.
+        val bodies = zip.entries().toList().joinToString("\n") { zip.getInputStream(zip.getEntry(it.name)).bufferedReader().readText() }
+        assertFalse(Regex("[0-9a-f]{64}").containsMatchIn(bodies) && bodies.contains("receiverPubkey"))
+        val manifest = kotlinx.serialization.json.Json.parseToJsonElement(
+          zip.getInputStream(zip.getEntry("manifest.json")).bufferedReader().readText()).jsonObject
+        assertEquals("reader-portable-export", manifest["format"]!!.jsonPrimitive.content)
+        assertEquals(1, manifest["version"]!!.jsonPrimitive.int)
+        assertEquals(false, manifest["restoreSupported"]!!.jsonPrimitive.boolean)
+        assertTrue(manifest["components"]!!.jsonObject.isNotEmpty())
+        // review.json reassembles to valid state (or explicit null when empty).
+        val reviewRaw = zip.getInputStream(zip.getEntry("review.json")).bufferedReader().readText()
+        assertTrue(reviewRaw == "null" || runCatching {
+          kotlinx.serialization.json.Json.parseToJsonElement(reviewRaw)
+        }.isSuccess)
       }
       exported.delete()
       ArticleRepository(db).delete(doc.documentId)
@@ -69,5 +89,30 @@ class HardeningStorageInstrumentedTest {
         assertTrue(directory.listFiles().orEmpty().isEmpty())
       } finally { secondScope.cancel() }
     } finally { firstScope.cancel(); directory.deleteRecursively() }
+  }
+
+  @Test fun corruptJournalEntryIsQuarantinedWithoutBlockingLaterSelections() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    val directory = File(context.cacheDir, "hardening-journal-poison-test").apply { deleteRecursively(); mkdirs() }
+    // Poison: corrupt JSON + oversize head before any valid draft.
+    File(directory, "0000000000000-0000000000000000000-poison.json").writeText("{not-json")
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    try {
+      val saved = CompletableDeferred<HighlightEntity>()
+      val session = withContext(Dispatchers.Main) {
+        ReadingSession(scope, directory) { saved.complete(it); HighlightMutation(null, it) }
+      }
+      // Give replay a moment to quarantine the poison entry.
+      withTimeout(5000) {
+        while (directory.listFiles()?.none { it.name.endsWith(".bad") } != false) delay(20)
+      }
+      val draft = HighlightEntity("valid", "source", "ok", "T", null, 1, 1,
+        "b0", 0, "b0", 2, 1, 0, 2, "", "", color = "YELLOW")
+      withContext(Dispatchers.Main) { session.submitSelection(draft) { } }
+      assertEquals(draft, withTimeout(5000) { saved.await() })
+      withContext(Dispatchers.Main) { session.flush() }
+      assertTrue(directory.listFiles()?.none { it.name.endsWith(".json") } != false)
+      assertEquals(1, directory.listFiles()?.count { it.name.endsWith(".bad") })
+    } finally { scope.cancel(); directory.deleteRecursively() }
   }
 }

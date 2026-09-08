@@ -41,4 +41,29 @@ class ReadingSessionTest {
     assertEquals(listOf(1, 2), saved)
     assertNull(owner.error.value)
   }
+
+  @Test fun cancellationIsNeverRecordedAsStorageFailure() = runTest {
+    val owner = ReadingSession(backgroundScope)
+    owner.submit { throw CancellationException("revoked") }
+    val job = launch { runCatching { owner.flush() } }
+    runCurrent()
+    job.join()
+    // Cancellation propagates without setting the user-visible Retry error.
+    assertNull(owner.error.value)
+  }
+
+  @Test fun submitFromAnyThreadDoesNotCorruptTheQueue() = runTest {
+    val owner = ReadingSession(backgroundScope)
+    val saved = java.util.Collections.synchronizedList(mutableListOf<Int>())
+    val threads = (0 until 20).map { i ->
+      Thread { owner.submit { saved += i } }
+    }
+    threads.forEach { it.start() }
+    threads.forEach { it.join(2000) }
+    // Drain on the test dispatcher; all 20 commands must run exactly once.
+    backgroundScope.launch { owner.flush() }.join()
+    runCurrent()
+    assertEquals(20, saved.size)
+    assertEquals((0 until 20).toSet(), saved.toSet())
+  }
 }

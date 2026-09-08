@@ -62,6 +62,8 @@ class MainActivity : ComponentActivity() {
   private var ttsEngine: AndroidTtsEngine? = null
   private var ttsController: TtsController? = null
   private var refreshTick = androidx.compose.runtime.mutableStateOf(0)
+  private val reviewMutex = kotlinx.coroutines.sync.Mutex()
+  private val exportMutex = kotlinx.coroutines.sync.Mutex()
 
   private val exportDestination = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
     if (uri != null) lifecycleScope.launch { exportArchive(uri) }
@@ -178,12 +180,17 @@ class MainActivity : ComponentActivity() {
       }
 
       fun openTts(docId: String, projection: com.reader.app.core.RenderedProjection, from: SemanticCursor) {
+        ttsController?.pause()
         lifecycleScope.launch {
           val audioRepo = (application as com.reader.app.ReaderApp).articles
           val audioIndex = audioRepo.index(docId)
           val audioSection = audioRepo.section(docId, audioIndex.sectionFor(from.blockId))
           val units = withContext(Dispatchers.Default) { Narration.sentences(projection) }
-          val eng = ttsEngine ?: AndroidTtsEngine(this@MainActivity).also { ttsEngine = it }
+          val eng = ttsEngine ?: AndroidTtsEngine(this@MainActivity).also {
+            ttsEngine = it
+            // Refresh the network-required banner if TTS init completes after load.
+            it.onReady = { ttsController?.refreshVoice() }
+          }
           val ctl = ttsController ?: TtsController(eng).also { ttsController = it }
           eng.onFocusLost = { ctl.pause() }
           ctl.onPosition = { blockId, offset ->
@@ -293,27 +300,42 @@ class MainActivity : ComponentActivity() {
               if (!busy && id != null) {
                 busy = true
                 lifecycleScope.launch {
+                  // Serialize with Important/Source: delayed Next must not
+                  // overwrite a quote the user already moved away from.
+                  if (!reviewMutex.tryLock()) { busy = false; return@launch }
                   try {
-                    reviewState = review.advance(id)
-                    quote = reviewState?.currentId?.let { db.highlights().byId(it) }
+                    val issued = id
+                    val next = review.advance(issued)
+                    // Apply only if the user is still on the issued quote;
+                    // Next intends to move, so a stale response is discarded.
+                    if (quote?.id == issued) {
+                      reviewState = next
+                      quote = next?.currentId?.let { db.highlights().byId(it) }
+                    }
                   } catch (e: Exception) { reviewError = "Couldn’t save review: ${e.message?.take(100)}" }
-                  finally { busy = false }
+                  finally { reviewMutex.unlock(); busy = false }
                 }
               }
             },
             onImportant = {
               val id = quote?.id
               if (!busy && id != null) lifecycleScope.launch {
+                if (!reviewMutex.tryLock()) { reviewError = "Saving… please wait."; return@launch }
                 try { completeReviewCommand(id, review::toggleImportant, { quote?.id }) { quote = it } }
                 catch (error: Exception) { reviewError = "Couldn’t save importance. Try again." }
+                finally { reviewMutex.unlock() }
               }
             },
             onSource = {
               quote?.let { selected -> lifecycleScope.launch {
-                if (db.documents().exists(selected.documentId)) {
-                  review.openedSource(selected.id)
-                  go(Route.Reader(selected.documentId, selected.id))
-                } else Toast.makeText(this@MainActivity, "Source article was deleted. Your quote is still saved.", Toast.LENGTH_LONG).show()
+                if (!reviewMutex.tryLock()) return@launch
+                try {
+                  // Re-check existence inside the serialized section (TOCTOU).
+                  if (db.documents().exists(selected.documentId)) {
+                    review.openedSource(selected.id)
+                    go(Route.Reader(selected.documentId, selected.id))
+                  } else Toast.makeText(this@MainActivity, "Source article was deleted. Your quote is still saved.", Toast.LENGTH_LONG).show()
+                } finally { reviewMutex.unlock() }
               } }
             },
             onShare = {
@@ -324,7 +346,10 @@ class MainActivity : ComponentActivity() {
                 }, "Share quote"))
               }
             },
-            onRestart = { lifecycleScope.launch { loadReview(restart = true) } },
+            onRestart = { lifecycleScope.launch {
+              if (!reviewMutex.tryLock()) return@launch
+              try { loadReview(restart = true) } finally { reviewMutex.unlock() }
+            } },
           )
         }
         is Route.Reader -> PreparedReaderScreen(
@@ -534,14 +559,20 @@ class MainActivity : ComponentActivity() {
   private suspend fun completePairing(qrText: String): PairingCoordinator.BeginResult =
     PairingCoordinator(this).begin(qrText)
 
-  /** Manual archive export: ZIP of md + metadata JSON. Never keys. */
+  /** Manual archive export: ZIP of md + metadata JSON. Never keys. Single-flight. */
   private suspend fun exportArchive(destination: Uri) {
+    if (!exportMutex.tryLock()) {
+      Toast.makeText(this, "Export already running. Please wait.", Toast.LENGTH_SHORT).show()
+      return
+    }
     var temporary: java.io.File? = null
     try {
       val app = application as com.reader.app.ReaderApp
-      app.reading.flush(); app.progress.flush()
+      try { app.reading.flush() } finally { app.progress.flush() }
+      val startedAt = System.currentTimeMillis()
       val archive = com.reader.app.data.ArchiveExporter(db).prepare(cacheDir)
       temporary = archive
+      android.util.Log.i("NostrReaderExport", "prepared bytes=${archive.length()} millis=${System.currentTimeMillis() - startedAt}")
       withContext(Dispatchers.IO) {
         checkNotNull(contentResolver.openOutputStream(destination, "wt")) { "Destination is unavailable" }.use { output ->
           archive.inputStream().use { input ->
@@ -564,18 +595,34 @@ class MainActivity : ComponentActivity() {
       }
       Toast.makeText(this, "Export verified. Contains plaintext articles and quotes; not a restorable backup.", Toast.LENGTH_LONG).show()
     } catch (error: Exception) {
+      if (error is kotlinx.coroutines.CancellationException) {
+        withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+          runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, destination) }
+          runCatching { temporary?.delete() }
+        }
+        throw error
+      }
       val removed = withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
         runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, destination) }.getOrDefault(false)
       }
+      // MediaStore/Downloads providers reject DocumentsContract.deleteDocument;
+      // the warning tells the user to remove the partial file manually.
       Toast.makeText(this, if (removed) "Export did not complete; destination removed." else "Export did not complete. Delete the incomplete destination file.", Toast.LENGTH_LONG).show()
-      if (error is kotlinx.coroutines.CancellationException) throw error
-    } finally { temporary?.delete() }
+    } finally {
+      withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { runCatching { temporary?.delete() } }
+      exportMutex.unlock()
+    }
   }
 
   override fun onStop() {
     ttsController?.pause()
     val app = application as com.reader.app.ReaderApp
-    app.persistenceScope.launch { runCatching { app.reading.flush(); app.progress.flush() } }
+    app.persistenceScope.launch {
+      try {
+        try { app.reading.flush() } finally { app.progress.flush() }
+      } catch (_: kotlinx.coroutines.CancellationException) { /* scope cancelled */ }
+      catch (_: Exception) { /* failure.value surfaces Retry on next launch */ }
+    }
     super.onStop()
   }
 

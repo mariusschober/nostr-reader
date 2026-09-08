@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicReference
 class SelectionFinalizationInstrumentedTest {
   @Test fun nativeExitsFreezeTheLastRangeAtZeroFiftyHundredAndTwoHundredMillis() = runBlocking {
     val runner = InstrumentationRegistry.getInstrumentation()
+    check(runner.targetContext.packageName == "com.reader.app.qa") { "destructive fixtures must run in the QA package" }
     val projection = RenderedText.project(ArticleParser.parseWithSources("Repeated café 🌱 e\u0301 text.\n\nRepeated café 🌱 e\u0301 text.\n"))
     val doc = DocumentEntity("selection-fixture", "Synthetic", "selection", null, null, null, null, 1, null,
       "", 8, 2, "unread", "inbox", null, 0, 0f, 0, 1, 1)

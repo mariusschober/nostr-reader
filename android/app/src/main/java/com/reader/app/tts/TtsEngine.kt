@@ -7,5 +7,7 @@ interface TtsEngine {
   fun setSpeed(speed: Float)
   fun shutdown()
   val voiceRequiresNetwork: Boolean? get() = null
+  /** Invoked on the main thread when engine init completes (voice may have been null). */
+  var onReady: (() -> Unit)?
   val supportsRangeCallback: Boolean
 }

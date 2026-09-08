@@ -19,6 +19,9 @@ class TtsController(private val engine: TtsEngine) {
   private fun stopGeneration() { generation++; engine.stop() }
   private fun publish() { state = state.copy(voiceRequiresNetwork = engine.voiceRequiresNetwork); onState?.invoke(state) }
 
+  /** Re-read voice capability (e.g. after TTS init completes post-load). Null = unknown. */
+  fun refreshVoice() { publish() }
+
   fun load(units: List<NarrationUnit>, fromBlockId: String?, speed: Float, fromOffset: Int = 0) {
     stopGeneration()
     val candidates = units.indices.filter { units[it].blockId == fromBlockId }

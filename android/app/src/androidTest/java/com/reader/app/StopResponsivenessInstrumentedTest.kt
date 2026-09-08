@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit
 class StopResponsivenessInstrumentedTest {
   @Test fun onStopReturnsWhileRoomTransactionRemainsHeld() = runBlocking {
     val runner = InstrumentationRegistry.getInstrumentation()
+    check(runner.targetContext.packageName == "com.reader.app.qa") { "destructive fixtures must run in the QA package" }
     val app = runner.targetContext.applicationContext as ReaderApp
     val db = ReaderDb.get(app)
     ActivityScenario.launch(MainActivity::class.java).use { scenario ->
@@ -28,6 +29,8 @@ class StopResponsivenessInstrumentedTest {
       val release = CompletableDeferred<Unit>()
       val transaction = launch(Dispatchers.IO) { db.withTransaction { held.complete(Unit); release.await() } }
       held.await()
+      // Synthetic progress only proves non-blocking; discard it so the next
+      // flush cannot persist junk.
       app.progress.offer(SemanticCursor.start("synthetic-stop-check"), 0f)
       val stopped = CountDownLatch(1)
       val executor = Executors.newSingleThreadExecutor()
@@ -38,6 +41,7 @@ class StopResponsivenessInstrumentedTest {
         transaction.join()
         request.get(5, TimeUnit.SECONDS)
         assertTrue("onStop must not wait for the held Room transaction", responsive)
+        app.progress.discard("synthetic-stop-check")
       } finally { release.complete(Unit); executor.shutdownNow() }
     }
   }
