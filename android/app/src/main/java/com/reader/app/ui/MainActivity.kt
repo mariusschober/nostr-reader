@@ -255,10 +255,24 @@ class MainActivity : ComponentActivity() {
           lists = lists, minutes = minutesByList, settings = settings,
           readerMove = readerMove, onReaderMoveConsumed = { readerMove = null },
           loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = { selectedTab = it },
-          highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, { highlightsNewest = it }) { chosen -> lifecycleScope.launch {
-            try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
-            catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn’t open review: ${e.message?.take(100)}", Toast.LENGTH_LONG).show() }
-          } } },
+          highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, { highlightsNewest = it },
+            onReview = { chosen -> lifecycleScope.launch {
+              try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
+              catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn’t open review: ${e.message?.take(100)}", Toast.LENGTH_LONG).show() }
+            } },
+            onToggleImportant = { id -> lifecycleScope.launch {
+              // Feed toggles never run while the Review route is visible, and
+              // toggleImportant is one transaction: no review mutex needed.
+              try { com.reader.app.data.ReviewRepository(db).toggleImportant(id) }
+              catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t save importance. Try again.", Toast.LENGTH_LONG).show() }
+            } },
+            onRemoveHighlights = { ids -> lifecycleScope.launch {
+              try {
+                val repo = com.reader.app.data.HighlightRepository(db)
+                ids.forEach { repo.remove(it) }
+              } catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t remove highlights. Try again.", Toast.LENGTH_LONG).show() }
+            } },
+          ) },
           onOpen = { go(Route.Reader(it)) },
           onMove = { id, target -> lifecycleScope.launch { moveToListDb(id, target); refresh() } },
           onUndoMove = { id, previous -> lifecycleScope.launch { moveToListDb(id, previous); refresh() } },

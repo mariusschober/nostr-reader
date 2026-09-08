@@ -41,6 +41,9 @@ object Flexoki {
   val Orange400 = Color(0xFFDA702C)
   val Green400 = Color(0xFF879A39)
   val Blue400 = Color(0xFF70B5E8)
+  /** Important-star tint (requested highlight yellow). Single value for both
+   * themes; verified against Paper and Ink on-device. */
+  val StarYellow = Color(0xFFECCB60)
 }
 
 data class ReaderColors(
