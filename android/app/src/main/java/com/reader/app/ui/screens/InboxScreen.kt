@@ -432,15 +432,13 @@ private fun SwipeRow(
         )
       }
     }
+    // NOTE (2026-09-09): tap and long-press live on the inner ArticleRow
+    // alone. An outer combinedClickable here would be shadowed by it (the
+    // inner clickable consumes the down press), which once silently broke
+    // long-press selection entry — verified on the TCL.
     Box(
       Modifier
         .offset { IntOffset(offset.value.roundToInt(), 0) }
-        .combinedClickable(
-          indication = null,
-          interactionSource = remember { MutableInteractionSource() },
-          onClick = { if (!gestureDrag) onOpen() },
-          onLongClick = onLongPress,
-        )
         .pointerInput(list, widthPx, selecting) {
           if (selecting) return@pointerInput
           detectHorizontalDragGestures(
@@ -454,8 +452,11 @@ private fun SwipeRow(
           )
         },
     ) {
-      ArticleRow(doc, colors, onOpen = onOpen, onMenu = if (selecting) null else onMenu,
-        selecting = selecting, selected = selected, onToggleSelect = onToggle)
+      // gestureDrag keeps its original role: the up ending a swipe must not
+      // double-fire the row tap.
+      ArticleRow(doc, colors, onOpen = { if (!gestureDrag) onOpen() }, onMenu = if (selecting) null else onMenu,
+        selecting = selecting, selected = selected, onToggleSelect = onToggle,
+        onLongPress = onLongPress)
     }
   }
 }
