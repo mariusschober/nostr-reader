@@ -1,3 +1,5 @@
+> Current hardening candidate: see [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) and [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). Results below describe their recorded checkpoints.
+
 # Known limitations — 0.9.0-beta.1 candidate
 
 Latest focused evidence is in [ARCHIVE_REFRESH.md](ARCHIVE_REFRESH.md) and
@@ -13,10 +15,10 @@ by a later scoped result; older checks are historical.
 - TTS pauses on background and audio-focus loss. Native callbacks/speed/pause were tested; acoustic quality, real calls/headsets and a background media service are not claimed.
 - Android background delivery uses OS-scheduled catch-up. Timing depends on the OS/network; a user force-stop requires reopen.
 - Export is one-way Markdown/JSONL, not a restorable backup. Pairing keys are excluded. Export import/review-queue restore is not implemented.
-- Current candidate acceptance is TCL T807D, Android 16/API 36. Historical API-26/other-device checks do not certify these final bytes. Current 16-KiB runtime/store-signing acceptance remains **NOT MEASURED**. Target/compile SDK remains 34.
+- Current candidate acceptance includes TCL T807D and Samsung SM-S918B (S23 Ultra), both Android 16/API 36; see the exact hardening report scope. Historical API-26/other-device checks do not certify these final bytes. Current 16-KiB runtime/store-signing acceptance remains **NOT MEASURED**. Target/compile SDK remains 34.
 - Chrome npm audit reports zero vulnerabilities at the recorded date. No equivalent complete Android CVE scan was performed. Public relay policies and retention can change.
 - NIP-44 has no forward secrecy. Relays can observe routing keys, IP, timing and sizes. Compromised endpoints can access local plaintext and keys. The current native reader renders image descriptions as text without remote image fetches.
 - Mac is a reference Swift package; iOS, UniFFI integration and store releases are incomplete. Chrome-to-Android is the implemented product path.
-- The manual CI workflow is prepared but has not run on GitHub. No hosted CI pass or store-ready conclusion is claimed.
+- Automatic inexpensive host checks are enabled for relevant code changes, but this branch has not run on GitHub. No hosted CI pass or store-ready conclusion is claimed.
 
 - **FAIL:** full Android app byte reproducibility across a relocated clean source export. The build succeeds; two DEX files differ from the installed incremental artifact. Delivered APK hashes and their exact installed integrity check are verified.

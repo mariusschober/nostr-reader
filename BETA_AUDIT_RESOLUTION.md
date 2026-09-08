@@ -1,3 +1,5 @@
+> Current hardening candidate: see [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) and [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). Results below describe their recorded checkpoints.
+
 # Beta audit resolution — 8 September 2026
 
 Candidate: 0.9.0-beta.1. Tested application source is recorded in `ARTIFACTS.json`.

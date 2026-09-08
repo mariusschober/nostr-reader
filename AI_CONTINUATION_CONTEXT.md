@@ -1,3 +1,20 @@
+> Final executable source: `7dbb86922c841a500f98007c2bd89f3644c3a31f` on `codex/reliability-data-integrity`.
+> Final host gates PASS; exact QA artifacts: TCL 20 tests PASS, S23 Ultra 21 tests PASS.
+> Foreground local-relay trials PASS on both, including one failed relay. Normal APK/test
+> pairs installed in place and hash-verified on both; S23 normal database integrity PASS.
+> Read [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) for exact hashes, timings,
+> remaining unmeasured combinations and scope. Nothing pushed, merged or released.
+> Both isolated campaigns/apps were stopped. User's latest testing device is the S23
+> Ultra (device serial redacted); preserve its one-handed mode. The TCL is detached.
+
+> Current reliability work starts from main `1e55b7d4021637520402cb1773ac4e1ffd3b43cf`
+> on `codex/reliability-data-integrity`. Read `RELIABILITY_HARDENING.md` first.
+> The explicit hardening brief supersedes older minimal-test/trial instructions below.
+> Do not return to the historical pairing repair branch. Final artifact qualification
+> for this cycle is tracked separately from all earlier results.
+
+> Historical checkpoints below are superseded by this hardening candidate. See [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) for the current executable commit, artifacts and measured gaps.
+
 > Latest Android update: system-default TTS visibility/voice patch is installed. See `evidence/tts-default/README.md`; NekoSpeak is selected, but its service connection failed during playback verification. Prior beta artifact results remain historical.
 
 # Reader continuation — beta candidate, 8 September 2026

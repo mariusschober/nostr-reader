@@ -1,8 +1,8 @@
 # Reliability and data integrity hardening
 
 Work starts from `1e55b7d4021637520402cb1773ac4e1ffd3b43cf` on
-`codex/reliability-data-integrity`. This document tracks an unfinished implementation
-cycle; earlier artifact results do not certify these changes.
+`codex/reliability-data-integrity`. This document describes the implemented candidate.
+Exact artifact results and remaining acceptance gaps are in HARDENING_TEST_REPORT.md.
 
 ## Chrome capture ownership
 
@@ -22,10 +22,10 @@ New captures no longer create an additional plaintext library copy. Quota failur
 roll back payload and ID registration together. An interrupted migration leaves
 version 2 intact. No automatic expiration is applied to legacy library content.
 
-Verification so far: Chrome typecheck and 16 production worker tests PASS,
+Verification: Chrome typecheck and all 136 Chrome tests PASS,
 including migration/export/delete, duplicate capture ID, quota failure and
-receipt cleanup with late publication. Final packages and real-browser acceptance
-remain NOT MEASURED.
+receipt cleanup with late publication. The final packaged extension also loads without browser-reported errors in an isolated
+Chrome for Testing profile; foreground results are recorded in the test report.
 
 ## Android logical transfer and trust ownership
 
@@ -54,6 +54,35 @@ windows retain the ten-day randomized-timestamp safety margin. Caps as low as 32
 subdivision; byte-budget failures subdivide without claiming coverage. Saturated
 single-second buckets remain explicitly incomplete rather than being claimed covered.
 
-Intermediate verification: six TCL transfer tests PASS, including paused-intake
-revocation and permanent-delete/fresh-wrapper replay. Full Android host/lint/build
-gates passed before the final follow-ups. Final artifact qualification is pending.
+Full Android host/lint/build gates PASS for executable source 7dbb869. Device
+qualification includes intake/ACK revocation and permanent-delete/fresh-wrapper replay;
+see the test report for the exact final-artifact results and scope.
+
+## Reader, speech and export ownership
+
+Selection offsets, projection version, source metadata and color are frozen before
+leaving the native view. An application-owned ordered queue journals drafts in private
+atomic files independently of Room latency, replays unfinished drafts on startup and
+removes each only after commit. Failed writes stay queued and surface a Retry control.
+Back, swipe, mode and part changes wait for selection/progress persistence; background
+and disposal finalize under the same stable persistence owner. Part and semantic cursor
+are saved together for recreation. Native handles and the native scroll owner remain.
+There is still an unavoidable process-kill window before a newly frozen draft reaches
+the filesystem; this is not a synchronous disk-write guarantee on the UI thread.
+
+Speed pauses speech before route change. Background pauses speech without blocking the
+main thread on Room. Natural completion and errors release focus. Google speech retains
+its configured voice/language, and the UI uses the engine's network-required capability.
+A delayed Important result can no longer replace a newer review quote.
+
+Export uses a user-selected SAF destination. A coherent Room snapshot creates a temporary
+ZIP with versioned provenance/progress metadata, retained/orphan quotations, review state
+and per-component SHA-256 checksums. Preparation validates every component; copying reads
+back the destination and verifies the complete archive hash. Cancellation/failure removes
+the temporary file and attempts to delete the incomplete destination, with an explicit
+warning if that provider refuses. No pairing keys are included. Export is not a restore
+implementation. A coherent large export holds a database transaction and can delay writes.
+
+Final-artifact results and exact acceptance gaps are recorded in
+[HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md); historical beta reports are not
+certification of this candidate.
