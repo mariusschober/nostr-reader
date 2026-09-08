@@ -14,6 +14,18 @@ class RouteStackTest {
     assertEquals(Route.Inbox, stack.pop())
   }
 
+  @Test fun settingsPopReturnsToPriorListInsteadOfResetting() {
+    // Settings opened from Archive must pop back to Archive (with its
+    // preserved scroll state), not reset indiscriminately to Inbox.
+    val fromArchive = RouteStack()
+    fromArchive.push(Route.Archive); fromArchive.push(Route.Settings)
+    assertEquals(Route.Archive, fromArchive.pop())
+    val fromReader = RouteStack()
+    fromReader.push(Route.Reader("a")); fromReader.push(Route.Settings)
+    val top = fromReader.pop()
+    assertTrue(top is Route.Reader && (top as Route.Reader).id == "a")
+  }
+
   private fun cursor() = SemanticCursor("doc", "b0", 0)
 
   @Test
