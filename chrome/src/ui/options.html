@@ -39,6 +39,11 @@
     <button id="pairDevice" type="button" hidden>Pair a device</button>
     <button id="disconnect" type="button" hidden>Disconnect device</button>
   </section>
+  <section>
+    <h3>Retained recovery library</h3>
+    <p>Captures retained by earlier versions. These copies remain until you delete them here, independently of delivery. New captures are kept only while pending.</p>
+    <div id="retainedCaptures"></div>
+  </section>
   <details><summary>Advanced: relays and provenance</summary>
   <section>
     <h3>Relays</h3>
@@ -198,6 +203,33 @@
           row.append(button);
         }
         recent.append(row);
+      }
+      const retained = document.getElementById("retainedCaptures");
+      retained.replaceChildren();
+      for (const item of status.retained ?? []) {
+        const row = document.createElement("p");
+        const title = document.createElement("span"); title.textContent = item.title || "Retained capture";
+        row.append(title);
+        for (const action of ["export", "delete"]) {
+          const button = document.createElement("button"); button.textContent = action === "export" ? "Export text" : "Delete retained copy";
+          button.onclick = async () => {
+            if (action === "delete" && !confirm("Permanently delete this retained library copy? Pending delivery is separate.")) return;
+            button.disabled = true;
+            try {
+              const result = await chrome.runtime.sendMessage({kind:"reader-retained-action", captureId:item.captureId, action});
+              if (!result.ok) throw new Error(result.error);
+              if (action === "export") {
+                const url = URL.createObjectURL(new Blob([result.markdown], {type:"text/markdown;charset=utf-8"}));
+                const link = document.createElement("a"); link.href = url; link.download = "reader-retained.md"; link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 30000);
+              }
+              await refresh();
+            } catch (error) { deliveryMessage(error.message || "Library action failed", true); }
+            finally { button.disabled = false; }
+          };
+          row.append(button);
+        }
+        retained.append(row);
       }
       dev.textContent = status.paired ? `Connected · ${status.relays.length} relays` : "Not paired";
       pairDevice.hidden = status.paired;

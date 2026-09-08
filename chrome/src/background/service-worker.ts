@@ -235,10 +235,21 @@ void lockDownKeyStorage().catch(() => undefined);
 // ---- Outbox (IndexedDB, durable across worker restarts) ----
 function idb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const r = indexedDB.open("reader-outbox", 2);
+    const r = indexedDB.open("reader-outbox", 3);
     r.onupgradeneeded = () => {
       if (!r.result.objectStoreNames.contains("items")) r.result.createObjectStore("items", { keyPath: "transferId" });
       if (!r.result.objectStoreNames.contains("captures")) r.result.createObjectStore("captures", { keyPath: "captureId" });
+      const ids = r.result.createObjectStore("captureIds", { keyPath: "captureId" });
+      // Preserve every legacy plaintext row as an explicitly accessible recovery library.
+      // Migration is one transaction: failure leaves the old database untouched.
+      const cursor = r.transaction!.objectStore("captures").openCursor();
+      cursor.onsuccess = () => {
+        const row = cursor.result;
+        if (!row) return;
+        const { captureId, transferId, createdAt } = row.value;
+        ids.put({ captureId, transferId, createdAt });
+        row.continue();
+      };
     };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
@@ -296,6 +307,34 @@ async function outboxDelete(transferId: string): Promise<void> {
   } finally { db.close(); }
 }
 
+/** Legacy library owns its plaintext independently of transport and ACK cleanup. */
+async function retainedCaptures(action: "list" | "export" | "delete", captureId?: string): Promise<any> {
+  const db = await idb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction("captures", action === "delete" ? "readwrite" : "readonly");
+      const store = tx.objectStore("captures");
+      let result: unknown;
+      if (action === "list") {
+        const rows: unknown[] = [];
+        result = rows;
+        const cursor = store.openCursor();
+        cursor.onsuccess = () => {
+          const row = cursor.result;
+          if (!row) return;
+          rows.push({ captureId: row.value.captureId, title: row.value.title, createdAt: row.value.createdAt });
+          row.continue();
+        };
+      } else {
+        const request = action === "delete" ? store.delete(captureId!) : store.get(captureId!);
+        request.onsuccess = () => { result = request.result; };
+      }
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+
 interface DeliveryReceipt {
   transferId: string;
   title?: string;
@@ -345,7 +384,7 @@ export async function queueCapture(raw: { title: string; markdown: string; sourc
     const db = await idb();
     try {
       const existing = await new Promise<any>((resolve, reject) => {
-        const request = db.transaction("captures").objectStore("captures").get(captureId);
+        const request = db.transaction("captureIds").objectStore("captureIds").get(captureId);
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
       if (existing) return { transferId: existing.transferId, queued: !await loadPairedChannelState() };
@@ -417,14 +456,14 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
   const captureDb = await idb();
   try {
     await new Promise<void>((resolve, reject) => {
-      const tx = captureDb.transaction(["items", "captures"], "readwrite");
+      const tx = captureDb.transaction(["items", "captureIds"], "readwrite");
       tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
       try {
         tx.objectStore("items").put(item);
-        tx.objectStore("captures").put({ captureId, transferId, ...raw, createdAt: now });
+        tx.objectStore("captureIds").put({ captureId, transferId, createdAt: now });
       } catch (error) {
         // Synchronous request setup failures do not automatically roll back
-        // earlier queued writes. Never leave a send without its retained capture.
+        // earlier queued writes. Never leave a send without its deduplication record.
         tx.abort();
         reject(error);
       }
@@ -1068,6 +1107,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ ok: true, ...(await pairingStatus(String(msg.sessionId ?? ""))) });
     } else if (msg?.kind === "reader-cancel-pairing") {
       sendResponse({ ok: true, cancelled: await cancelPairing(String(msg.sessionId ?? "")) });
+    } else if (msg?.kind === "reader-retained-action") {
+      if (!["export", "delete"].includes(msg.action) || !/^[a-f0-9-]{32,36}$/.test(msg.captureId)) throw new Error("Invalid library action");
+      const result = await retainedCaptures(msg.action, msg.captureId);
+      if (msg.action === "export" && typeof result?.markdown !== "string") throw new Error("Retained capture is no longer available");
+      sendResponse({ ok: true, ...(msg.action === "export" ? { title: result.title, markdown: result.markdown } : {}) });
     } else if (msg?.kind === "reader-status") {
       const paired = await loadPairedChannelState();
       const items = await outboxAll().catch(() => []);
@@ -1078,6 +1122,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const delivery = summarizeDeliveryStates(items, receipts.length);
       sendResponse({
         ok: true,
+        retained: await retainedCaptures("list"),
         paired: !!paired,
         relays: pairedRelays,
         pending: delivery.queued + delivery.relayAccepted + delivery.awaitingDevice,

@@ -36,7 +36,7 @@ async function boot() {
 }
 async function records(name: string): Promise<any[]> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open("reader-outbox", 2);
+    const open = indexedDB.open("reader-outbox", 3);
     open.onsuccess = () => {
       const db = open.result;
       const request = db.transaction(name).objectStore(name).getAll();
@@ -61,9 +61,38 @@ describe("production worker persistence and request boundaries", () => {
     await boot();
     const reply = await message({ kind: "reader-capture", doc, captureId });
     expect(reply).toMatchObject({ ok: true, queued: true });
-    expect(await records("captures")).toMatchObject([{ captureId, transferId: reply.transferId, markdown: doc.markdown }]);
+    expect(await records("captureIds")).toMatchObject([{ captureId, transferId: reply.transferId }]);
     expect(await records("items")).toMatchObject([{ transferId: reply.transferId, attemptCount: 0 }]);
     expect(alarms.has("reader-pairing-recovery")).toBe(false);
+  });
+  it("migrates legacy plaintext without loss; ACK cleanup and discard leave the separate library accessible", async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("reader-outbox", 2);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("items", { keyPath: "transferId" });
+        request.result.createObjectStore("captures", { keyPath: "captureId" });
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction("captures", "readwrite");
+        tx.objectStore("captures").put({ captureId, transferId: "c".repeat(32), ...doc, createdAt: 1 });
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+    const worker = await boot();
+    expect((await worker.queueCapture(doc, captureId)).transferId).toBe("c".repeat(32));
+    expect(await records("captures")).toMatchObject([{ markdown: doc.markdown }]);
+    expect(await records("captureIds")).toEqual([{ captureId, transferId: "c".repeat(32), createdAt: 1 }]);
+    const trusted = { ...sender, url: `chrome-extension://${sender.id}/src/ui/options.html` };
+    expect(await message({ kind: "reader-retained-action", action: "export", captureId }, trusted)).toMatchObject({ ok: true, markdown: doc.markdown });
+    const fresh = await worker.queueCapture(doc, "b".repeat(32));
+    expect(await message({ kind: "reader-transfer-action", action: "discard", transferId: fresh.transferId }, trusted)).toMatchObject({ ok: true });
+    expect(await records("items")).toHaveLength(0);
+    expect(await records("captures")).toHaveLength(1);
+    expect(await message({ kind: "reader-retained-action", action: "delete", captureId }, trusted)).toMatchObject({ ok: true });
+    expect(await records("captures")).toHaveLength(0);
+    expect((await worker.queueCapture(doc, captureId)).transferId).toBe("c".repeat(32));
   });
   it("a lost response followed by worker replacement and message retry creates one transfer", async () => {
     let worker = await boot();
@@ -73,7 +102,7 @@ describe("production worker persistence and request boundaries", () => {
     const recovered = await worker.queueCapture(doc, captureId);
     expect(recovered.transferId).toBe(before[0].transferId);
     expect(await records("items")).toHaveLength(1);
-    expect(await records("captures")).toHaveLength(1);
+    expect(await records("captureIds")).toHaveLength(1);
   });
   it("concurrent repeated messages share one durable result; later deliberate capture stays possible", async () => {
     const worker = await boot();
@@ -81,18 +110,18 @@ describe("production worker persistence and request boundaries", () => {
     expect(new Set(results.map(item => item.transferId)).size).toBe(1);
     await worker.queueCapture(doc, "b".repeat(32));
     expect(await records("items")).toHaveLength(2);
-    expect(await records("captures")).toHaveLength(2);
+    expect(await records("captureIds")).toHaveLength(2);
   });
   it("quota failure during capture commit cannot return saved or strand a send intent", async () => {
     await boot();
     const original = IDBObjectStore.prototype.put;
     vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function(this: IDBObjectStore, ...args: Parameters<typeof original>) {
-      if (this.name === "captures") { throw new DOMException("Storage full", "QuotaExceededError"); }
+      if (this.name === "captureIds") { throw new DOMException("Storage full", "QuotaExceededError"); }
       return original.apply(this, args);
     });
     expect(await message({ kind: "reader-capture", doc, captureId })).toMatchObject({ ok: false });
     expect(await records("items")).toHaveLength(0);
-    expect(await records("captures")).toHaveLength(0);
+    expect(await records("captureIds")).toHaveLength(0);
   });
   it("web content cannot invoke privileged status or identity operations", async () => {
     await boot();
@@ -124,13 +153,14 @@ describe("context-menu capture feedback", () => {
     const messages = vi.mocked(chrome.tabs.sendMessage).mock.calls;
     expect(messages[0]).toEqual([7, expect.objectContaining({ kind: "reader-feedback-begin" }), { documentId: "document-1" }]);
     expect(messages[1]).toEqual([7, expect.objectContaining({ kind: "reader-capture-feedback", state: "unpaired" }), { documentId: "document-1" }]);
-    expect(await records("captures")).toMatchObject([{ markdown: "Constellation\n" }]);
+    expect(await records("captureIds")).toHaveLength(1);
+    expect(await records("captures")).toHaveLength(0);
   });
   it("blocked page injection does not discard selected text or prevent badge feedback", async () => {
     await boot();
     vi.mocked(chrome.scripting.executeScript).mockRejectedValue(new Error("Restricted page"));
     await listeners.menu({ menuItemId: "reader-send-selection", selectionText: "Constellation", pageUrl: "https://example.org/article" }, { id: 7 });
-    expect(await records("captures")).toHaveLength(1);
+    expect(await records("captureIds")).toHaveLength(1);
     expect(chrome.action.setTitle).toHaveBeenCalledWith({ tabId: 7, title: "Saved — connect your phone" });
   });
   it("receipt status never exposes capture text and never guesses delivered for an unknown ID", async () => {
@@ -204,7 +234,7 @@ describe("production publication and ACK interleavings", () => {
     release();
     await new Promise(resolve => setTimeout(resolve, 30));
     expect(await records("items")).toHaveLength(0);
-    expect(await records("captures")).toHaveLength(1);
+    expect(await records("captureIds")).toHaveLength(1);
   });
 
   it("wrong manifest ACK never clears a capture despite valid phone signature", async () => {
@@ -240,7 +270,7 @@ describe("production publication and ACK interleavings", () => {
     failure.mockRestore(); incoming = []; // accepted ACKs have disappeared
     await boot();
     await vi.waitFor(async () => expect(await records("items")).toHaveLength(0));
-    expect(await records("captures")).toHaveLength(1);
+    expect(await records("captureIds")).toHaveLength(1);
   });
 
   it("restores receipt polling after reload and after an all-relay read failure", async () => {
@@ -268,6 +298,6 @@ describe("production publication and ACK interleavings", () => {
     await worker.queueCapture(doc, captureId);
     release();
     await vi.waitFor(async () => expect((await records("items"))[0].status).toBe("awaiting_device"));
-    expect(await records("captures")).toHaveLength(1);
+    expect(await records("captureIds")).toHaveLength(1);
   });
 });
