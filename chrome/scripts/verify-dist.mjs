@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const dist = resolve(import.meta.dirname, process.env.READER_DIST ?? "../dist");
+const dist = resolve(import.meta.dirname, "..", process.env.READER_DIST ?? "dist");
 const manifest = JSON.parse(await readFile(resolve(dist, "manifest.json"), "utf8"));
 if (manifest.background?.service_worker !== "background.js") {
   throw new Error("built manifest does not reference background.js");

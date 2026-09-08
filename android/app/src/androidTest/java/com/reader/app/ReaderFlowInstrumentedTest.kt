@@ -232,7 +232,7 @@ class ReaderFlowInstrumentedTest {
     val db = ReaderDb.get(context)
     val unique = System.nanoTime()
     val title = "Unicode share check $unique"
-    val quote = "Café e\u0301 — 日本語 🌱\nLine two: \"exact\", <tag>, & spaces.\n\nRun $unique"
+    val quote = "Café x\u0301 — 日本語 🌱\nLine two: \"exact\", <tag>, & spaces.\n\nRun $unique"
     val markdown = ReaderCore.canonicalize("```\n$quote\n```\n")
     val id = ReaderCore.documentId(markdown)
     val now = System.currentTimeMillis()

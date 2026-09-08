@@ -36,6 +36,7 @@
   <section>
     <h3>Connected device</h3>
     <div id="dev">…</div>
+    <button id="pairDevice" type="button" hidden>Pair a device</button>
     <button id="disconnect" type="button" hidden>Disconnect device</button>
   </section>
   <details><summary>Advanced: relays and provenance</summary>
@@ -57,6 +58,10 @@
       <div><button id="repair" class="primary" type="button">Re-pair to apply</button></div>
     </div>
   </section>
+  <section>
+    <h3>Signing and provenance</h3>
+    <p>Reader uses a private device key for encrypted delivery. Optional browser-signer provenance is not configured.</p>
+  </section>
   </details>
   <section>
     <h3>Site access</h3>
@@ -64,12 +69,8 @@
     <div id="siteAccess"></div><p id="siteAccessMessage" role="status"></p>
   </section>
   <section>
-    <h3>Signing</h3>
-    <p>Private device key (Recommended) is default. Browser signer lives under Advanced.</p>
-    <div id="signer">…</div>
-  </section>
-  <section>
     <h3>Recent sends</h3>
+    <p id="deliveryMessage" class="message" role="status" aria-live="polite" hidden></p>
     <p>Select text, then click Reader or press Alt+Shift+R. Every nonblank selection wins. Otherwise Reader captures the focused answer or detected article.</p>
     <div id="recentSends"></div>
     <div>Pending encrypted transfers: <span id="pend">…</span></div>
@@ -116,8 +117,17 @@
     const relayMessage = document.getElementById("relayMessage");
     const addRelay = document.getElementById("addRelay");
     const disconnect = document.getElementById("disconnect");
+    const pairDevice = document.getElementById("pairDevice");
     const repairNotice = document.getElementById("repairNotice");
     let readerStatus = null;
+    let refreshVersion = 0;
+
+    function deliveryMessage(text, isError = false) {
+      const notice = document.getElementById("deliveryMessage");
+      notice.hidden = false;
+      notice.textContent = text;
+      notice.className = isError ? "message error" : "message";
+    }
 
     function message(text, isError = false) {
       relayMessage.textContent = text;
@@ -152,7 +162,9 @@
     }
 
     async function refresh() {
+      const version = ++refreshVersion;
       const status = await chrome.runtime.sendMessage({kind:"reader-status"});
+      if (version !== refreshVersion) return;
       if (!status.ok) throw new Error(status.error || "Reader status is unavailable.");
       readerStatus = status;
       const recent = document.getElementById("recentSends");
@@ -176,7 +188,11 @@
                 setTimeout(() => URL.revokeObjectURL(url), 30000);
               }
               await refresh();
-            } catch (error) { message(error.message || "Action failed", true); }
+            } catch (error) {
+              detail.textContent = error.message || "Action failed";
+              detail.className = "message error";
+              detail.setAttribute("role", "status");
+            }
             finally { button.disabled = false; }
           });
           row.append(button);
@@ -184,6 +200,7 @@
         recent.append(row);
       }
       dev.textContent = status.paired ? `Connected · ${status.relays.length} relays` : "Not paired";
+      pairDevice.hidden = status.paired;
       disconnect.hidden = !status.paired;
       pend.textContent = String(status.pending);
       const delivery = status.delivery;
@@ -218,31 +235,39 @@
     document.getElementById("repair").addEventListener("click", () => {
       void chrome.tabs.create({url: chrome.runtime.getURL("src/ui/pairing.html")});
     });
+    pairDevice.addEventListener("click", () => {
+      void chrome.tabs.create({url: chrome.runtime.getURL("src/ui/pairing.html")});
+    });
     disconnect.addEventListener("click", async () => {
       if (!confirm("Disconnect this Android device? Queued articles stay local until you pair again.")) return;
       const result = await chrome.runtime.sendMessage({kind:"reader-disconnect"});
-      if (!result.ok) return message(result.error || "The device could not be disconnected.", true);
-      message("Device disconnected. Pair again when you are ready.");
+      if (!result.ok) return deliveryMessage(result.error || "The device could not be disconnected.", true);
+      deliveryMessage("Device disconnected. Pair again when you are ready.");
       await refresh();
     });
     discardFailed.addEventListener("click", async () => {
       if (!confirm("Permanently remove all failed transfers and their local captured text?")) return;
       const result = await chrome.runtime.sendMessage({kind:"reader-discard-failed"});
-      if (!result.ok) return message(result.error || "Failed transfers could not be removed.", true);
-      message(`Removed ${result.discarded} failed transfer${result.discarded === 1 ? "" : "s"}.`);
+      if (!result.ok) return deliveryMessage(result.error || "Failed transfers could not be removed.", true);
+      deliveryMessage(`Removed ${result.discarded} failed transfer${result.discarded === 1 ? "" : "s"}.`);
       await refresh();
     });
     checkDelivery.addEventListener("click", async () => {
       checkDelivery.disabled = true;
-      message("Checking authenticated device acknowledgements…");
+      deliveryMessage("Checking authenticated device acknowledgements…");
       const result = await chrome.runtime.sendMessage({kind:"reader-check-acks"});
-      if (!result.ok) message(result.error || "Delivery status could not be checked.", true);
-      else message("Delivery status updated.");
+      if (!result.ok) deliveryMessage(result.error || "Delivery status could not be checked.", true);
+      else deliveryMessage("Delivery status updated.");
       await refresh();
       checkDelivery.disabled = false;
     });
 
-    try { await refresh(); } catch (error) { message(String(error), true); }
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") void refresh().catch(error => deliveryMessage(String(error), true));
+    };
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    try { await refresh(); } catch (error) { deliveryMessage(String(error), true); }
   </script>
   <script type="module" src="./theme.ts"></script>
 </body>
