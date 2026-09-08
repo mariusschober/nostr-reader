@@ -6,6 +6,7 @@ import com.reader.app.cursor.SemanticCursor
 class TtsController(private val engine: TtsEngine) {
   data class State(
     val units: List<NarrationUnit> = emptyList(), val index: Int = 0,
+    val voiceRequiresNetwork: Boolean? = null,
     val playing: Boolean = false, val speed: Float = 1f, val offset: Int = 0, val error: String? = null,
   )
   var state = State()
@@ -16,7 +17,7 @@ class TtsController(private val engine: TtsEngine) {
   private var generation = 0L
 
   private fun stopGeneration() { generation++; engine.stop() }
-  private fun publish() { onState?.invoke(state) }
+  private fun publish() { state = state.copy(voiceRequiresNetwork = engine.voiceRequiresNetwork); onState?.invoke(state) }
 
   fun load(units: List<NarrationUnit>, fromBlockId: String?, speed: Float, fromOffset: Int = 0) {
     stopGeneration()
@@ -40,7 +41,7 @@ class TtsController(private val engine: TtsEngine) {
       onCursor?.invoke(unit.blockId); onPosition?.invoke(unit.blockId, unit.blockOffset(offset))
     }
     engine.speak("r$own-u${state.index}-$from", unit.text.substring(from), state.speed,
-      onStart = { if (current()) position(from) },
+      onStart = { if (current()) { position(from); publish() } },
       onDone = {
         if (current()) {
           val next = state.index + 1

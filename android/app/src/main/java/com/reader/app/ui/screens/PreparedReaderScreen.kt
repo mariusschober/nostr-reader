@@ -40,6 +40,8 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          onListen: (RenderedProjection, SemanticCursor) -> Unit,
                          onSpeedRead: (SemanticCursor) -> Unit,
                          onArticleAction: (ArticleAction) -> Unit,
+                         onPauseAudio: () -> Unit = {},
+                         speechPlaying: Boolean = false,
                          playerVisible: Boolean = false,
                          player: @Composable () -> Unit = {}) {
   val context = LocalContext.current
@@ -58,7 +60,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var prepared by remember(id) { mutableStateOf<PreparedSection?>(null) }
   var content by remember { mutableStateOf<CharSequence?>(null) }
   var failure by remember(id) { mutableStateOf<String?>(null) }
-  var initial by remember(id) { mutableStateOf(SemanticCursor.start(id)) }
+  var initial by rememberSaveable(id, stateSaver = androidx.compose.runtime.saveable.Saver<SemanticCursor, List<Any>>(
+    save = { listOf(it.documentId, it.blockId, it.charOffset) },
+    restore = { SemanticCursor(it[0] as String, it[1] as String, it[2] as Int) }
+  )) { mutableStateOf(SemanticCursor.start(id)) }
   var view by remember { mutableStateOf<NativeArticleView?>(null) }
   var pen by rememberSaveable(id) { mutableStateOf(false) }
   var selectedColor by rememberSaveable { mutableStateOf("YELLOW") }
@@ -67,7 +72,6 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var actions by remember { mutableStateOf<List<String>>(emptyList()) }
   var activeQuote by remember { mutableStateOf<HighlightEntity?>(null) }
   var undo by remember { mutableStateOf<HighlightMutation?>(null) }
-  val selections = remember(id) { Mutex() }
   val sessions = remember(id) { mutableMapOf<String, Pair<Long, HighlightMutation>>() }
   val snackbar = remember { SnackbarHostState() }
 
@@ -107,18 +111,36 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   }
   LaunchedEffect(actions) { activeQuote = actions.firstOrNull()?.let { db.highlights().byId(it) } }
 
+  val saveError by app.reading.error.collectAsState()
+  var transitioning by remember { mutableStateOf(false) }
+  fun transition(action: () -> Unit) {
+    if (transitioning) return
+    view?.flushSelection()
+    onPauseAudio()
+    val cursor = view?.currentCursor() ?: initial
+    prepared?.let { app.progress.offer(cursor, it.fraction(it.projection.offset(cursor.blockId, cursor.charOffset))) }
+    transitioning = true
+    scope.launch {
+      try { app.reading.flush(); app.progress.flush(); action() }
+      catch (_: Exception) { snackbar.showSnackbar("Couldn’t save reading changes. Retry before leaving.") }
+      finally { transitioning = false }
+    }
+  }
   fun leave() {
     view?.flushSelection()
     if (view?.clearSelection() == true) return
-    view?.reportCursor()
-    scope.launch {
-      try { selections.withLock { }; app.progress.flush(); onBack() }
-      catch (_: Exception) { snackbar.showSnackbar("Couldn’t save reading position. Try again.") }
-    }
+    transition(onBack)
   }
   BackHandler { leave() }
-  DisposableEffect(id) {
-    onDispose { view?.reportCursor() }
+  val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+  DisposableEffect(id, lifecycle) {
+    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+      if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+        view?.flushSelection(); view?.reportCursor()
+      }
+    }
+    lifecycle.addObserver(observer)
+    onDispose { view?.flushSelection(); view?.reportCursor(); lifecycle.removeObserver(observer) }
   }
   fun share(value: HighlightEntity) {
     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -141,13 +163,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             menuActions.forEach { action ->
               DropdownMenuItem(enabled = action.target == null || doc?.list != action.target,
                 text = { Text(action.label, color = if (action == ArticleAction.Delete) colors.error else colors.text) },
-                onClick = { menu = false; view?.flushSelection(); scope.launch { selections.withLock { }; onArticleAction(action) } })
+                onClick = { menu = false; transition { onArticleAction(action) } })
             }
             if (undo != null) DropdownMenuItem(text = { Text("Undo highlight change") }, onClick = {
               menu = false
               view?.flushSelection()
               scope.launch {
-                selections.withLock { }
+                app.reading.flush()
                 val change = undo ?: return@launch
                 view?.clearSelection()
                 try { if (highlights.undo(change)) undo = null else snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.") }
@@ -169,7 +191,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       }
       Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = { prepared?.let { onListen(it.projection, view?.currentCursor() ?: initial) } }, enabled = prepared != null && !playerVisible) {
+        TextButton(onClick = { prepared?.let { val cursor = view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } }, enabled = prepared != null && !playerVisible) {
           Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Listen")
         }
         ElevatedFilterChip(selected = pen, onClick = {
@@ -183,7 +205,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           leadingIcon = { Icon(Icons.Default.BorderColor, null, Modifier.size(20.dp)) },
           label = { Text(if (pen) "Highlight on" else "Highlight", color = HighlightColor.text(dark),
             modifier = Modifier.background(HighlightColor.YELLOW.background(dark), RoundedCornerShape(3.dp)).padding(horizontal = 3.dp)) })
-        TextButton(onClick = { onSpeedRead(view?.currentCursor() ?: initial) }, enabled = prepared != null) {
+        TextButton(onClick = { val cursor = view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } }, enabled = prepared != null) {
           Icon(Icons.Default.Speed, "Speed reading", Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Speed")
         }
       }
@@ -201,13 +223,14 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp))
       val ready = prepared
       val text = content
+      if (saveError != null) TextButton(onClick = { transition { } }) { Text("Save failed — Retry", color = colors.error) }
       if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)
       else if (ready == null || text == null) CircularProgressIndicator(Modifier.padding(24.dp))
       else {
         if (ready.index.sections.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-          TextButton(enabled = part > 0, onClick = { view?.reportCursor(); initial = SemanticCursor.start(id); part-- }) { Text("Previous part") }
+          TextButton(enabled = part > 0, onClick = { transition { initial = SemanticCursor.start(id); part-- } }) { Text("Previous part") }
           Text("${part + 1} / ${ready.index.sections.size}", modifier = Modifier.padding(12.dp))
-          TextButton(enabled = part < ready.index.sections.lastIndex, onClick = { view?.reportCursor(); initial = SemanticCursor.start(id); part++ }) { Text("Next part") }
+          TextButton(enabled = part < ready.index.sections.lastIndex, onClick = { transition { initial = SemanticCursor.start(id); part++ } }) { Text("Next part") }
         }
         val nativeMarks = remember(marks, ready, dark) {
           val blocks = ready.projection.blocks.mapTo(hashSetOf()) { it.id }
@@ -224,10 +247,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           }
           native.deleteTint = colors.error.toArgb()
           native.articleList = doc?.list
-          native.onArticleSwipe = onArticleAction
+          native.onArticleSwipe = { action -> transition { onArticleAction(action) } }
           native.setPenMode(pen)
           native.setMarks(nativeMarks)
-          native.onCursor = { cursor, _ -> app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))) }
+          native.onCursor = { cursor, _ -> initial = cursor; if (!speechPlaying) app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))) }
           native.onMark = { actions = it }
           native.onLink = { url ->
             if (Uri.parse(url).scheme in listOf("http", "https")) {
@@ -236,21 +259,22 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           }
           native.onSelection = { session, sequence, range ->
             val source = doc
-            if (source != null) scope.launch {
+            val frozenColor = selectedColor
+            if (source != null) {
               try {
-                selections.withLock {
-                  if ((sessions[session]?.first ?: -1) >= sequence) return@withLock
-                  val draft = withContext(Dispatchers.Default) {
-                    HighlightAnchors.create(session, source, ready.projection, range.first, range.last + 1, System.currentTimeMillis()).copy(color = selectedColor)
+                // Freeze exact offsets, projection version, provenance and color
+                // while this native view still owns the selection.
+                val draft = HighlightAnchors.create(session, source, ready.projection, range.first, range.last + 1,
+                  System.currentTimeMillis()).copy(color = frozenColor)
+                app.reading.submitSelection(draft) { change ->
+                  if ((sessions[session]?.first ?: -1) < sequence) {
+                    val aggregate = HighlightMutation(if (sessions.containsKey(session)) sessions.getValue(session).second.before else change.before, change.after)
+                    sessions[session] = sequence to aggregate
+                    while (sessions.size > 16) sessions.remove(sessions.keys.first())
+                    undo = aggregate.takeIf { it.before != null || it.after != null }
                   }
-                  val change = highlights.saveSelection(draft)
-                  val aggregate = HighlightMutation(if (sessions.containsKey(session)) sessions.getValue(session).second.before else change.before, change.after)
-                  sessions[session] = sequence to aggregate
-                  while (sessions.size > 16) sessions.remove(sessions.keys.first())
-                  undo = aggregate.takeIf { it.before != null || it.after != null }
                 }
-              } catch (e: CancellationException) { throw e }
-              catch (e: Exception) { snackbar.showSnackbar(e.message ?: "Couldn’t save highlight") }
+              } catch (error: Exception) { scope.launch { snackbar.showSnackbar(error.message ?: "Couldn’t prepare highlight") } }
             }
           }
         })

@@ -26,6 +26,7 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
     .setAudioAttributes(attributes).setWillPauseWhenDucked(true)
     .setOnAudioFocusChangeListener({ change -> if (change < 0) onFocusLost?.invoke() }, handler).build()
   private var tts: TextToSpeech? = null
+  override val voiceRequiresNetwork: Boolean? get() = tts?.voice?.isNetworkConnectionRequired
   private var ready = false
   private var failed = false
   private data class Request(
@@ -54,8 +55,8 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
     tts?.setAudioAttributes(attributes)
     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
       override fun onStart(id: String?) = current(id) { it.start() }
-      override fun onDone(id: String?) = current(id) { active = null; it.done() }
-      override fun onError(id: String?) = current(id) { active = null; it.error("Speech could not continue") }
+      override fun onDone(id: String?) = current(id) { active = null; it.done(); if (active == null) audio.abandonAudioFocusRequest(focus) }
+      override fun onError(id: String?) = current(id) { active = null; audio.abandonAudioFocusRequest(focus); it.error("Speech could not continue") }
       override fun onRangeStart(id: String?, start: Int, end: Int, frame: Int) = current(id) {
         supportsRangeCallback = true; it.range(start, end)
       }

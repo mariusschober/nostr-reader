@@ -6,5 +6,6 @@ interface TtsEngine {
   fun stop()
   fun setSpeed(speed: Float)
   fun shutdown()
+  val voiceRequiresNetwork: Boolean? get() = null
   val supportsRangeCallback: Boolean
 }

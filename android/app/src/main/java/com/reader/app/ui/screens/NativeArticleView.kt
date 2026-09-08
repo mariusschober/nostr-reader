@@ -179,9 +179,12 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     body.setOnScrollChangeListener { _, _, _, _, _ -> if (!restoring) reportCursor() }
   }
 
+  private var displayGeneration = 0L
+
   fun display(id: String, value: RenderedProjection, text: CharSequence, settings: ReaderSettings,
               foreground: Int, background: Int, margin: Int, initial: SemanticCursor) {
     val changed = projection !== value || documentId != id
+    if (changed) { flushSelection(); clearSelection() }
     val saved = if (!changed) currentCursor() else initial
     documentId = id
     projection = value
@@ -199,9 +202,11 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     body.setBackgroundColor(background)
     swipeLabel.setTextColor(foreground)
     setPadding(dp(margin), 0, dp(margin), 0)
+    val generation = ++displayGeneration
     fun restore() {
       restoring = true
       body.post {
+        if (generation != displayGeneration) return@post
         val layout = body.layout
         if (layout != null && saved != null) {
           val offset = value.offset(saved.blockId, saved.charOffset).coerceIn(0, body.length())
@@ -214,7 +219,6 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     }
     if (changed) {
       restoring = true
-      clearSelection()
       markRanges = emptyList()
       val immutableText = SpannableString(text)
       // Use the same native layout for drawing and handle hit testing. On the TCL,
@@ -302,6 +306,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   override fun onDetachedFromWindow() {
+    flushSelection()
     reportCursor()
     pendingSelection?.let { removeCallbacks(it) }
     super.onDetachedFromWindow()

@@ -46,6 +46,7 @@ import com.reader.app.ui.screens.*
 import com.reader.app.ui.theme.colorsFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
@@ -61,6 +62,10 @@ class MainActivity : ComponentActivity() {
   private var ttsEngine: AndroidTtsEngine? = null
   private var ttsController: TtsController? = null
   private var refreshTick = androidx.compose.runtime.mutableStateOf(0)
+
+  private val exportDestination = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+    if (uri != null) lifecycleScope.launch { exportArchive(uri) }
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -298,7 +303,10 @@ class MainActivity : ComponentActivity() {
             },
             onImportant = {
               val id = quote?.id
-              if (!busy && id != null) lifecycleScope.launch { quote = review.toggleImportant(id) }
+              if (!busy && id != null) lifecycleScope.launch {
+                try { completeReviewCommand(id, review::toggleImportant, { quote?.id }) { quote = it } }
+                catch (error: Exception) { reviewError = "Couldn’t save importance. Try again." }
+              }
             },
             onSource = {
               quote?.let { selected -> lifecycleScope.launch {
@@ -327,10 +335,12 @@ class MainActivity : ComponentActivity() {
             stack.pop(); tick++
           },
           onListen = { projection, cursor -> openTts(r.id, projection, cursor) },
-          onSpeedRead = { cursor -> go(Route.Rsvp(r.id, cursor)) },
+          onSpeedRead = { cursor -> ttsController?.pause(); go(Route.Rsvp(r.id, cursor)) },
           onArticleAction = { action ->
             if (action == ArticleAction.Delete) deleteArticle(r.id) else action.target?.let { moveReader(r.id, it) }
           },
+          onPauseAudio = { ttsController?.pause() },
+          speechPlaying = ttsDocId == r.id && ttsState?.playing == true,
           playerVisible = ttsDocId == r.id && ttsState != null,
           player = {
             if (ttsDocId == r.id) ttsState?.let { state ->
@@ -478,7 +488,7 @@ class MainActivity : ComponentActivity() {
               refresh()
             }
           },
-          onExport = { lifecycleScope.launch { exportArchive() } },
+          onExport = { exportDestination.launch("reader-archive.zip") },
           onSignerInfo = {
             Toast.makeText(this, "Random local keys by default. External signers only add provenance, never transport.", Toast.LENGTH_LONG).show()
           },
@@ -525,52 +535,47 @@ class MainActivity : ComponentActivity() {
     PairingCoordinator(this).begin(qrText)
 
   /** Manual archive export: ZIP of md + metadata JSON. Never keys. */
-  private suspend fun exportArchive() {
+  private suspend fun exportArchive(destination: Uri) {
+    var temporary: java.io.File? = null
     try {
-      val list = withContext(Dispatchers.IO) { db.documents().observeSummaries().first() }
-      val out = getExternalFilesDir(null)?.resolve("reader-archive.zip") ?: throw IllegalStateException("no storage")
+      val app = application as com.reader.app.ReaderApp
+      app.reading.flush(); app.progress.flush()
+      val archive = com.reader.app.data.ArchiveExporter(db).prepare(cacheDir)
+      temporary = archive
       withContext(Dispatchers.IO) {
-        ZipOutputStream(out.outputStream()).use { zip ->
-          for (summary in list) {
-            val d = db.documents().observeMetadata(summary.documentId).first() ?: continue
-            zip.putNextEntry(ZipEntry("${d.documentId}.md"))
-            for (part in 0 until db.documents().contentPartCount(d.documentId)) {
-              val text = checkNotNull(db.documents().contentPart(d.documentId, part)) { "Article content is incomplete" }
-              zip.write(text.toByteArray(Charsets.UTF_8))
+        checkNotNull(contentResolver.openOutputStream(destination, "wt")) { "Destination is unavailable" }.use { output ->
+          archive.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+              kotlin.coroutines.coroutineContext.ensureActive()
+              val n = input.read(buffer); if (n < 0) break
+              output.write(buffer, 0, n)
             }
-            zip.closeEntry()
-            zip.putNextEntry(ZipEntry("${d.documentId}.json"))
-            val meta = buildJsonObject {
-              put("documentId", d.documentId); put("title", d.title)
-              put("sourceType", d.sourceType); put("wordCount", d.wordCount)
-              put("capturedAt", d.capturedAt); put("state", d.state); put("list", d.list)
-            }.toString()
-            zip.write(meta.toByteArray())
-            zip.closeEntry()
           }
-          zip.putNextEntry(ZipEntry("highlights.jsonl"))
-          var offset = 0
-          while (true) {
-            val page = db.highlights().exportPage(20, offset)
-            if (page.isEmpty()) break
-            for (quote in page) {
-              zip.write(Json.encodeToString(com.reader.app.data.HighlightEntity.serializer(), quote).toByteArray(Charsets.UTF_8))
-              zip.write(10)
-            }
-            offset += page.size
-          }
-          zip.closeEntry()
         }
+        // Read back the selected destination, including providers outside Reader.
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        fun hash(input: java.io.InputStream): ByteArray = input.use {
+          digest.reset(); val buffer = ByteArray(64 * 1024)
+          while (true) { val n = it.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+          digest.digest()
+        }
+        check(hash(archive.inputStream()).contentEquals(hash(checkNotNull(contentResolver.openInputStream(destination))))) { "Destination verification failed" }
       }
-      Toast.makeText(this, "Exported ${list.size} articles. Note: exported Markdown is plaintext.", Toast.LENGTH_LONG).show()
-    } catch (e: Exception) {
-      Toast.makeText(this, "Export failed: ${e.message?.take(120)}", Toast.LENGTH_LONG).show()
-    }
+      Toast.makeText(this, "Export verified. Contains plaintext articles and quotes; not a restorable backup.", Toast.LENGTH_LONG).show()
+    } catch (error: Exception) {
+      val removed = withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+        runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, destination) }.getOrDefault(false)
+      }
+      Toast.makeText(this, if (removed) "Export did not complete; destination removed." else "Export did not complete. Delete the incomplete destination file.", Toast.LENGTH_LONG).show()
+      if (error is kotlinx.coroutines.CancellationException) throw error
+    } finally { temporary?.delete() }
   }
 
   override fun onStop() {
     ttsController?.pause()
-    runCatching { kotlinx.coroutines.runBlocking(Dispatchers.IO) { (application as com.reader.app.ReaderApp).progress.flush() } }
+    val app = application as com.reader.app.ReaderApp
+    app.persistenceScope.launch { runCatching { app.reading.flush(); app.progress.flush() } }
     super.onStop()
   }
 

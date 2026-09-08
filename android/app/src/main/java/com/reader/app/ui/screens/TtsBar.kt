@@ -31,6 +31,7 @@ fun TtsBar(
   val context = LocalContext.current
   Surface(color = colors.surface, tonalElevation = 2.dp) {
     Column {
+    if (state.voiceRequiresNetwork == true) Text("This voice requires a network connection", color = colors.secondary, modifier = Modifier.padding(horizontal = 12.dp))
     state.error?.let {
       Text(it, color = colors.error, modifier = Modifier.padding(12.dp))
       TextButton(onClick = { runCatching { context.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS")) } }) { Text("Speech settings") }
