@@ -1,0 +1,18 @@
+{
+  "checkpoint": "2026-09-08 reader review testing",
+  "artifacts": [
+    {
+      "file": "artifacts/beta-work/testing-resume/review-checkpoint/qa-app.apk",
+      "sha256": "1937dd31b2d48cd998168f600c2bcb4e635c2b98c658974705cf3c3d57098078",
+      "bytes": 27980043,
+      "status": "Physical reader/review/share-word flow passed in reader-review-tcl-10.log"
+    },
+    {
+      "file": "artifacts/beta-work/testing-resume/review-checkpoint/qa-tests-pending.apk",
+      "sha256": "77e6fe95ab8ae67ae1cecbf3793836c67523b22e74208900d12edc1879f59cbc",
+      "bytes": 644375,
+      "status": "Compiled; not installed or run: TCL disconnected before build-11 test installation"
+    }
+  ],
+  "not_final_beta_acceptance": true
+}

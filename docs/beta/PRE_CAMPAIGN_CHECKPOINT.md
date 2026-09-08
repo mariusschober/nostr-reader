@@ -1,6 +1,6 @@
 # Implementation checkpoint — 2026-09-08
 
-**PAUSED before reliability campaigns and intensive testing, as requested. This is not beta acceptance.**
+**Historical checkpoint from the pause before testing. Testing resumed at the owner's request on 2026-09-08; see [the TCL testing report](TCL_TESTING_2026-09-08.md) for subsequent fixes and installation evidence. This is not beta acceptance.**
 
 The repaired branch's newer work remains in place. The owner Android application, its data/keys, the paired Chrome profile, and `chrome/dist` were not replaced during this implementation stage. The new artifacts below have not been installed or accepted on a physical device. Earlier recovery/selection evidence belongs to earlier builds and is not transferred to this candidate.
 

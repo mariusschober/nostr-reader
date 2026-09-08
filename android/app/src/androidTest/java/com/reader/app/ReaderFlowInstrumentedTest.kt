@@ -3,7 +3,9 @@ package com.reader.app
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
+import android.os.ParcelFileDescriptor
 import android.view.InputDevice
+import android.accessibilityservice.AccessibilityService
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -13,6 +15,9 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.reader.app.core.ReaderCore
+import com.reader.app.core.ArticleParser
+import com.reader.app.core.RenderedText
+import com.reader.app.data.HighlightAnchors
 import com.reader.app.data.DocumentEntity
 import com.reader.app.data.ReaderDb
 import com.reader.app.prefs.*
@@ -25,6 +30,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import org.json.JSONObject
 
 /** Tests the production screen through physical input and committed Room records. */
 @RunWith(AndroidJUnit4::class)
@@ -37,6 +43,7 @@ class ReaderFlowInstrumentedTest {
       if (test()) return
       SystemClock.sleep(100)
     }
+    screenshot("reader-flow-timeout")
     error("Reader flow timed out: $label")
   }
   private fun node(text: String): AccessibilityNodeInfo? {
@@ -55,6 +62,7 @@ class ReaderFlowInstrumentedTest {
     }
   }
   private fun tap(text: String) {
+    runner.uiAutomation.waitForIdle(300, 5000)
     waitFor("control $text") { node(text) != null }
     val bounds = Rect().also { node(text)!!.getBoundsInScreen(it) }
     val down = SystemClock.uptimeMillis()
@@ -66,6 +74,65 @@ class ReaderFlowInstrumentedTest {
     val bitmap = checkNotNull(runner.uiAutomation.takeScreenshot())
     File(context.getExternalFilesDir("qa"), "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     bitmap.recycle()
+  }
+  private fun back() {
+    check(runner.uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+    SystemClock.sleep(300)
+  }
+  private fun receiverFile(command: String): String = ParcelFileDescriptor.AutoCloseInputStream(
+    runner.uiAutomation.executeShellCommand("run-as com.reader.app.qa.test $command files/received-quote.json")
+  ).bufferedReader().use { it.readText() }
+
+  private fun openNewestQuote(title: String) {
+    tap("Highlights")
+    tap("Newest")
+    // The keyed feed preserves its visible item when sorting changes.
+    val feedScreen = context.resources.displayMetrics
+    val feedDown = SystemClock.uptimeMillis()
+    val feedX = feedScreen.widthPixels * .8f
+    val feedY = feedScreen.heightPixels * .3f
+    event(MotionEvent.ACTION_DOWN, feedX, feedY, feedDown)
+    for (step in 1..20) {
+      event(MotionEvent.ACTION_MOVE, feedX, feedY + feedScreen.heightPixels * .5f * step / 20f, feedDown)
+      SystemClock.sleep(20)
+    }
+    event(MotionEvent.ACTION_UP, feedX, feedY + feedScreen.heightPixels * .5f, feedDown)
+    SystemClock.sleep(700)
+    tap(title)
+  }
+
+  private fun verifyQuoteSharing(quote: String) {
+    tap("Share")
+    waitFor("native sharesheet") {
+      runner.uiAutomation.rootInActiveWindow?.packageName?.toString()?.let { it != context.packageName } == true
+    }
+    screenshot("reader-review-sharesheet")
+    SystemClock.sleep(500)
+    back()
+    waitFor("review after sharesheet") { node("Next") != null }
+    receiverFile("rm -f")
+    tap("Share")
+    SystemClock.sleep(500)
+    val screen = context.resources.displayMetrics
+    val gestureDown = SystemClock.uptimeMillis()
+    val x = screen.widthPixels / 2f
+    val y = screen.heightPixels * .65f
+    event(MotionEvent.ACTION_DOWN, x, y, gestureDown)
+    for (step in 1..20) {
+      event(MotionEvent.ACTION_MOVE, x, y - screen.heightPixels * .5f * step / 20f, gestureDown)
+      SystemClock.sleep(20)
+    }
+    event(MotionEvent.ACTION_UP, x, y - screen.heightPixels * .5f, gestureDown)
+    tap("Reader QA Quote Receiver")
+    var payload: JSONObject? = null
+    waitFor("test receiver payload") { payload = runCatching { JSONObject(receiverFile("cat")) }.getOrNull(); payload != null }
+    val received = payload!!
+    assertEquals(android.content.Intent.ACTION_SEND, received.getString("action"))
+    assertEquals("text/plain", received.getString("type"))
+    assertEquals(quote, received.getString("text"))
+    assertFalse(received.has("subject"))
+    assertFalse(received.getBoolean("hasStream"))
+    waitFor("review after test receiver") { node("Next") != null }
   }
 
   @Test fun nativeSelectionPersistsOneQuoteAndUndoRemovesIt() = runBlocking {
@@ -136,7 +203,65 @@ class ReaderFlowInstrumentedTest {
       screenshot("reader-speed-transition")
       tap("Exit")
       waitFor("returned to reader") { node("Appearance") != null }
+      // Reuse the exact physically selected quote after separately verifying Undo.
+      db.highlights().insert(saved)
+      tap("Back")
+      openNewestQuote(title)
+      waitFor("review controls") { node("Share") != null }
+      tap("☆ Important")
+      waitFor("important saved") { runBlocking { db.highlights().byId(saved.id)?.important == true } }
+      waitFor("important indicated") { node("★ Important") != null }
+      tap(title)
+      waitFor("review source reader") { node("Appearance") != null }
+      screenshot("reader-review-source")
+      tap("Back")
+      waitFor("source returned to same review") { node("Share") != null && node(saved.quote) != null }
+      verifyQuoteSharing(saved.quote)
+      tap("Next")
+      waitFor("next review card") { node(title) == null && (node("Share") != null || node("You’re caught up") != null) }
+      waitFor("review counted") { runBlocking { (db.highlights().byId(saved.id)?.reviewCount ?: 0) > 0 } }
+      val reviewed = db.highlights().byId(saved.id)!!
+      db.highlights().deleteAtRevision(saved.id, reviewed.revision)
     }
     db.documents().deleteById(id)
+  }
+
+  @Test fun deletedSourceQuoteSharesExactUnicodeAndLineBreaks() = runBlocking {
+    assumeTrue(InstrumentationRegistry.getArguments().getString("qaReaderUi") == "true")
+    check(context.packageName == "com.reader.app.qa")
+    val db = ReaderDb.get(context)
+    val unique = System.nanoTime()
+    val title = "Unicode share check $unique"
+    val quote = "Café e\u0301 — 日本語 🌱\nLine two: \"exact\", <tag>, & spaces.\n\nRun $unique"
+    val markdown = ReaderCore.canonicalize("```\n$quote\n```\n")
+    val id = ReaderCore.documentId(markdown)
+    val now = System.currentTimeMillis()
+    val document = DocumentEntity(id, title, "web", null, "https://example.org/reader-synthetic", null, null,
+      now, null, markdown, ReaderCore.wordCount(markdown), 1, "unread", "inbox", "b0", 0, 0f, 0, now, now)
+    val projection = RenderedText.project(ArticleParser.parseWithSources(markdown))
+    val start = projection.text.indexOf(quote)
+    assertTrue(start >= 0)
+    val saved = HighlightAnchors.create("unicode-$unique", document, projection, start, start + quote.length, now)
+    assertEquals(quote, saved.quote)
+    db.documents().insert(document)
+    db.highlights().insert(saved)
+    db.documents().deleteById(id)
+    try {
+      assertNotNull(db.highlights().byId(saved.id))
+      ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+        openNewestQuote(title)
+        waitFor("retained quote review") { node("Share") != null && node(quote) != null }
+        tap(title)
+        waitFor("deleted source leaves review usable") { node("Next") != null }
+        assertFalse(db.documents().exists(id))
+        verifyQuoteSharing(quote)
+        assertEquals(quote, db.highlights().byId(saved.id)?.quote)
+        scenario.recreate()
+        waitFor("review restored after activity recreation") { node("Share") != null && node(quote) != null }
+        screenshot("reader-unicode-review-return")
+      }
+    } finally {
+      db.highlights().byId(saved.id)?.let { db.highlights().deleteAtRevision(it.id, it.revision) }
+    }
   }
 }
