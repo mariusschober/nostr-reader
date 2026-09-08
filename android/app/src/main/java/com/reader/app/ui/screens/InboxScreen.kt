@@ -1,7 +1,9 @@
 package com.reader.app.ui.screens
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -77,6 +80,20 @@ fun InboxScreen(
   }
   var menuFor by remember { mutableStateOf<String?>(null) }
   var rowMenu by remember { mutableStateOf<DocumentSummary?>(null) }
+  // Long-press multi-select. Only already-legal actions are offered:
+  // Archive in the triage lists, Unarchive in Archive. Article deletion
+  // stays archive-only single-item flow; it is never batched here.
+  var selecting by rememberSaveable { mutableStateOf(false) }
+  var selectedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
+  BackHandler(enabled = selecting) { selecting = false; selectedIds = emptyList() }
+  LaunchedEffect(tab, archiveMode) {
+    val live = lists[tab].orEmpty().mapTo(hashSetOf()) { it.documentId }
+    selectedIds = selectedIds.filter { it in live }
+    if (selectedIds.isEmpty()) selecting = false
+  }
+  fun toggleSelect(id: String) {
+    selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+  }
   var showAdd by remember { mutableStateOf(false) }
   var showPaste by remember { mutableStateOf(false) }
   val snackbar = remember { SnackbarHostState() }
@@ -139,16 +156,60 @@ fun InboxScreen(
           Text(emptyHint(tab), fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 15.sp)
         }
       } else {
+        if (selecting) {
+          Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              "${selectedIds.size} selected", fontFamily = ReaderFonts.Ui, fontSize = 15.sp,
+              color = c.text, modifier = Modifier.weight(1f),
+            )
+            if (tab == Triage.ARCHIVED) {
+              TextButton(onClick = {
+                val doomed = selectedIds.toSet()
+                selecting = false; selectedIds = emptyList()
+                doomed.forEach { onUnarchive(it) }
+              }, enabled = selectedIds.isNotEmpty()) { Text("Unarchive", fontFamily = ReaderFonts.Ui, color = c.text) }
+            } else {
+              TextButton(onClick = {
+                val doomed = selectedIds.toSet()
+                val previous = tab
+                selecting = false; selectedIds = emptyList()
+                doomed.forEach { onMove(it, Triage.ARCHIVED) }
+                scope.launch {
+                  val res = snackbar.showSnackbar(
+                    if (doomed.size == 1) Triage.movedLabel(Triage.ARCHIVED) else "Archived ${doomed.size} articles",
+                    actionLabel = "Undo",
+                  )
+                  if (res == SnackbarResult.ActionPerformed) doomed.forEach { onUndoMove(it, previous) }
+                }
+              }, enabled = selectedIds.isNotEmpty()) { Text("Archive", fontFamily = ReaderFonts.Ui, color = c.text) }
+            }
+            TextButton(onClick = { selecting = false; selectedIds = emptyList() }) { Text("Done", fontFamily = ReaderFonts.Ui, color = c.text) }
+          }
+        }
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = listState) {
           items(list, key = { it.documentId }) { d ->
             if (tab == Triage.ARCHIVED) {
-              ArchiveSwipeRow(d, c, onOpen = { onOpen(d.documentId) }, onMenu = { menuFor = d.documentId }, onAction = { action ->
+              ArchiveSwipeRow(d, c,
+                selecting = selecting, selected = d.documentId in selectedIds,
+                onOpen = { if (selecting) toggleSelect(d.documentId) else onOpen(d.documentId) },
+                onLongPress = {
+                  if (!selecting) { selecting = true; selectedIds = listOf(d.documentId) }
+                  else toggleSelect(d.documentId)
+                },
+                onToggle = { toggleSelect(d.documentId) },
+                onMenu = { menuFor = d.documentId }, onAction = { action ->
                 if (action == ArticleAction.Delete) onDelete(d.documentId) else onUnarchive(d.documentId)
               })
             } else {
               SwipeRow(
                 doc = d, list = tab, colors = c,
-                onOpen = { onOpen(d.documentId) },
+                selecting = selecting, selected = d.documentId in selectedIds,
+                onOpen = { if (selecting) toggleSelect(d.documentId) else onOpen(d.documentId) },
+                onLongPress = {
+                  if (!selecting) { selecting = true; selectedIds = listOf(d.documentId) }
+                  else toggleSelect(d.documentId)
+                },
+                onToggle = { toggleSelect(d.documentId) },
                 onMenu = { rowMenu = d },
                 onSwiped = { target ->
                   val previous = tab
@@ -214,7 +275,14 @@ fun InboxScreen(
       onDismissRequest = { menuFor = null },
       containerColor = c.background,
       title = { Text("Article", fontFamily = ReaderFonts.Ui, color = c.text) },
-      text = { Text("Unarchive returns it to the inbox.", fontFamily = ReaderFonts.Ui, color = c.text) },
+      text = {
+        Column {
+          Text("Unarchive returns it to the inbox.", fontFamily = ReaderFonts.Ui, color = c.text)
+          TextButton(onClick = { menuFor = null; selecting = true; selectedIds = listOf(id) }) {
+            Text("Select", fontFamily = ReaderFonts.Ui, color = c.text)
+          }
+        }
+      },
       confirmButton = {
         TextButton(onClick = { menuFor = null; onUnarchive(id) }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
           Text("Unarchive", fontFamily = ReaderFonts.Ui)
@@ -251,6 +319,9 @@ fun InboxScreen(
           if (previous != Triage.INBOX) TextButton(onClick = { move(Triage.INBOX) }) { Text("Move to Inbox", fontFamily = ReaderFonts.Ui, color = c.text) }
           if (previous != Triage.LATER) TextButton(onClick = { move(Triage.LATER) }) { Text("Save for later", fontFamily = ReaderFonts.Ui, color = c.text) }
           if (previous != Triage.ARCHIVED) TextButton(onClick = { move(Triage.ARCHIVED) }) { Text("Archive", fontFamily = ReaderFonts.Ui, color = c.text) }
+          TextButton(onClick = { val target = d.documentId; rowMenu = null; selecting = true; selectedIds = listOf(target) }) {
+            Text("Select", fontFamily = ReaderFonts.Ui, color = c.text)
+          }
         }
       },
       confirmButton = {
@@ -290,19 +361,24 @@ private fun TabText(text: String, selected: Boolean, color: com.reader.app.ui.th
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SwipeRow(
   doc: DocumentSummary,
   list: String,
   colors: com.reader.app.ui.theme.ReaderColors,
+  selecting: Boolean,
+  selected: Boolean,
   onOpen: () -> Unit,
+  onLongPress: () -> Unit,
+  onToggle: () -> Unit,
   onMenu: () -> Unit,
   onSwiped: (target: String) -> Unit,
 ) {
   // Tap-vs-swipe arbitration, textbook pattern: stock clickable owns
-  // taps (it completes press→up only when no drag consumed the stream);
-  // detectHorizontalDragGestures owns horizontal swipes and sets a guard
-  // so the up that ends a swipe can't double-fire onClick.
+  // taps (long-press enters selection); detectHorizontalDragGestures owns
+  // horizontal swipes and sets a guard so the up that ends a swipe can't
+  // double-fire onClick. Swipes are disabled while selecting.
   // NOTE (bug #1 post-mortem, 2026-09-04): row taps were never a gesture
   // problem — every detector variant fired fine. Navigation itself was
   // broken: MainActivity pushed routes + bumped a `tick` state nobody read,
@@ -359,12 +435,14 @@ private fun SwipeRow(
     Box(
       Modifier
         .offset { IntOffset(offset.value.roundToInt(), 0) }
-        .clickable(
+        .combinedClickable(
           indication = null,
           interactionSource = remember { MutableInteractionSource() },
           onClick = { if (!gestureDrag) onOpen() },
+          onLongClick = onLongPress,
         )
-        .pointerInput(list, widthPx) {
+        .pointerInput(list, widthPx, selecting) {
+          if (selecting) return@pointerInput
           detectHorizontalDragGestures(
             onDragStart = { gestureDrag = true },
             onDragCancel = { settle() },
@@ -376,25 +454,40 @@ private fun SwipeRow(
           )
         },
     ) {
-      ArticleRow(doc, colors, onOpen = onOpen, onMenu = onMenu)
+      ArticleRow(doc, colors, onOpen = onOpen, onMenu = if (selecting) null else onMenu,
+        selecting = selecting, selected = selected, onToggleSelect = onToggle)
     }
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArticleRow(
   d: DocumentSummary,
   c: com.reader.app.ui.theme.ReaderColors,
   onOpen: () -> Unit,
   onMenu: (() -> Unit)?,
+  selecting: Boolean = false,
+  selected: Boolean = false,
+  onToggleSelect: (() -> Unit)? = null,
+  onLongPress: (() -> Unit)? = null,
 ) {
   val complete = d.progressFraction >= 0.999f
-  Column(
-    Modifier.fillMaxWidth().clickable(
-      indication = null,
-      interactionSource = remember { MutableInteractionSource() },
-    ) { onOpen() }.padding(vertical = 12.dp),
-  ) {
+  Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
+    if (selecting) {
+      Checkbox(
+        checked = selected, onCheckedChange = { onToggleSelect?.invoke() },
+        modifier = Modifier.padding(end = 8.dp),
+      )
+    }
+    Column(
+      Modifier.weight(1f).combinedClickable(
+        indication = null,
+        interactionSource = remember { MutableInteractionSource() },
+        onClick = { onOpen() },
+        onLongClick = onLongPress,
+      ),
+    ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Text(
         d.title, fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.SemiBold, fontSize = 16.sp,
@@ -405,9 +498,8 @@ fun ArticleRow(
         Spacer(Modifier.width(8.dp))
         Icon(Icons.Default.Check, contentDescription = "Read", tint = c.secondary)
       }
-      // Archive rows (the only callers passing onMenu) previously had no
-      // affordance at all: onMenu was never invoked — the overflow dialog
-      // was unreachable. Tap opens; ⋮ opens the menu.
+      // Tap opens (or toggles selection); ⋮ opens the row menu. The menu
+      // is hidden while selecting to keep the selection gesture unambiguous.
       if (onMenu != null) {
         IconButton(onClick = onMenu) {
           Icon(Icons.Default.MoreVert, contentDescription = "Article options", tint = c.secondary)
@@ -425,13 +517,16 @@ fun ArticleRow(
         color = c.text, trackColor = c.divider,
       )
     }
+    }
   }
 }
 
 
 @Composable
 private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.theme.ReaderColors,
-                            onOpen: () -> Unit, onMenu: () -> Unit, onAction: (ArticleAction) -> Unit) {
+                            selecting: Boolean, selected: Boolean,
+                            onOpen: () -> Unit, onLongPress: () -> Unit, onToggle: () -> Unit,
+                            onMenu: () -> Unit, onAction: (ArticleAction) -> Unit) {
   var offset by remember(doc.documentId) { mutableFloatStateOf(0f) }
   var dragging by remember { mutableStateOf(false) }
   val latestAction by rememberUpdatedState(onAction)
@@ -447,7 +542,8 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
       Spacer(Modifier.width(6.dp))
       Text(if (armed) action.releaseLabel else action.label, color = tint, fontFamily = ReaderFonts.Ui, fontSize = 13.sp)
     }
-    Box(Modifier.offset { IntOffset(offset.roundToInt(), 0) }.background(colors.background).pointerInput(doc.documentId, width) {
+    Box(Modifier.offset { IntOffset(offset.roundToInt(), 0) }.background(colors.background).pointerInput(doc.documentId, width, selecting) {
+      if (selecting) return@pointerInput
       detectHorizontalDragGestures(
         onDragStart = { dragging = true },
         onDragCancel = { offset = 0f; dragging = false },
@@ -459,6 +555,12 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
         },
         onHorizontalDrag = { change, amount -> change.consume(); offset = (offset + amount).coerceIn(-width, width) },
       )
-    }) { ArticleRow(doc, colors, onOpen = { if (!dragging) onOpen() }, onMenu = onMenu) }
+    }) {
+      ArticleRow(doc, colors,
+        onOpen = { if (!dragging && !selecting) onOpen() },
+        onMenu = if (selecting) null else onMenu,
+        selecting = selecting, selected = selected, onToggleSelect = onToggle,
+        onLongPress = onLongPress)
+    }
   }
 }
