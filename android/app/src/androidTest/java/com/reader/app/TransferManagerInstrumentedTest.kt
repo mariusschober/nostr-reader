@@ -10,6 +10,8 @@ import com.reader.app.nostr.NostrCodec
 import com.reader.app.nostr.Secp256k1
 import com.reader.app.nostr.StrictJson
 import com.reader.app.sync.TransferManager
+import com.reader.app.sync.StagingLimits
+import com.reader.app.sync.StagingCapacityException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.After
@@ -231,5 +233,44 @@ class TransferManagerInstrumentedTest {
     }
     assertEquals(1, db.chunks().forTransfer(f.manifest["transferId"]!!.jsonPrimitive.content).size)
     assertNull(db.documents().byId(f.documentId))
+  }
+
+  @Test fun incompleteTransferBudgetRejectsAtomicallyAndExistingTransferCanStillFinish() = runBlocking {
+    manager = TransferManager(db, StagingLimits(transfers = 1))
+    val sender = Secp256k1.randomPrivateKey()
+    val receiver = Secp256k1.randomPrivateKey()
+    val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(sender))
+    val first = fixture(sender, receiver, "31")
+    val second = fixture(sender, receiver, "32")
+    manager.ingestForSync(wrap(first.chunks.first(), sender, receiver), "channel", pubkey, receiver)
+    val rejected = wrap(second.chunks.first(), sender, receiver)
+    try { manager.ingestForSync(rejected, "channel", pubkey, receiver); fail("capacity must reject") }
+    catch (_: StagingCapacityException) {}
+    assertNull(db.processedEvents().byId(rejected.id))
+    assertEquals(1, db.chunks().stagedTransferCount())
+    for (chunk in first.chunks.drop(1)) manager.ingestForSync(wrap(chunk, sender, receiver), "channel", pubkey, receiver)
+    val stored = manager.ingestForSync(wrap(first.manifest, sender, receiver), "channel", pubkey, receiver)!!
+    assertEquals("stored", stored.status)
+    assertEquals(0L, db.chunks().stagedBytes())
+    // Capacity released by completion permits the originally rejected wrapper.
+    manager.ingestForSync(rejected, "channel", pubkey, receiver)
+    assertNotNull(db.processedEvents().byId(rejected.id))
+  }
+
+  @Test fun byteBudgetAndStrictNumberTypesCannotLeavePartialWrites() = runBlocking {
+    manager = TransferManager(db, StagingLimits(totalBytes = 1))
+    val sender = Secp256k1.randomPrivateKey()
+    val receiver = Secp256k1.randomPrivateKey()
+    val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(sender))
+    val f = fixture(sender, receiver, "41")
+    val oversized = wrap(f.chunks.first(), sender, receiver)
+    try { manager.ingestForSync(oversized, "channel", pubkey, receiver); fail("byte capacity must reject") }
+    catch (_: StagingCapacityException) {}
+    assertEquals(0L, db.chunks().stagedBytes())
+    assertNull(db.processedEvents().byId(oversized.id))
+    val malformed = JsonObject(f.manifest.toMutableMap().apply { this["chunkCount"] = JsonPrimitive(f.chunks.size.toString()) })
+    try { manager.ingestForSync(wrap(malformed, sender, receiver), "channel", pubkey, receiver); fail("string number must reject") }
+    catch (_: IllegalArgumentException) {}
+    assertEquals(0, db.chunks().stagedTransferCount())
   }
 }

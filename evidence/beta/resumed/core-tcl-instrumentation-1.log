@@ -1,0 +1,13 @@
+
+com.reader.app.PairingProtocolInstrumentedTest:..
+com.reader.app.QaPairingUiInstrumentedTest:
+com.reader.app.QaPairingUiInstrumentedTest:
+com.reader.app.ReaderDbMigrationInstrumentedTest:....
+com.reader.app.ReaderGzipInstrumentedTest:..
+com.reader.app.TransferManagerInstrumentedTest:....
+
+Time: 2,827
+
+OK (13 tests)
+
+

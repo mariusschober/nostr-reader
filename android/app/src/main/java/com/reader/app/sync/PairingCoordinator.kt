@@ -13,6 +13,7 @@ import com.reader.app.nostr.StrictJson
 import com.reader.app.nostr.ValidatedPairingRequest
 import com.reader.app.nostr.WRAP_KIND
 import com.reader.app.security.KeystoreWrap
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -84,7 +85,7 @@ class PairingCoordinator(
           wrapKind = WRAP_KIND,
           expireSecs = 600,
         ).second
-        relayClient.publishDetailed(relay, wrap, timeoutSecs, senderSeckey)
+        runInterruptible { relayClient.publishDetailed(relay, wrap, timeoutSecs, senderSeckey) }
       }
     }.awaitAll()
   }

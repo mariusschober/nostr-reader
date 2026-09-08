@@ -15,18 +15,18 @@ export async function publishFragments(options: {
   now?: () => number;
 }): Promise<boolean> {
   const now = options.now ?? Date.now;
-  for (let index = 0; index < options.snapshot.payloadCount; index++) {
-    if (!await options.current()) return false;
-    const required = options.snapshot.relays.filter(relay => {
-      const previous = options.snapshot.progress[String(index)]?.[relay];
-      return previous?.state !== "OK_TRUE" || now() - previous.at >= 15 * 60_000;
-    });
-    const results = await Promise.all(required.map(async relay => {
+  // Each relay advances independently. A slow redundant manifest must not
+  // prevent the healthy quorum from receiving the document's later chunks.
+  // The validated relay set is capped at eight; each owns one in-flight frame.
+  const results = await Promise.all(options.snapshot.relays.map(async relay => {
+    for (let index = 0; index < options.snapshot.payloadCount; index++) {
       if (!await options.current()) return false;
+      const previous = options.snapshot.progress[String(index)]?.[relay];
+      if (previous?.state === "OK_TRUE" && now() - previous.at < 15 * 60_000) continue;
       const outcome = await options.send(index, relay);
-      return options.checkpoint(index, relay, outcome);
-    }));
-    if (results.some(result => !result)) return false;
-  }
-  return options.current();
+      if (!await options.checkpoint(index, relay, outcome)) return false;
+    }
+    return true;
+  }));
+  return results.every(Boolean) && await options.current();
 }

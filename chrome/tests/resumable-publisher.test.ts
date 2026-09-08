@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { publishFragments, type PublicationSnapshot } from "../src/background/resumable-publisher.js";
 
 it("resumes a durably checkpointed prefix after interruption", async () => {
@@ -32,4 +32,24 @@ it("stale accepted coverage is retransmitted; fresh coverage is reused", async (
     send: async (_i, r) => { sends.push(r); return { state: "OK_TRUE", at: 1_000_000 }; }, checkpoint: async () => true,
   });
   expect(sends).toEqual(["a"]);
+});
+
+it("healthy relays finish all fragments while a redundant relay is still waiting on its manifest", async () => {
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const accepted: string[] = [];
+  let alive = true;
+  const run = publishFragments({
+    snapshot: { relays: ["healthy-a", "healthy-b", "slow"], payloadCount: 4, progress: {} },
+    current: async () => alive,
+    send: async (i, relay) => {
+      if (relay === "slow") await blocked;
+      return { state: "OK_TRUE", at: 1 };
+    },
+    checkpoint: async (i, relay) => { if (!alive) return false; accepted.push(`${relay}:${i}`); return true; },
+  });
+  try {
+    await vi.waitFor(() => expect(accepted.filter(value => !value.startsWith("slow"))).toHaveLength(8), { timeout: 250 });
+    alive = false; // authenticated device ACK wins without waiting for redundancy
+  } finally { release(); await run; }
 });

@@ -1,10 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { generateSecretKey, getEventHash, getPublicKey } from "nostr-tools/pure";
+import { generateSecretKey, getEventHash, getPublicKey, finalizeEvent } from "nostr-tools/pure";
 import * as nip44 from "nostr-tools/nip44";
 import type { SimplePool } from "nostr-tools/pool";
 import { publishPerRelay, publishQuorum, sealAndWrap, unwrapAndVerify } from "../src/nostr/transport.js";
 
 describe("NIP-59 roundtrip", () => {
+  it("rejects a correctly signed seal containing unversioned rumor fields", async () => {
+    const sender = generateSecretKey(), recipient = generateSecretKey(), ephemeral = generateSecretKey();
+    const now = Math.floor(Date.now() / 1000);
+    const rumor = { kind: 30078, created_at: now, tags: [], content: JSON.stringify({ protocol: "reader/2", type: "ping" }), pubkey: getPublicKey(sender) };
+    const seal = finalizeEvent({ kind: 13, created_at: now, tags: [], content: nip44.encrypt(
+      JSON.stringify({ ...rumor, id: getEventHash(rumor), unexpected: "ambiguous semantics" }),
+      nip44.getConversationKey(sender, getPublicKey(recipient))),
+    }, sender);
+    const wrap = finalizeEvent({ kind: 1059, created_at: now,
+      tags: [["p", getPublicKey(recipient)], ["expiration", String(now + 3600)]],
+      content: nip44.encrypt(JSON.stringify(seal), nip44.getConversationKey(ephemeral, getPublicKey(recipient))),
+    }, ephemeral);
+    await expect(unwrapAndVerify({ wrap, recipientSeckey: recipient, expectedSenderPubkey: getPublicKey(sender) })).rejects.toThrow("rumor fields");
+  });
   it("seal+wrap then full-checklist unwrap returns the payload", async () => {
     const a = generateSecretKey();
     const b = generateSecretKey();

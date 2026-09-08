@@ -1,0 +1,60 @@
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+ ❯ tests/history-scan.test.ts (6 tests | 1 failed) 11ms
+   × streaming consumers do not retain accumulated relay history after durable consumption 5ms
+ ❯ tests/resumable-publisher.test.ts (4 tests | 1 failed) 261ms
+   × healthy relays finish all fragments while a redundant relay is still waiting on its manifest 258ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/history-scan.test.ts > streaming consumers do not retain accumulated relay history after durable consumption
+AssertionError: expected [ { id: 'ack', created_at: 1, …(1) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "content": "synthetic",
++     "created_at": 1,
++     "id": "ack",
++   },
++ ]
+
+ ❯ tests/history-scan.test.ts:60:25
+     58|   });
+     59|   expect(consumed).toEqual(["ack"]);
+     60|   expect(result.events).toEqual([]);
+       |                         ^
+     61| });
+     62|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/resumable-publisher.test.ts > healthy relays finish all fragments while a redundant relay is still waiting on its manifest
+AssertionError: expected [ 'healthy-a:0', 'healthy-b:0' ] to have a length of 8 but got 2
+
+- Expected
++ Received
+
+- 8
++ 2
+
+ ❯ vi.waitFor.timeout tests/resumable-publisher.test.ts:52:88
+     50|   });
+     51|   try {
+     52|     await vi.waitFor(() => expect(accepted.filter(value => !value.star…
+       |                                                                                        ^
+     53|     alive = false; // authenticated device ACK wins without waiting fo…
+     54|   } finally { release(); await run; }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 8 passed (10)
+   Start at  00:30:35
+   Duration  423ms (tests 77%, transform 16%, import 4%, worker 2%)
+

@@ -86,6 +86,11 @@ object NostrCodec {
     require(json.toByteArray(Charsets.UTF_8).size <= MAX_RELAY_FRAME_BYTES) { "relay event too large" }
     val o = StrictJson.parseObject(json)
     require(o.keys == setOf("id", "pubkey", "created_at", "kind", "tags", "content", "sig")) { "invalid event fields" }
+    require(listOf("id", "pubkey", "content", "sig").all { o[it] is JsonPrimitive && o[it]!!.jsonPrimitive.isString }) { "invalid event string type" }
+    require(listOf("created_at", "kind").all { o[it] is JsonPrimitive && !o[it]!!.jsonPrimitive.isString && o[it]!!.jsonPrimitive.longOrNull != null }) { "invalid event number type" }
+    require(o["created_at"]!!.jsonPrimitive.long >= 0) { "negative event time" }
+    val tags = o["tags"]!!.jsonArray
+    require(tags.size <= 16 && tags.all { tag -> tag is JsonArray && tag.size <= 4 && tag.all { it is JsonPrimitive && it.isString && it.content.length <= 256 } }) { "invalid event tags" }
     return NostrEvent(
       id = o["id"]!!.jsonPrimitive.content,
       pubkey = o["pubkey"]!!.jsonPrimitive.content,
@@ -154,6 +159,7 @@ object NostrCodec {
     // reader/2 deliberately uses durable 1059; accepting ephemeral 21059 here
     // would weaken restart recovery and the protocol's wrong-kind boundary.
     require(wrap.kind == WRAP_KIND) { "bad wrap kind" }
+    require(wrap.tags.size == 2 && wrap.createdAt >= 0 && wrap.content.length <= MAX_RELAY_FRAME_BYTES) { "invalid Reader wrapper profile" }
     require(verifyEvent(wrap)) { "invalid outer signature" }
     val recipientPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(recipientSeckey))
     val pTags = wrap.tags.filter { it.firstOrNull() == "p" }
@@ -164,7 +170,7 @@ object NostrCodec {
     require(expirationTags.size == 1 && expirationTags.single().size == 2) { "missing or invalid expiration" }
     val expiration = expirationTags.single()[1].toLongOrNull()
       ?: throw IllegalArgumentException("missing or invalid expiration")
-    require(expiration > nowSecs) { "outer event expired" }
+    require(expiration > nowSecs && expiration <= nowSecs + OUTER_TTL_SECS + 600) { "outer event expired or overlong" }
     require(wrap.createdAt <= nowSecs + 600) { "outer timestamp in future" }
     val wrapCk = Nip44.getConversationKey(recipientSeckey, Secp256k1.hexToBytes(wrap.pubkey))
     val sealJson = try {
@@ -186,6 +192,8 @@ object NostrCodec {
     }
     val rumor = StrictJson.parseObject(rumorJson)
     require(rumor["sig"] == null) { "rumor must not be signed" }
+    require(rumor.keys == setOf("id", "pubkey", "created_at", "kind", "tags", "content")) { "invalid Reader rumor fields" }
+    require(listOf("id", "pubkey", "content").all { rumor[it] is JsonPrimitive && rumor[it]!!.jsonPrimitive.isString }) { "invalid rumor string type" }
     val rumorPubkey = rumor["pubkey"]!!.jsonPrimitive.content
     require(lowerHex64.matches(rumorPubkey)) { "non-canonical rumor pubkey" }
     val rumorId = rumor["id"]?.jsonPrimitive?.content
@@ -224,13 +232,14 @@ class RelayClient private constructor(private val http: OkHttpClient) {
   companion object {
     private val sharedHttp = OkHttpClient.Builder().dns(object : Dns {
       override fun lookup(hostname: String): List<InetAddress> {
-        val addresses = Dns.SYSTEM.lookup(hostname)
+        val addresses = RelayDns.lookup(hostname).toList()
         if (addresses.isEmpty() || addresses.any(PairingProtocol::isProhibitedAddress)) {
           throw UnknownHostException("relay resolved to a prohibited network")
         }
         return addresses
       }
-    }).build()
+    }).connectTimeout(5, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS)
+      .callTimeout(12, TimeUnit.SECONDS).build()
   }
 
   /** Explicit test-only route for a loopback MockWebServer. Never used by the app. */
@@ -336,7 +345,14 @@ class RelayClient private constructor(private val http: OkHttpClient) {
       val httpUrl = url.replaceFirst("wss://", "https://").replaceFirst("ws://", "http://")
       val req = Request.Builder().url(httpUrl).header("Accept", "application/nostr+json").build()
       val nip11 = try {
-        http.newCall(req).execute().use { r -> if (r.isSuccessful) r.body?.string()?.take(500) else null }
+        val call = http.newCall(req)
+        call.timeout().timeout(timeoutSecs, TimeUnit.SECONDS)
+        call.execute().use { r ->
+          if (r.isSuccessful) r.body?.source()?.let { source ->
+            source.request(4097)
+            if (source.buffer.size > 4096) null else source.readUtf8().take(500)
+          } else null
+        }
       } catch (e: Exception) {
         null
       }
@@ -351,12 +367,11 @@ class RelayClient private constructor(private val http: OkHttpClient) {
           latch.countDown()
         }
       })
-      latch.await(timeoutSecs, TimeUnit.SECONDS)
-      try {
-        ws.close(1000, null)
-      } catch (e: Exception) {
-      }
+      try { latch.await(timeoutSecs, TimeUnit.SECONDS) }
+      finally { ws.close(1000, null); ws.cancel() }
       if (opened) Health(url, true, nip11, "connect ok") else Health(url, false, nip11, "connect failed")
+    } catch (e: InterruptedException) {
+      throw e
     } catch (e: Exception) {
       Health(url, false, null, e.message?.take(160) ?: "error")
     }
@@ -398,8 +413,10 @@ class RelayClient private constructor(private val http: OkHttpClient) {
         monotonicMillis = (System.nanoTime() - startedNanos) / 1_000_000,
         detail = safeDetail,
       )
-      trace.add(point)
-      Log.i(
+      val retained = synchronized(trace) {
+        if (trace.size < 128 || becameTerminal) { trace.add(point); true } else false
+      }
+      if (retained) Log.i(
         "NostrReaderRelay",
         "relay=$relay eventId=${event.id} state=${recordedState.name} monotonicMs=${point.monotonicMillis}" +
           (safeDetail?.let { " detail=$it" } ?: ""),
@@ -415,6 +432,8 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     val authenticated = AtomicBoolean(false)
     val authPending = AtomicBoolean(false)
     val authEventId = AtomicReference<String?>(null)
+    var responseBytes = 0L
+    var responseFrames = 0
     fun sendOriginal(webSocket: WebSocket) {
       record(PublishState.EVENT_QUEUED)
       if (webSocket.send(event.frame())) {
@@ -430,8 +449,10 @@ class RelayClient private constructor(private val http: OkHttpClient) {
         sendOriginal(webSocket)
       }
       override fun onMessage(webSocket: WebSocket, text: String) {
-        if (text.toByteArray(Charsets.UTF_8).size > MAX_RELAY_FRAME_BYTES) {
-          record(PublishState.SOCKET_ERROR, "relay frame exceeded 512 KiB")
+        val frameBytes = text.toByteArray(Charsets.UTF_8).size
+        responseBytes += frameBytes
+        if (frameBytes > MAX_RELAY_FRAME_BYTES || responseBytes > 2 * 1024 * 1024 || ++responseFrames > 512) {
+          record(PublishState.PROTOCOL_ERROR, "publication receive budget exceeded")
           webSocket.close(1009, "frame too large")
           latch.countDown()
           return
@@ -529,20 +550,21 @@ class RelayClient private constructor(private val http: OkHttpClient) {
         latch.countDown()
       }
     })
-    val completed = latch.await(timeoutSecs, TimeUnit.SECONDS)
-    if (!completed && terminal.get() == null) record(PublishState.NO_OK_TIMEOUT, "timeoutSeconds=$timeoutSecs")
     try {
+      val completed = latch.await(timeoutSecs, TimeUnit.SECONDS)
+      if (!completed && terminal.get() == null) record(PublishState.NO_OK_TIMEOUT, "timeoutSeconds=$timeoutSecs")
+      return PublishResult(
+        relayUrl = relay,
+        eventId = event.id,
+        accepted = accepted.get(),
+        terminalState = terminal.get() ?: PublishState.NO_OK_TIMEOUT,
+        reasonPrefix = reason.get(),
+        trace = synchronized(trace) { trace.toList() },
+      )
+    } finally {
       ws.close(1000, null)
-    } catch (_: Exception) {
+      ws.cancel()
     }
-    return PublishResult(
-      relayUrl = relay,
-      eventId = event.id,
-      accepted = accepted.get(),
-      terminalState = terminal.get() ?: PublishState.NO_OK_TIMEOUT,
-      reasonPrefix = reason.get(),
-      trace = synchronized(trace) { trace.toList() },
-    )
   }
 
   /** Compatibility facade retained while the pairing state machine is repaired. */
@@ -565,11 +587,13 @@ class RelayClient private constructor(private val http: OkHttpClient) {
     val eose = AtomicBoolean(false)
     var receivedBytes = 0L
     var receivedEvents = 0
+    var receivedFrames = 0
     val latch = CountDownLatch(1)
     val subId = "reader-" + SecureRandom().nextInt(1_000_000)
     val authEventId = AtomicReference<String?>(null)
     val authPending = AtomicBoolean(false)
     val authenticated = AtomicBoolean(false)
+    var authChallenge: String? = null
     val filter = buildJsonObject {
       put("kinds", buildJsonArray { kinds.forEach { add(it) } })
       put("#p", buildJsonArray { add(recipientPubkey) })
@@ -586,7 +610,7 @@ class RelayClient private constructor(private val http: OkHttpClient) {
       override fun onMessage(webSocket: WebSocket, text: String) {
         val bytes = text.toByteArray(Charsets.UTF_8).size
         receivedBytes += bytes
-        if (bytes > MAX_RELAY_FRAME_BYTES || receivedBytes > 32L * 1024 * 1024) {
+        if (bytes > MAX_RELAY_FRAME_BYTES || receivedBytes > 32L * 1024 * 1024 || ++receivedFrames > 4200) {
           failure.set("receive byte budget exceeded")
           webSocket.close(1009, "frame too large")
           latch.countDown()
@@ -605,10 +629,12 @@ class RelayClient private constructor(private val http: OkHttpClient) {
           } else if (arr.size >= 2 && arr[0].jsonPrimitive.content == "EOSE") {
             if (arr[1].jsonPrimitive.content == subId) eose.set(true)
           } else if (
-            arr.size >= 2 && arr[0].jsonPrimitive.content == "AUTH" &&
-            authSeckey != null && authPending.compareAndSet(false, true)
+            arr.size >= 2 && arr[0].jsonPrimitive.content == "AUTH" && authSeckey != null
           ) {
             val challenge = arr[1].jsonPrimitive.content
+            require(authChallenge == null || authChallenge == challenge) { "authentication challenge changed" }
+            authChallenge = challenge
+            if (!authPending.compareAndSet(false, true)) return
             val auth = runCatching { authEvent(url, challenge, authSeckey) }.getOrNull()
             if (auth == null) {
               failure.set("invalid authentication challenge")
@@ -644,6 +670,11 @@ class RelayClient private constructor(private val http: OkHttpClient) {
       override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
         failure.set("subscription transport failed")
         latch.countDown()
+      }
+      override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        failure.compareAndSet(null, "subscription connection closed")
+        latch.countDown()
+        webSocket.close(code, null)
       }
     })
     try {

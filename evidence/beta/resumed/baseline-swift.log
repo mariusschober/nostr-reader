@@ -1,0 +1,31 @@
+[0/1] Planning build
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.28s)
+Test Suite 'All tests' started at 2026-09-08 00:26:57.142.
+Test Suite 'ReaderMacPackageTests.xctest' started at 2026-09-08 00:26:57.148.
+Test Suite 'CoreTests' started at 2026-09-08 00:26:57.148.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testCodecExpandedBoundary]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testCodecExpandedBoundary]' passed (0.756 seconds).
+Test Case '-[ReaderCoreSwiftTests.CoreTests testCodecRejectsWrongTruncatedCorruptAndOversizedInput]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testCodecRejectsWrongTruncatedCorruptAndOversizedInput]' passed (0.001 seconds).
+Test Case '-[ReaderCoreSwiftTests.CoreTests testCodecV2VectorsAreByteExactAndDecodable]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testCodecV2VectorsAreByteExactAndDecodable]' passed (0.005 seconds).
+Test Case '-[ReaderCoreSwiftTests.CoreTests testGolden]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testGolden]' passed (0.000 seconds).
+Test Case '-[ReaderCoreSwiftTests.CoreTests testRsvp]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testRsvp]' passed (0.001 seconds).
+Test Case '-[ReaderCoreSwiftTests.CoreTests testSenderNeverFallsBackToUncompressedBytes]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testSenderNeverFallsBackToUncompressedBytes]' passed (0.001 seconds).
+Test Case '-[ReaderCoreSwiftTests.CoreTests testSyncWindow]' started.
+Test Case '-[ReaderCoreSwiftTests.CoreTests testSyncWindow]' passed (0.000 seconds).
+Test Suite 'CoreTests' passed at 2026-09-08 00:26:57.914.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.765 (0.766) seconds
+Test Suite 'ReaderMacPackageTests.xctest' passed at 2026-09-08 00:26:57.914.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.765 (0.766) seconds
+Test Suite 'All tests' passed at 2026-09-08 00:26:57.914.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.765 (0.773) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

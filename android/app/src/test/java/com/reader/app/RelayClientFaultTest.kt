@@ -127,13 +127,21 @@ class RelayClientFaultTest {
   }
 
   @Test
-  fun oversizedRelayFrameIsSocketFailureAndNeverAcceptance() {
+  fun oversizedRelayFrameIsProtocolFailureAndNeverAcceptance() {
     val oversized = runCase { socket, _ ->
       socket.send("[\"NOTICE\",\"${"x".repeat(MAX_RELAY_FRAME_BYTES)}\"]")
     }
     assertFalse(oversized.accepted)
-    assertEquals(RelayClient.PublishState.SOCKET_ERROR, oversized.terminalState)
-    assertTrue(oversized.reasonPrefix.orEmpty().contains("512 KiB"))
+    assertEquals(RelayClient.PublishState.PROTOCOL_ERROR, oversized.terminalState)
+    assertTrue(oversized.reasonPrefix.orEmpty().contains("budget"))
+  }
+
+  @Test
+  fun manySmallFramesCannotGrowPublicationTraceWithoutBound() {
+    val flooded = runCase { socket, _ -> repeat(600) { socket.send("[\"NOTICE\",\"synthetic\"]") } }
+    assertFalse(flooded.accepted)
+    assertEquals(RelayClient.PublishState.PROTOCOL_ERROR, flooded.terminalState)
+    assertTrue(flooded.trace.size <= 129)
   }
 
   @Test

@@ -1,0 +1,17 @@
+Archive:  /Users/schober/Projects/Nostr Reader/artifacts/beta-work/recovery/reader-chrome.zip
+    testing: background.js            OK
+    testing: content.js               OK
+    testing: icons/icon128.png        OK
+    testing: icons/icon16.png         OK
+    testing: icons/icon32.png         OK
+    testing: icons/icon48.png         OK
+    testing: manifest.json            OK
+    testing: options.js               OK
+    testing: pairing.js               OK
+    testing: popup.js                 OK
+    testing: rolldown-runtime-DC62tzP2.js   OK
+    testing: src/ui/options.html      OK
+    testing: src/ui/pairing.html      OK
+    testing: src/ui/popup.html        OK
+No errors detected in compressed data of /Users/schober/Projects/Nostr Reader/artifacts/beta-work/recovery/reader-chrome.zip.
+cdb9a2b06c5a5c90395435dd963f927bc141b7196a0ceeb6ab8f1730d2dfe9cb  /Users/schober/Projects/Nostr Reader/artifacts/beta-work/recovery/reader-chrome.zip

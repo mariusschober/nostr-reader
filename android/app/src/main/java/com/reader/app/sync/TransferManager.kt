@@ -20,9 +20,19 @@ import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.Base64
 
+data class StagingLimits(
+  val transfers: Int = 32,
+  val totalBytes: Long = 64L * 1024 * 1024,
+  val transferBytes: Long = ReaderCore.MAX_COMPRESSED_BYTES.toLong(),
+  val processedEvents: Int = 100_000,
+)
+
+class StagingCapacityException : java.io.IOException("Incoming storage budget reached; pending transfers remain recoverable")
+
 /** Incoming transfer assembly: authenticate, bind manifest/chunks, verify, commit, ACK. */
 class TransferManager(
   private val db: ReaderDb,
+  private val limits: StagingLimits = StagingLimits(),
 ) {
   data class Intake(
     val transferId: String,
@@ -53,10 +63,12 @@ class TransferManager(
     }
     val payload = StrictJson.parseObject(envelope.payloadJson)
     val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverSeckey))
-    return when (payload["type"]?.jsonPrimitive?.content) {
-      "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
-      "chunk" -> handleChunk(payload)
-      else -> null
+    return db.withTransaction {
+      when (payload["type"]?.jsonPrimitive?.content) {
+        "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
+        "chunk" -> handleChunk(payload)
+        else -> null
+      }
     }
   }
 
@@ -73,6 +85,11 @@ class TransferManager(
     receiverSeckey: ByteArray,
   ): Intake? {
     require(channelId.isNotBlank()) { "invalid channel" }
+    // This is a no-op for already committed content, never authentication of a
+    // new effect. Recompute the canonical hash instead of trusting a claimed ID.
+    val processed = db.processedEvents().byId(wrap.id)
+    if (processed?.channelId == channelId && NostrCodec.eventId(wrap.pubkey, wrap.createdAt,
+        wrap.kind, wrap.tags, wrap.content) == wrap.id) return null
     val envelope = try {
       NostrCodec.unwrapAndVerifyEnvelope(wrap, receiverSeckey, trustedSender)
     } catch (_: Exception) {
@@ -85,6 +102,7 @@ class TransferManager(
     val ledgerExpiresAt = minOf(wrapExpiresAt, nowSecs + ReaderCore.SYNC_WINDOW_DAYS * 86400L)
     return db.withTransaction {
       if (db.processedEvents().byId(wrap.id) != null) return@withTransaction null
+      if (db.processedEvents().count() >= limits.processedEvents) throw StagingCapacityException()
       val intake = when (payload["type"]?.jsonPrimitive?.content) {
         "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
         "chunk" -> handleChunk(payload)
@@ -153,6 +171,17 @@ class TransferManager(
   private fun exactKeys(payload: JsonObject, required: Set<String>, optional: Set<String> = emptySet()) {
     require(payload.keys.containsAll(required)) { "missing message field" }
     require(payload.keys.all { it in required || it in optional }) { "unknown message field" }
+    val numbers = setOf("capturedAt", "publishedAt", "expiresAt", "wordCount", "uncompressedBytes", "compressedBytes", "chunkCount", "index", "count")
+    for ((key, value) in payload) {
+      require(value is JsonPrimitive && if (key in numbers) !value.isString && value.longOrNull != null else value.isString) { "invalid field type" }
+    }
+  }
+
+  private suspend fun requireStagingCapacity(transferId: String, additionalBytes: Int = 0) {
+    val chunks = db.chunks()
+    if ((!chunks.hasStagedTransfer(transferId) && chunks.stagedTransferCount() >= limits.transfers) ||
+      chunks.stagedBytes() + additionalBytes > limits.totalBytes ||
+      chunks.transferBytes(transferId) + additionalBytes > limits.transferBytes) throw StagingCapacityException()
   }
 
   private fun requiredString(payload: JsonObject, key: String, max: Int): String {
@@ -249,13 +278,14 @@ class TransferManager(
       receivedAt = System.currentTimeMillis(),
     )
     require(manifestIdentity(manifest) == manifestId) { "manifest identity mismatch" }
+    requireStagingCapacity(transferId)
     val existing = db.manifests().byTransfer(transferId)
     if (existing != null) {
       require(existing.copy(receivedAt = manifest.receivedAt) == manifest) { "conflicting manifest" }
     } else {
       require(db.manifests().insert(manifest) != -1L) { "manifest insert conflict" }
     }
-    if (db.documents().byId(documentId) != null) {
+    if (db.documents().exists(documentId)) {
       db.withTransaction {
         db.chunks().clearTransfer(transferId)
         db.manifests().clearTransfer(transferId)
@@ -300,21 +330,20 @@ class TransferManager(
       receivedAt = System.currentTimeMillis(),
       expiresAt = expiresAtSecs * 1000,
     )
-    val existingChunks = db.chunks().forTransfer(transferId)
-    existingChunks.firstOrNull { it.index == index }?.let { existing ->
+    db.chunks().byIndex(transferId, index)?.let { existing ->
       require(existing == chunk.copy(receivedAt = existing.receivedAt)) { "conflicting duplicate chunk" }
       return null
     }
-    existingChunks.firstOrNull()?.let { first ->
+    db.chunks().first(transferId)?.let { first ->
       require(
         first.manifestId == manifestId && first.documentId == documentId &&
-          first.compressedSha256 == compressedSha256 && first.count == count,
+          first.compressedSha256 == compressedSha256 && first.count == count && first.expiresAt == chunk.expiresAt,
       ) { "conflicting chunk set" }
     }
+    requireStagingCapacity(transferId, decoded.size)
     db.chunks().insert(chunk)
-    val all = db.chunks().forTransfer(transferId)
     val manifest = db.manifests().byTransfer(transferId) ?: return null
-    return if (all.size == manifest.chunkCount) assemble(manifest, all.sortedBy { it.index }) else null
+    return if (db.chunks().count(transferId) == manifest.chunkCount) assemble(manifest, db.chunks().forTransfer(transferId)) else null
   }
 
   private suspend fun assemble(manifest: ManifestEntity, chunks: List<ChunkEntity>): Intake {
@@ -323,9 +352,9 @@ class TransferManager(
     require(chunks.all {
       it.transferId == manifest.transferId && it.manifestId == manifest.manifestId &&
         it.documentId == manifest.documentId && it.compressedSha256 == manifest.compressedSha256 &&
-        it.count == manifest.chunkCount
+        it.count == manifest.chunkCount && it.expiresAt == manifest.expiresAt * 1000
     }) { "chunk manifest binding mismatch" }
-    if (db.documents().byId(manifest.documentId) != null) {
+    if (db.documents().exists(manifest.documentId)) {
       db.withTransaction {
         db.chunks().clearTransfer(manifest.transferId)
         db.manifests().clearTransfer(manifest.transferId)
@@ -378,7 +407,7 @@ class TransferManager(
     )
     db.withTransaction {
       val inserted = db.documents().insert(document)
-      require(inserted != -1L || db.documents().byId(manifest.documentId) != null) { "document commit failed" }
+      require(inserted != -1L || db.documents().exists(manifest.documentId)) { "document commit failed" }
       db.chunks().clearTransfer(manifest.transferId)
       db.manifests().clearTransfer(manifest.transferId)
     }

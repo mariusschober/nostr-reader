@@ -48,3 +48,14 @@ it("commits authenticated effects before persisting coverage and retries interru
   })).rejects.toThrow("disk full");
   expect(order).toEqual(["consume"]);
 });
+
+it("streaming consumers do not retain accumulated relay history after durable consumption", async () => {
+  const consumed: string[] = [];
+  const result = await scanHistory({ since: 0, until: 10, retainEvents: false,
+    query: async () => [{ id: "ack", created_at: 1, content: "synthetic" }],
+    consume: async events => { consumed.push(...events.map(event => event.id)); },
+    checkpoint: async () => {},
+  });
+  expect(consumed).toEqual(["ack"]);
+  expect(result.events).toEqual([]);
+});

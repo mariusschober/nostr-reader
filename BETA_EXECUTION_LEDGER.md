@@ -2,6 +2,78 @@
 
 Started 2026-09-05. Requested target: 0.9.0-beta.1; not yet beta ready.
 
+## Resumed execution — 8 September 2026
+
+The owner's new execution request supersedes the trial pause below. The complete
+supplied brief and audit, all six named handoff documents, and the newer trial
+handover have been read. Historical results below are not final-candidate proof.
+
+- Starting source: `fea0bb6713823e9c1838f1b5f871cedafa66736e`, clean
+  `codex/reader-0.9-beta`; fetched origin agrees (0 ahead / 0 behind).
+- Audited `0c9884e955558f478d7668b46e9c1411bfe95c5d` is an ancestor.
+  All newer recovery and capture-feedback work is retained.
+- Connected target: TCL T807D, Android 16 / API 36. Owner package remains
+  `com.reader.app` 0.1.0 / code 1. No app/profile data reset or key rotation.
+- Node 22.16.0, npm 10.9.2, Swift 6.3.3. Default Java installation reports
+  18.0.1.1; effective Gradle JVM and Rust version will be recorded with builds.
+- Chrome application 152.0.7977.82; the running paired browser/profile is being
+  identified separately. Baseline extension output goes to
+  `artifacts/beta-work/baseline-chrome`, preserving live `chrome/dist`.
+- AVDs available: API 26, API 36, and a 16-KiB target; runtime gates pending.
+- Baseline Chrome, Android, Rust and Swift gates IN PROGRESS. Logs:
+  `evidence/beta/resumed/baseline-*`. Initial sandbox ADB/socket and Git-fetch
+  access failures were environmental; supported elevated access succeeded.
+- Order: execute and close core recovery regressions first; then capture and
+  reader foundations; then theme/highlight/review; then freeze and qualify the
+  exact packages. No earlier package results count toward final acceptance.
+
+Current R01–R05/R08/R09/R16/R17: IN PROGRESS (prior implementations exist;
+remaining real orchestration, resource, crash and ACK-loss cases need proof).
+R06: earlier short-selection fix retained; final route coverage pending.
+R07/R10–R15: TODO. R18: IN PROGRESS. Final campaigns: NOT MEASURED.
+
+### Recovery follow-up checkpoint
+
+- Baseline PASS: Chrome 125 tests, typecheck and isolated build; Android
+  clean JVM/lint/app/test build; Rust 6 tests; Swift 7 tests. The Android
+  107-task count is build work, not a test count.
+- Failure-first tests reproduced blocked healthy-relay fragments, unnecessary
+  retained Chrome scan history, a cancelled Android publish leaking its socket,
+  and early socket closure being reported as healthy after EOSE. Evidence:
+  `core-failure-first-{chrome,android}.log` in `evidence/beta/resumed/`.
+- Publication now progresses independently per relay with at most one frame
+  in flight per relay. Worker queues retain IDs and list summaries rather than
+  every compressed body. A durable receipt cancels the live publisher even if
+  cleanup fails; a new worker cleans that payload without needing another ACK.
+- ACK alarms now derive from persisted receive-attempt time and pending work;
+  reload or an all-relay read failure restores the next receipt check.
+- Android ACK sends run independently of arrival intake, reserve attempts
+  before IO, and merge each result transactionally. DNS, probe response reads,
+  publication frame totals and diagnostic traces are bounded; interrupted
+  publication closes its socket. One failed relay DNS no longer vetoes the
+  entire active channel's receive session.
+- Incoming staging: 32 partial transfers, 64 MiB total decoded compressed
+  chunks, 5 MiB per transfer, and 100,000 authenticated wrapper ledger entries.
+  Capacity rejection rolls back all incoming effects and permits existing
+  transfers to finish. Numeric wire coercion and unknown envelope fields are
+  rejected; an already committed wrapper hash can skip repeated decryption.
+- Android JVM PASS: 96 tests, 0 failures/errors/skips. QA app/test build PASS.
+- TCL QA instrumentation reports `OK (13 tests)`: 12 assertion-bearing tests
+  pass; the opt-in pairing UI helper is not invoked without its argument.
+  Evidence: `core-tcl-instrumentation-1.log`. This is not a new pairing or
+  capture-to-phone campaign. Owner app/profile untouched.
+- Tested QA app SHA-256:
+  `947c78c6b08d5f1db4bf5a8ab1d1e39a175902e8dea2f1b97b73b77c4cc86e14`.
+  Matching QA test APK SHA-256:
+  `8aeee718d288dba52533b2529fa4d339aa9d9172c30c5c527e5923afcb33fe53`.
+  Local artifacts: `artifacts/beta-work/recovery/`.
+- Current Chrome PASS: 130 tests, including real-worker cleanup failure,
+  restart recovery and failed-query alarm restoration. Final checkpoint
+  typecheck/build is retained separately from these Android hashes.
+- Still open: full controlled relay/physical recovery campaigns, persistent
+  sync status UI, safe upper-size reader storage, requested features, and final
+  candidate qualification. No beta-ready conclusion.
+
 ## Baseline
 
 - Repository: https://github.com/mariusschober/nostr-reader

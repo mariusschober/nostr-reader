@@ -1,0 +1,16 @@
+
+> reader-chrome@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+
+ Test Files  22 passed (22)
+      Tests  127 passed (127)
+   Start at  00:41:49
+   Duration  1.51s (tests 53%, environment 21%, transform 13%, import 12%, worker 1%)
+
+    Isolate  22 workers spawned · ~187ms startup each (spawn + environment, per file)
+             at least ~270ms faster with isolate: false — reuses workers across files instead of one per file
+

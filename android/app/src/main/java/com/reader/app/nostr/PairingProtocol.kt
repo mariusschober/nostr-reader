@@ -122,12 +122,13 @@ object PairingProtocol {
   /** Resolve before WebSocket creation and reject if any answer is non-public. */
   fun validateResolvedRelayAddresses(
     relays: List<String>,
-    resolver: (String) -> Array<InetAddress> = { InetAddress.getAllByName(it) },
+    resolver: (String) -> Array<InetAddress> = RelayDns::lookup,
   ) {
     for (relay in relays) {
       val host = URI(relay).host ?: throw IllegalArgumentException("relay URL has invalid host")
-      val addresses = runCatching { resolver(host) }
-        .getOrElse { throw IllegalArgumentException("relay DNS lookup failed") }
+      val addresses = try { resolver(host) }
+      catch (error: InterruptedException) { throw error }
+      catch (_: Exception) { throw IllegalArgumentException("relay DNS lookup failed") }
       require(addresses.isNotEmpty() && addresses.none(::isProhibitedAddress)) { "relay resolves to a prohibited network" }
     }
   }

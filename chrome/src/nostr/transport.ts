@@ -370,10 +370,12 @@ export async function unwrapAndVerifyEnvelope(opts: {
   // reader/2 uses durable kind 1059 for both pairing and delivery so MV3 and
   // Android process restarts can catch up. Ephemeral 21059 is a wrong kind.
   if (wrap.kind !== WRAP_KIND) throw new Error("bad wrap kind");
+  validateReaderEventShape(wrap);
   if (!isLowerHex(wrap.pubkey, 32) || !isLowerHex(wrap.id, 32) || !isLowerHex(wrap.sig, 64)) {
     throw new Error("non-canonical outer hex");
   }
   if (!verifyEvent(wrap as never)) throw new Error("invalid outer signature");
+  if (wrap.tags?.length !== 2) throw new Error("invalid Reader wrapper tags");
   const recipientPubkey = getPublicKey(recipientSeckey);
   const pTags = (wrap.tags ?? []).filter((tag) => tag[0] === "p");
   if (pTags.length !== 1 || pTags[0]?.length !== 2 || pTags[0]?.[1] !== recipientPubkey) {
@@ -384,7 +386,7 @@ export async function unwrapAndVerifyEnvelope(opts: {
     throw new Error("missing or invalid expiration");
   }
   const expiration = Number(expirationTags[0]?.[1]);
-  if (!Number.isSafeInteger(expiration) || expiration <= now) throw new Error("outer event expired");
+  if (!Number.isSafeInteger(expiration) || expiration <= now || expiration > now + 7 * 86400 + 600) throw new Error("outer event expired or overlong");
   if (wrap.created_at > now + 600) throw new Error("outer timestamp in future");
   let sealJson: string;
   try {
@@ -396,6 +398,7 @@ export async function unwrapAndVerifyEnvelope(opts: {
     throw new Error("wrap decrypt failed");
   }
   const seal = parseStrictJson(sealJson) as { kind: number; pubkey: string; content: string; id: string; sig: string; created_at: number; tags?: string[][] };
+  validateReaderEventShape(seal);
   if (seal.kind !== SEAL_KIND) throw new Error("bad seal kind");
   if ((seal.tags ?? []).length !== 0) throw new Error("seal tags must be empty");
   if (!isLowerHex(seal.pubkey, 32) || !isLowerHex(seal.id, 32) || !isLowerHex(seal.sig, 64)) {
@@ -428,6 +431,7 @@ export async function unwrapAndVerifyEnvelope(opts: {
     throw new Error("invalid Reader rumor profile");
   }
   if (rumor.sig !== undefined) throw new Error("rumor must not be signed");
+  if (Object.keys(rumor).sort().join(",") !== "content,created_at,id,kind,pubkey,tags") throw new Error("invalid Reader rumor fields");
   if (!isLowerHex(rumor.pubkey, 32) || !rumor.id || !isLowerHex(rumor.id, 32)) {
     throw new Error("non-canonical rumor hex");
   }
@@ -438,6 +442,16 @@ export async function unwrapAndVerifyEnvelope(opts: {
   const expectedProtocols = opts.expectedProtocols ?? [READER_PROTOCOL];
   if (!expectedProtocols.includes(String(payload["protocol"]))) throw new Error("unsupported protocol version");
   return { payload, senderPubkey: rumor.pubkey, recipientPubkey, rumorId: rumor.id };
+}
+
+function validateReaderEventShape(event: { kind: number; pubkey: string; content: string; id: string; sig: string; created_at: number; tags?: string[][] }): void {
+  if (!event || Object.keys(event).sort().join(",") !== "content,created_at,id,kind,pubkey,sig,tags" ||
+      !Number.isSafeInteger(event.created_at) || event.created_at < 0 || !Number.isSafeInteger(event.kind) ||
+      [event.pubkey, event.content, event.id, event.sig].some(value => typeof value !== "string") ||
+      event.content.length > MAX_RELAY_EVENT_BYTES || !Array.isArray(event.tags) || event.tags.length > 16 ||
+      event.tags.some(tag => !Array.isArray(tag) || tag.length > 4 || tag.some(value => typeof value !== "string" || value.length > 256))) {
+    throw new Error("invalid Reader event profile");
+  }
 }
 
 export async function unwrapAndVerify(opts: {

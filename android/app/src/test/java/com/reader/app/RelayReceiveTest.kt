@@ -69,4 +69,45 @@ class RelayReceiveTest {
     try { StrictJson.parse("[".repeat(1000) + "0" + "]".repeat(1000)); fail("nesting limit") }
     catch (_: IllegalArgumentException) {}
   }
+
+  @Test fun cancelledPublicationClosesSocketBeforeReturning() {
+    val opened = CountDownLatch(1)
+    val closed = CountDownLatch(1)
+    val server = MockWebServer()
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+      override fun onMessage(socket: WebSocket, text: String) { opened.countDown() }
+      override fun onClosing(socket: WebSocket, code: Int, reason: String) { closed.countDown(); socket.close(code, reason) }
+      override fun onFailure(socket: WebSocket, t: Throwable, response: Response?) { closed.countDown() }
+    }))
+    server.start()
+    val executor = Executors.newSingleThreadExecutor()
+    try {
+      val key = Secp256k1.randomPrivateKey()
+      val event = NostrCodec.signEvent(Secp256k1.bytesToHex(Secp256k1.getPublicKey(key)), 1, 1059, emptyList(), "synthetic", key)
+      val future = executor.submit { RelayClient(true).publishDetailed(server.url("/").toString().replaceFirst("http", "ws"), event, 60) }
+      assertTrue(opened.await(2, TimeUnit.SECONDS))
+      future.cancel(true)
+      assertTrue("cancelled publication leaked its socket", closed.await(2, TimeUnit.SECONDS))
+    } finally { executor.shutdownNow(); server.shutdown() }
+  }
+
+  @Test fun earlySocketCloseAfterEoseIsDegradedNotHealthy() {
+    val server = MockWebServer()
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+      override fun onMessage(socket: WebSocket, text: String) {
+        val frame = StrictJson.parse(text).jsonArray
+        if (frame[0].jsonPrimitive.content == "REQ") {
+          socket.send("[\"EOSE\",${frame[1]}]")
+          socket.close(1000, "synthetic disconnection")
+        }
+      }
+    }))
+    server.start()
+    try {
+      try {
+        RelayClient(true).subscribe(server.url("/").toString().replaceFirst("http", "ws"), "00".repeat(32), 0, listOf(1059), 1)
+        fail("early close must report degraded visible receive coverage")
+      } catch (_: java.io.IOException) {}
+    } finally { server.shutdown() }
+  }
 }

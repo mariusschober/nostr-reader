@@ -219,6 +219,46 @@ describe("production publication and ACK interleavings", () => {
     await vi.waitFor(async () => expect((await records("items"))[0].status).toBe("awaiting_device"));
   });
 
+  it("a receipt-before-cleanup crash stops late publication and cleans up on a new worker without the relay ACK", async () => {
+    const worker = await boot();
+    await worker.queueCapture(doc, captureId);
+    await vi.waitFor(() => expect(published).toBeGreaterThan(0));
+    const [item] = await records("items");
+    incoming = [await signedAck(item)];
+    const original = IDBObjectStore.prototype.delete;
+    const failure = vi.spyOn(IDBObjectStore.prototype, "delete").mockImplementation(function(this: IDBObjectStore, key) {
+      if (this.name === "items") throw new DOMException("Synthetic cleanup failure", "UnknownError");
+      return original.call(this, key);
+    });
+    expect(await message({ kind: "reader-check-acks" }, trusted)).toMatchObject({ ok: false });
+    expect(storage.recentDeliveryReceipts).toMatchObject([{ transferId: item.transferId }]);
+    const sendsAtReceipt = published;
+    release();
+    await new Promise(resolve => setTimeout(resolve, 25));
+    expect(published).toBe(sendsAtReceipt);
+    failure.mockRestore(); incoming = []; // accepted ACKs have disappeared
+    await boot();
+    await vi.waitFor(async () => expect(await records("items")).toHaveLength(0));
+    expect(await records("captures")).toHaveLength(1);
+  });
+
+  it("restores receipt polling after reload and after an all-relay read failure", async () => {
+    const worker = await boot();
+    await worker.queueCapture(doc, captureId);
+    await vi.waitFor(() => expect(published).toBeGreaterThan(0));
+    alarms.clear();
+    await boot();
+    await vi.waitFor(() => expect(alarms.has("reader-ack-check")).toBe(true));
+    const earlierWake = alarms.get("reader-ack-check").scheduledTime;
+    for (let i = 0; i < 3; i++) { await boot(); await message({ kind: "reader-status" }, trusted); }
+    expect(alarms.get("reader-ack-check").scheduledTime).toBeLessThanOrEqual(earlierWake);
+    networkFailure = true;
+    alarms.delete("reader-ack-check");
+    await expect(listeners.alarm({ name: "reader-ack-check" })).rejects.toThrow();
+    expect(alarms.has("reader-ack-check")).toBe(true);
+    release();
+  });
+
   it("unavailable ACK queries report failure while publishing still makes progress", async () => {
     networkFailure = true;
     const worker = await boot();

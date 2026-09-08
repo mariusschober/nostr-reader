@@ -23,5 +23,6 @@ android/local.properties
 # Local beta candidates and QA packages (hashes/evidence are tracked separately).
 /artifacts/beta/
 /artifacts/beta-qa/
+/artifacts/beta-work/
 
 /artifacts/recovery-checkpoint/

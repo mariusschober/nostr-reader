@@ -144,6 +144,9 @@ interface DocumentDao {
   @Query("SELECT * FROM documents WHERE documentId = :id LIMIT 1")
   suspend fun byId(id: String): DocumentEntity?
 
+  @Query("SELECT EXISTS(SELECT 1 FROM documents WHERE documentId = :id)")
+  suspend fun exists(id: String): Boolean
+
   @Insert(onConflict = OnConflictStrategy.IGNORE)
   suspend fun insert(doc: DocumentEntity): Long
 
@@ -203,6 +206,26 @@ interface ChannelDao {
 
 @Dao
 interface ChunkDao {
+  @Query("SELECT COUNT(*) FROM (SELECT transferId FROM incoming_chunks UNION SELECT transferId FROM incoming_manifests)")
+  suspend fun stagedTransferCount(): Int
+
+  @Query("SELECT EXISTS(SELECT 1 FROM incoming_chunks WHERE transferId = :id UNION SELECT 1 FROM incoming_manifests WHERE transferId = :id)")
+  suspend fun hasStagedTransfer(id: String): Boolean
+
+  @Query("SELECT COALESCE(SUM(length(CAST(bytesB64 AS BLOB)) / 4 * 3 - CASE WHEN substr(bytesB64, -2) = '==' THEN 2 WHEN substr(bytesB64, -1) = '=' THEN 1 ELSE 0 END), 0) FROM incoming_chunks")
+  suspend fun stagedBytes(): Long
+
+  @Query("SELECT COALESCE(SUM(length(CAST(bytesB64 AS BLOB)) / 4 * 3 - CASE WHEN substr(bytesB64, -2) = '==' THEN 2 WHEN substr(bytesB64, -1) = '=' THEN 1 ELSE 0 END), 0) FROM incoming_chunks WHERE transferId = :id")
+  suspend fun transferBytes(id: String): Long
+
+  @Query("SELECT * FROM incoming_chunks WHERE transferId = :id AND `index` = :index LIMIT 1")
+  suspend fun byIndex(id: String, index: Int): ChunkEntity?
+
+  @Query("SELECT * FROM incoming_chunks WHERE transferId = :id LIMIT 1")
+  suspend fun first(id: String): ChunkEntity?
+
+  @Query("SELECT COUNT(*) FROM incoming_chunks WHERE transferId = :id")
+  suspend fun count(id: String): Int
   @Insert(onConflict = OnConflictStrategy.IGNORE)
   suspend fun insert(chunk: ChunkEntity)
 
@@ -254,6 +277,8 @@ interface AckIntentDao {
 
 @Dao
 interface ProcessedEventDao {
+  @Query("SELECT COUNT(*) FROM processed_events")
+  suspend fun count(): Int
   @Query("SELECT * FROM processed_events WHERE eventId = :eventId LIMIT 1")
   suspend fun byId(eventId: String): ProcessedEventEntity?
 

@@ -44,8 +44,6 @@ internal suspend fun openActiveChannelKeyOrRevoke(
   return null
 }
 
-private const val ACK_MAX_ATTEMPTS = 168
-private const val ACK_BATCH_LIMIT = 32
 private const val ACK_MAX_BACKOFF_MILLIS = 6L * 60L * 60L * 1000L
 
 internal fun acceptedAckRelays(rawJson: String, configuredRelays: List<String>): LinkedHashSet<String> {
@@ -68,124 +66,6 @@ internal fun syncNeedsRetry(pairingPending: Boolean, ackPending: Boolean): Boole
 /** Background poll: rolling 10-day window, dedupe, assemble, ACK. No permanent socket. */
 class ReaderSyncSession(private val applicationContext: Context) {
   companion object { private val syncMutex = Mutex() }
-  private data class AckRelayAttempt(
-    val relayUrl: String,
-    val outcome: RelayClient.PublishResult? = null,
-    val failure: Exception? = null,
-  )
-
-  private fun safeRelay(url: String): String = runCatching {
-    java.net.URI(url).let { uri -> "${uri.scheme}://${uri.host}${uri.rawPath.orEmpty()}" }
-  }.getOrDefault("invalid-relay")
-
-  private fun safeFailure(error: Throwable): String =
-    (error.message ?: error.javaClass.simpleName)
-      .replace(Regex("(?i)[0-9a-f]{48,}"), "[redacted-hex]")
-      .replace(Regex("[A-Za-z0-9_+/=-]{48,}"), "[redacted-token]")
-      .replace(Regex("[\\u0000-\\u001f\\u007f]+"), " ")
-      .take(160)
-
-  private suspend fun dispatchPendingAcks(
-    db: ReaderDb,
-    tm: TransferManager,
-    relays: RelayClient,
-    channel: ChannelEntity,
-    channelSeckey: ByteArray,
-    relayList: List<String>,
-  ): Boolean {
-    val dao = db.ackIntents()
-    val nowMillis = System.currentTimeMillis()
-    val nowSecs = nowMillis / 1000
-    for (intent in dao.due(channel.channelId, nowSecs, nowMillis, ACK_BATCH_LIMIT)) {
-      val accepted = acceptedAckRelays(intent.acceptedRelaysJson, relayList)
-      var lastError: String? = null
-      val attempts = coroutineScope {
-        relayList.filterNot { it in accepted }.map { relayUrl ->
-          async(Dispatchers.IO) {
-            try {
-              val event = tm.buildAck(intent, channelSeckey)
-              AckRelayAttempt(relayUrl, outcome = relays.publishDetailed(relayUrl, event, 10, channelSeckey))
-            } catch (error: CancellationException) {
-              throw error
-            } catch (error: Exception) {
-              AckRelayAttempt(relayUrl, failure = error)
-            }
-          }
-        }.awaitAll()
-      }
-      for (relayAttempt in attempts) {
-        val relayUrl = relayAttempt.relayUrl
-        relayAttempt.outcome?.let { outcome ->
-          if (outcome.accepted) {
-            accepted += relayUrl
-            dao.update(intent.copy(acceptedRelaysJson = Json.encodeToString(accepted.toList())))
-          } else {
-            lastError = outcome.terminalState.name.lowercase()
-          }
-          Log.i(
-            "NostrReaderSync",
-            "relay=${safeRelay(relayUrl)} ack=${outcome.terminalState.name}" +
-              (outcome.reasonPrefix?.let { " reason=${safeFailure(IllegalStateException(it))}" } ?: ""),
-          )
-        }
-        relayAttempt.failure?.let { error ->
-          lastError = error.javaClass.simpleName.lowercase()
-          Log.w("NostrReaderSync", "relay=${safeRelay(relayUrl)} ack=${safeFailure(error)}")
-        }
-      }
-      val attempt = intent.attemptCount + 1
-      val acceptedJson = Json.encodeToString(accepted.toList())
-      when {
-        accepted.size >= READER_RELAY_WRITE_QUORUM -> {
-          dao.update(
-            intent.copy(
-              acceptedRelaysJson = acceptedJson,
-              attemptCount = attempt,
-              nextAttemptAt = null,
-              completedAt = System.currentTimeMillis(),
-              failedAt = null,
-              lastErrorCode = null,
-            ),
-          )
-          Log.i(
-            "NostrReaderSync",
-            "transfer=${intent.transferId.take(8)} ack=quorum_confirmed relays=${accepted.size}",
-          )
-        }
-        attempt >= ACK_MAX_ATTEMPTS -> {
-          dao.update(
-            intent.copy(
-              acceptedRelaysJson = acceptedJson,
-              attemptCount = attempt,
-              nextAttemptAt = null,
-              completedAt = null,
-              failedAt = System.currentTimeMillis(),
-              lastErrorCode = lastError ?: "quorum_not_reached",
-            ),
-          )
-          Log.w("NostrReaderSync", "transfer=${intent.transferId.take(8)} ack=retry_ceiling")
-        }
-        else -> {
-          dao.update(
-            intent.copy(
-              acceptedRelaysJson = acceptedJson,
-              attemptCount = attempt,
-              nextAttemptAt = System.currentTimeMillis() + ackRetryDelayMillis(attempt, intent.transferId),
-              completedAt = null,
-              failedAt = null,
-              lastErrorCode = lastError ?: "quorum_not_reached",
-            ),
-          )
-          Log.w(
-            "NostrReaderSync",
-            "transfer=${intent.transferId.take(8)} ack=quorum_pending accepted=${accepted.size}",
-          )
-        }
-      }
-    }
-    return dao.pendingCount(channel.channelId, System.currentTimeMillis() / 1000) > 0
-  }
-
   suspend fun runOnce(): Boolean = syncMutex.withLock {
     val db = ReaderDb.get(applicationContext)
     val keys = KeystoreWrap(applicationContext)
@@ -199,6 +79,7 @@ class ReaderSyncSession(private val applicationContext: Context) {
       val channels = db.channels().active()
       Log.i("NostrReaderSync", "activeChannels=${channels.size}")
       val tm = TransferManager(db)
+      val ackDispatcher = AckDispatcher(db, tm, relays)
       var ackRetryNeeded = false
       var receiveFailed = false
       for (ch in channels) {
@@ -212,7 +93,12 @@ class ReaderSyncSession(private val applicationContext: Context) {
           Json.parseToJsonElement(ch.relaysJson).jsonArray.map { it.jsonPrimitive.content }
         }.getOrDefault(emptyList())
         if (relayList.isEmpty()) { receiveFailed = true; continue }
-        if (runCatching { PairingProtocol.validateResolvedRelayAddresses(relayList) }.isFailure) {
+        // Each connection resolves through guarded, bounded DNS. One failed
+        // relay must not veto every healthy relay before any connection opens.
+        if (runCatching {
+          require(relayList.size in 2..8 && relayList.distinct().size == relayList.size)
+          relayList.forEach { require(PairingProtocol.normalizeRelayUrl(it) == it) }
+        }.isFailure) {
           receiveFailed = true
           Log.w("NostrReaderSync", "channel=${ch.channelId.take(8)} relayValidation=failed")
           continue
@@ -223,12 +109,23 @@ class ReaderSyncSession(private val applicationContext: Context) {
         // slowest relay's collection window. Producers backpressure individually.
         coroutineScope {
           val intakeQueue = Channel<com.reader.app.nostr.NostrEvent>(16)
+          val ackSignals = Channel<Unit>(Channel.CONFLATED)
+          val acknowledger = launch(Dispatchers.IO) {
+            for (signal in ackSignals) {
+              if (ackDispatcher.dispatch(ch, seckey, relayList)) ackRetryNeeded = true
+            }
+          }
+          ackSignals.trySend(Unit) // resume intents from a previous process
+
           val consumer = launch(Dispatchers.IO) {
             for (ev in intakeQueue) {
               try {
                 val intake = tm.ingestForSync(ev, ch.channelId, ch.trustedSenderPubkey, seckey)
-                if (intake != null && dispatchPendingAcks(db, tm, relays, ch, seckey, relayList)) ackRetryNeeded = true
+                if (intake != null) ackSignals.trySend(Unit)
               } catch (error: CancellationException) { throw error
+              } catch (_: java.io.IOException) {
+                receiveFailed = true
+                Log.w("NostrReaderSync", "local intake capacity or storage unavailable")
               } catch (_: Exception) {
                 Log.w("NostrReaderSync", "authenticated intake rejected")
               }
@@ -255,8 +152,9 @@ class ReaderSyncSession(private val applicationContext: Context) {
             intakeQueue.close()
           }
           consumer.join()
+          ackSignals.close()
+          acknowledger.join()
         }
-        if (dispatchPendingAcks(db, tm, relays, ch, seckey, relayList)) ackRetryNeeded = true
       }
       syncNeedsRetry(pairingRetryNeeded, ackRetryNeeded) || receiveFailed
     } catch (error: CancellationException) {

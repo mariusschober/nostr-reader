@@ -77,6 +77,8 @@ interface OutboxItem {
   feedbackRoute?: CaptureFeedbackRoute;
 }
 
+type OutboxSummary = Omit<OutboxItem, "chunks" | "fragmentProgress">;
+
 interface PairingSession {
   request: PairingRequestV2;
   pairingSeckey?: string;
@@ -113,6 +115,17 @@ async function restoreWorkAlarms(): Promise<void> {
     const items = (await outboxAll()).filter(item => item.status !== "failed");
     if (!items.length || !await loadPairedChannelState()) return undefined;
     return Math.min(...items.map(item => (item.nextAttemptAt ?? item.createdAt) * 1000));
+  });
+  await durableAlarms.reconcile(ACK_ALARM, async () => {
+    const paired = await loadPairedChannelState();
+    if (!paired) return undefined;
+    const now = Date.now();
+    const items = (await outboxAll()).filter(item => item.expiresAt * 1000 > now &&
+      item.manifest["recipientChannelPubkey"] === paired.channelPubkey);
+    if (!items.length) return undefined;
+    const last = (await chrome.storage.local.get("readerLastReceive"))["readerLastReceive"]?.checkedAt;
+    const checkedAt = typeof last === "number" && Number.isFinite(last) ? last : Math.min(...items.map(item => item.createdAt * 1000));
+    return Math.min(now, checkedAt) + 30_000;
   });
   await durableAlarms.reconcile(PAIRING_ALARM, async () => {
     const sessions = (await loadPairingSessions()).filter(session => isActivePairingState(session.state));
@@ -232,43 +245,54 @@ function idb(): Promise<IDBDatabase> {
 }
 async function outboxPut(item: OutboxItem): Promise<void> {
   const db = await idb();
-  await new Promise<void>((res, rej) => {
-    const tx = db.transaction("items", "readwrite");
-    tx.objectStore("items").put(item as never);
-    tx.oncomplete = () => res();
-    tx.onerror = () => rej(tx.error);
-  });
-  db.close();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("items", "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () => reject(tx.error);
+      try { tx.objectStore("items").put(item); }
+      catch (error) { tx.abort(); reject(error); }
+    });
+  } finally { db.close(); }
 }
-async function outboxAll(): Promise<OutboxItem[]> {
+async function outboxAll(): Promise<OutboxSummary[]> {
   const db = await idb();
-  const items = await new Promise<OutboxItem[]>((res, rej) => {
-    const q = db.transaction("items").objectStore("items").getAll();
-    q.onsuccess = () => res(q.result as OutboxItem[]);
-    q.onerror = () => rej(q.error);
-  });
-  db.close();
-  return items;
+  try {
+    return await new Promise<OutboxSummary[]>((resolve, reject) => {
+      const summaries: OutboxSummary[] = [];
+      const request = db.transaction("items").objectStore("items").openCursor();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) { resolve(summaries); return; }
+        const { chunks: _chunks, fragmentProgress: _progress, ...summary } = cursor.value as OutboxItem;
+        summaries.push(summary);
+        cursor.continue();
+      };
+    });
+  } finally { db.close(); }
 }
 async function outboxGet(transferId: string): Promise<OutboxItem | undefined> {
   const db = await idb();
-  const item = await new Promise<OutboxItem | undefined>((res, rej) => {
-    const q = db.transaction("items").objectStore("items").get(transferId);
-    q.onsuccess = () => res(q.result as OutboxItem | undefined);
-    q.onerror = () => rej(q.error);
-  });
-  db.close();
-  return item;
+  try {
+    return await new Promise<OutboxItem | undefined>((resolve, reject) => {
+      const request = db.transaction("items").objectStore("items").get(transferId);
+      request.onsuccess = () => resolve(request.result as OutboxItem | undefined);
+      request.onerror = () => reject(request.error);
+    });
+  } finally { db.close(); }
 }
 async function outboxDelete(transferId: string): Promise<void> {
   const db = await idb();
-  await new Promise<void>((res, rej) => {
-    const tx = db.transaction("items", "readwrite");
-    tx.objectStore("items").delete(transferId);
-    tx.oncomplete = () => res();
-    tx.onerror = () => rej(tx.error);
-  });
-  db.close();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("items", "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () => reject(tx.error);
+      try { tx.objectStore("items").delete(transferId); }
+      catch (error) { tx.abort(); reject(error); }
+    });
+  } finally { db.close(); }
 }
 
 interface DeliveryReceipt {
@@ -294,6 +318,17 @@ async function recordDelivered(transferId: string, deliveredAt: number): Promise
     receipts.push({ transferId, deliveredAt });
     await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts.slice(-1000) });
   });
+}
+
+async function cleanupDelivered(): Promise<void> {
+  const delivered = new Set((await loadDeliveryReceipts()).map(receipt => receipt.transferId));
+  if (!delivered.size) return;
+  for (const item of await outboxAll()) if (delivered.has(item.transferId)) {
+    await transferOperations.run(item.transferId, async () => {
+      activePublicationStops.get(item.transferId)?.();
+      await outboxDelete(item.transferId);
+    });
+  }
 }
 
 // ---- Send pipeline ----
@@ -393,7 +428,7 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
   } finally { captureDb.close(); }
   void restoreWorkAlarms().catch(() => undefined);
   if (!channelPubkey) return { transferId, queued: true }; // unpaired: stays queued
-  void publishTransfer(item, seckey, channelPubkey).catch(() => { /* alarm retries */ });
+  void publishTransfer(item.transferId, seckey, channelPubkey).catch(() => { /* alarm retries */ });
   return { transferId, queued: false };
 }
 
@@ -410,21 +445,7 @@ function retryAt(attemptCount: number, nowSecs: number): number {
 }
 
 function scheduleAckCheck(): void {
-  // The Android foreground sync may finish after the publish call's immediate
-  // ACK query. A one-shot alarm survives MV3 worker suspension and closes that
-  // race without keeping the worker alive or retransmitting the article.
-  const when = Date.now() + 30_000;
-  void chrome.alarms.get(ACK_ALARM).then((existing) => {
-    // Repeated or concurrent publishes must not postpone an already-earlier
-    // device-ACK check by replacing its one-shot alarm with a later time.
-    if (!existing || existing.scheduledTime > when) {
-      chrome.alarms.create(ACK_ALARM, { when });
-    }
-  }).catch(() => {
-    // Failure to inspect an existing alarm must not suppress the only durable
-    // post-publish ACK catch-up.
-    chrome.alarms.create(ACK_ALARM, { when });
-  });
+  void restoreWorkAlarms().catch(() => undefined);
 }
 
 async function bindOutboxItem(
@@ -467,17 +488,17 @@ async function bindOutboxItem(
 }
 
 async function publishTransfer(
-  item: OutboxItem, seckey: Uint8Array, channelPubkey: string, force = false,
+  transferId: string, seckey: Uint8Array, channelPubkey: string, force = false,
 ): Promise<void> {
   return publicationOwner.run(async () => {
     const epoch = transportEpoch;
-    const snapshot = await transferOperations.run(item.transferId, async () => {
-      const durable = await outboxGet(item.transferId);
+    const snapshot = await transferOperations.run(transferId, async () => {
+      const durable = await outboxGet(transferId);
       if (!durable) return;
       // Recover the receipt-before-cleanup crash without republishing.
-      if ((await loadDeliveryReceipts()).some(receipt => receipt.transferId === item.transferId)) {
+      if ((await loadDeliveryReceipts()).some(receipt => receipt.transferId === transferId)) {
         void notifyCapture(durable.feedbackRoute, "delivered", durable.transferId);
-        await outboxDelete(item.transferId);
+        await outboxDelete(transferId);
         return;
       }
       const now = Math.floor(Date.now() / 1000);
@@ -501,12 +522,13 @@ async function publishTransfer(
     if (!snapshot) return;
     scheduleAckCheck();
     const generation = snapshot.attemptCount;
+    let cancelled = false;
     const current = async () => {
       const latest = await outboxGet(snapshot.transferId);
-      return epoch === transportEpoch && !!latest && latest.status !== "failed" && latest.attemptCount === generation;
+      return !cancelled && epoch === transportEpoch && !!latest && latest.status !== "failed" && latest.attemptCount === generation;
     };
     const pool = new SimplePool();
-    activePublicationStops.set(snapshot.transferId, () => pool.close(snapshot.relays));
+    activePublicationStops.set(snapshot.transferId, () => { cancelled = true; pool.close(snapshot.relays); });
     try {
       await publishFragments({
         snapshot: { relays: snapshot.relays, payloadCount: snapshot.chunks.length + 1, progress: snapshot.fragmentProgress ?? {} },
@@ -692,6 +714,7 @@ async function queryPairingEvents(
         query: window => queryRelayWithAuth(pool, url, { kinds: [WRAP_KIND], "#p": [recipientPubkey], ...window }, recipientSeckey, 2500),
         checkpoint: async state => { await chrome.storage.local.set({ [key]: state }); },
         consume,
+        retainEvents: !consume,
       });
       await chrome.storage.local.set({ [`${key}:coverage`]: result.complete ? "covered" : "incomplete" });
       return result.events;
@@ -918,7 +941,7 @@ async function recoverPairingSessionsInternal(): Promise<void> {
     });
     const items = await outboxAll().catch(() => []);
     const { seckey } = await getDeviceKey();
-    for (const item of items) void publishTransfer(item, seckey, winner.androidChannelPubkey!).catch(() => undefined);
+    for (const item of items) void publishTransfer(item.transferId, seckey, winner.androidChannelPubkey!).catch(() => undefined);
   } else {
     await savePairingSessions(sessions);
   }
@@ -1104,7 +1127,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const retryable = items.filter((item) => item.status !== "failed");
       if (paired) {
         await Promise.all(retryable.map((item) => (
-          publishTransfer(item, seckey, paired.channelPubkey, true).catch(() => undefined)
+          publishTransfer(item.transferId, seckey, paired.channelPubkey, true).catch(() => undefined)
         )));
       }
       sendResponse({ ok: true, retried: retryable.length });
@@ -1141,6 +1164,7 @@ chrome.commands.onCommand.addListener(async command => {
 async function resumeDueTransfers(): Promise<void> {
   if (retryRecovery) return retryRecovery;
   retryRecovery = (async () => {
+    await cleanupDelivered();
     await pollForAcks().catch(() => undefined);
     const paired = await loadPairedChannelState();
     if (!paired) return;
@@ -1148,7 +1172,7 @@ async function resumeDueTransfers(): Promise<void> {
     // Bounded owner; network operations never fan out over the whole library.
     for (const item of await outboxAll()) {
       if (item.status !== "failed" && (item.nextAttemptAt ?? 0) <= Math.floor(Date.now() / 1000)) {
-        await publishTransfer(item, seckey, paired.channelPubkey).catch(() => undefined);
+        await publishTransfer(item.transferId, seckey, paired.channelPubkey).catch(() => undefined);
       }
     }
   })().finally(async () => { retryRecovery = null; await restoreWorkAlarms(); });
@@ -1169,7 +1193,7 @@ chrome.alarms.onAlarm.addListener(async (a) => {
 });
 // Evaluation/reload restores missing alarms from persisted work, without moving
 // existing deadlines. Startup also executes due work even with all UI closed.
-void restoreWorkAlarms().catch(() => undefined);
+void cleanupDelivered().then(() => restoreWorkAlarms()).catch(() => undefined);
 
 chrome.runtime.onInstalled.addListener(() => {
   void lockDownKeyStorage()

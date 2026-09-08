@@ -11,6 +11,17 @@ import java.io.File
 
 /** Full NIP-59 checklist: roundtrip + every rejection path. */
 class GiftWrapTest {
+  @Test fun rejectsWireTypeCoercionBeforeSignatureVerification() {
+    val key = Secp256k1.randomPrivateKey()
+    val event = NostrCodec.signEvent(Secp256k1.bytesToHex(Secp256k1.getPublicKey(key)), 100, 1059, emptyList(), "synthetic", key)
+    for (field in listOf("kind", "created_at")) {
+      val malformed = JsonObject(Json.parseToJsonElement(event.toJson()).jsonObject.toMutableMap().apply {
+        this[field] = JsonPrimitive(this[field]!!.jsonPrimitive.content)
+      })
+      try { NostrCodec.parseEvent(malformed.toString()); fail("must reject stringified $field") }
+      catch (_: IllegalArgumentException) {}
+    }
+  }
   @Test
   fun sealWrapRoundtrip() {
     val a = Secp256k1.randomPrivateKey()

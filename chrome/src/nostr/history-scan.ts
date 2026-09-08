@@ -10,15 +10,22 @@ export async function scanHistory<T extends TimedEvent>(options: {
   query: (window: ScanWindow) => Promise<T[]>;
   checkpoint: (state: ScanState) => Promise<void>;
   consume?: (events: T[]) => Promise<void>;
+  retainEvents?: boolean;
 }): Promise<{ events: T[]; state: ScanState; complete: boolean }> {
   const state: ScanState = options.state?.pending.length
     ? structuredClone(options.state)
     : { pending: [{ since: options.since, until: options.until, limit: 256 }], incompleteBuckets: 0, startedAt: options.until };
   const found = new Map<string, T>();
+  let retainedBytes = 0;
   for (let step = 0; step < (options.budget ?? 4) && state.pending.length; step++) {
     const window = state.pending[0]!;
     const events = await options.query(window); // failed reads retain the window
-    for (const event of events) if (event.created_at >= window.since && event.created_at <= window.until) found.set(event.id, event);
+    if (options.retainEvents !== false) for (const event of events) {
+      if (event.created_at < window.since || event.created_at > window.until || found.has(event.id)) continue;
+      retainedBytes += new TextEncoder().encode(JSON.stringify(event)).length;
+      if (found.size >= 4096 || retainedBytes > 8 * 1024 * 1024) throw new Error("history collection budget exceeded");
+      found.set(event.id, event);
+    }
     await options.consume?.(events); // durable effects precede coverage advancement
     state.pending.shift();
     // 64 is the legacy cap encountered by Reader. Conservatively subdivide
