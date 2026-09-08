@@ -284,3 +284,20 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
     },
   )
 }
+
+/**
+ * Display-only duplicate-title check. Compares the metadata title against the
+ * first rendered heading's body text after trimming, collapsing internal
+ * whitespace and ignoring case. Extraction, canonical Markdown, hashes and
+ * highlight anchors are untouched; callers simply hide the redundant metadata
+ * title line when this returns true.
+ */
+internal fun isDuplicateTitle(title: String, projection: com.reader.app.core.RenderedProjection): Boolean {
+  if (title.isBlank()) return false
+  val first = projection.blocks.firstOrNull() ?: return false
+  if (first.kind != com.reader.app.core.TextKind.HEADING || first.level != 1) return false
+  fun normalize(value: String): String = value.trim().replace(Regex("\\s+"), " ").lowercase()
+  val heading = projection.text.substring(first.bodyStart.coerceIn(0, projection.text.length), first.bodyEnd.coerceIn(0, projection.text.length))
+  if (heading.isBlank()) return false
+  return normalize(title) == normalize(heading)
+}

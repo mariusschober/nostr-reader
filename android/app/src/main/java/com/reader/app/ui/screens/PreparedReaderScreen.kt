@@ -289,9 +289,16 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           }
         }
       }
-      Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp))
+      // Display-only duplicate-title suppression: when the metadata title and
+      // the first rendered H1 genuinely match (normalized), the heading in
+      // the article body carries the title and the redundant header line is
+      // hidden. Extraction, canonical Markdown, hashes and anchors untouched.
       val ready = prepared
       val text = content
+      val titleDuplicate = ready != null && isDuplicateTitle(doc?.title.orEmpty(), ready.projection)
+      if (!titleDuplicate && !doc?.title.isNullOrBlank()) {
+        Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp))
+      }
       if (saveError != null) TextButton(onClick = { transition { } }) { Text("Save failed — Retry", color = colors.error) }
       if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)
       else if (ready == null || text == null) CircularProgressIndicator(Modifier.padding(24.dp))
