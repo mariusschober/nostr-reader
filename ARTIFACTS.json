@@ -106,7 +106,7 @@
   },
   "latestUiRefresh": {
     "date": "2026-09-08",
-    "source": "UI refresh implementation commit; see UI_REFRESH.md",
+    "source": "58a84ae751e2e75b94824005c1476859a24183db",
     "files": {
       "reader-ui-refresh.apk": {
         "path": "artifacts/ui-refresh/reader-ui-refresh.apk",
@@ -119,6 +119,8 @@
         "bytes": 277469
       }
     },
-    "report": "UI_REFRESH.md"
+    "report": "UI_REFRESH.md",
+    "installedAndroidSha256": "1aa6f7b07cd4b752bcd2d091529b7bdb6a202c23dbbdbbf08124ecbb7feb2128",
+    "verification": "Focused TCL and Chrome checks passed; see UI_REFRESH.md."
   }
 }

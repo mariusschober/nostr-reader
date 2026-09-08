@@ -1,5 +1,7 @@
 # Reader UI refresh — 8 September 2026
 
+Source commit: `58a84ae751e2e75b94824005c1476859a24183db`. Final APK checksum was verified directly against the installed TCL package; only `com.reader.app` remains installed.
+
 Implements the approved Google speech, supplied logo, blue accent, Highlight dock, and article-swipe plan.
 
 ## Delivered behavior
