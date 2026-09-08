@@ -298,15 +298,32 @@ a new document identity, bypass ACK binding, or treat relay OK as delivered.
 Capture IDs deduplicate a browser request independently of its transport payload.
 Chrome IndexedDB v3 preserves older plaintext captures as a separately owned recovery
 library, exposed in Settings for export and deletion. New captures store only a
-lightweight ID record plus pending transport content. An ACK or pending-transfer
-discard never deletes a separate library copy.
+lightweight ID record (captureId, transferId, creation time, terminal status)
+plus pending transport content. An ACK or pending-transfer discard tombstones the
+ID as delivered/discarded and never deletes a separate library copy. Repeating a
+capture ID returns its original terminal result without recreating transport; a
+deliberate new capture must use a new capture ID. Tombstones are bounded to the
+newest 2000 settled IDs; pending transport is never pruned.
 
-Android Room v9 persists completed logical-transfer outcomes in the same transaction
-as document/processed-event/ACK effects. Permanent deletion marks those outcomes
-locally deleted and retains quotations. Fresh authenticated wrappers for the same
-transfer cannot reconstruct deleted content. A deliberate capture with a new
-transfer ID may store identical text again. Expired historical ACK records are not
-replaced with invented current receipt timestamps.
+Android Room v10 persists completed logical-transfer outcomes in the same transaction
+as document/processed-event/ACK effects. Each outcome binds channel, transfer,
+manifest, document, recipient, receipt/expiry times, deletion disposition, plus
+compressed-byte hash and chunk count (empty/zero for pre-v10 backfill, which skips
+that sub-check). Permanent deletion of an archived article marks those outcomes
+locally deleted in the same transaction and retains quotations. Fresh authenticated
+wrappers for the same transfer cannot reconstruct deleted content; conflicting
+payloads with the same IDs but different byte identity are rejected, never ACKed.
+A deliberate capture with a new transfer ID may store identical text again. Expired
+historical ACK records are not replaced with invented current receipt timestamps;
+migration-inferred deletion times (receivedAt*1000 for documents already gone at
+migration) are documented as synthetic. Outcomes from intents purged before the
+hardening migration have no backfill — a known pre-hardening replay window.
+
+Active Android channel snapshots revalidate the stored relay digest and derived
+receiver key before network use. Revocable jobs own sockets; durable intake, history
+coverage and ACK result commits recheck the active generation. Recently-revoked IDs
+are bounded (128) for instant-cancel of late acquires. Revocation is local
+control, not remote ciphertext recall.
 
 Active Android channel snapshots revalidate the stored relay digest and derived
 receiver key before network use. Revocable jobs own sockets; durable intake, history

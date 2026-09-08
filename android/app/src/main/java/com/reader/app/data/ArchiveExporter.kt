@@ -14,7 +14,14 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import kotlin.coroutines.coroutineContext
 
-/** One transaction gives content, provenance and retained quotations a coherent snapshot. */
+/** One transaction gives content, provenance and retained quotations a coherent snapshot.
+ *
+ * Accepted trade-off: the transaction is held during ZIP I/O and can delay
+ * writers for seconds on large libraries (see RELIABILITY_HARDENING). Callers
+ * must single-flight exports (MainActivity.exportMutex) and log preparation
+ * time. Fail-closed: a single corrupt/incomplete article aborts the whole
+ * export with its documentId in the error — no partial/quarantined export is
+ * produced, so a bad row cannot silently drop an article. */
 class ArchiveExporter(private val db: ReaderDb) {
   suspend fun prepare(directory: File): File = withContext(Dispatchers.IO) {
     val file = File.createTempFile("reader-export-", ".zip", directory)
@@ -31,14 +38,14 @@ class ArchiveExporter(private val db: ReaderDb) {
             components[name] = digest.digest().joinToString("") { "%02x".format(it) }
           }
           for (summary in db.documents().observeSummaries().first()) {
-            val d = checkNotNull(db.documents().metadataById(summary.documentId))
+            val d = checkNotNull(db.documents().metadataById(summary.documentId)) { "Article missing: ${summary.documentId}" }
             entry("articles/${d.documentId}.md") { write ->
               for (part in 0 until db.documents().contentPartCount(d.documentId)) {
                 coroutineContext.ensureActive()
-                write(checkNotNull(db.documents().contentPart(d.documentId, part)).toByteArray(Charsets.UTF_8))
+                write(checkNotNull(db.documents().contentPart(d.documentId, part)) { "Article content is incomplete: ${d.documentId} part $part" }.toByteArray(Charsets.UTF_8))
               }
             }
-            check(components["articles/${d.documentId}.md"] == d.documentId) { "Article checksum mismatch" }
+            check(components["articles/${d.documentId}.md"] == d.documentId) { "Article checksum mismatch: ${d.documentId}" }
             entry("articles/${d.documentId}.json") { write ->
               write(buildJsonObject {
                 put("documentId", d.documentId); put("title", d.title)

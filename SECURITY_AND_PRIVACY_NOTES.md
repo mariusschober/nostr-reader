@@ -134,13 +134,19 @@ and are not restorable backups. No telemetry/backend or store publication was ad
 
 Chrome's old retained capture store remains an explicit, separately deletable recovery
 library. New captures keep plaintext/compressed transport payload only while pending;
-lightweight capture IDs survive payload cleanup. Android saves frozen pending
-selections in an app-private atomic journal until Room commits them; the journal is
+lightweight capture IDs survive payload cleanup as bounded terminal tombstones
+(delivered/discarded/retained) and report settled status truthfully. Android saves
+frozen pending selections in an app-private atomic journal until Room commits them;
+corrupt entries are quarantined without blocking later selections and the journal is
 covered by existing app backup exclusions and contains no pairing keys. Article
-deletion preserves quotations and durable historical transfer outcomes. Fresh wrappers
-of a deleted transfer cannot resurrect its content; explicit new transfers remain
+deletion (archived-only) preserves quotations and durable historical transfer outcomes
+(Room v10 binds byte hash + chunk count; synthetic migration deletion times are
+documented). Fresh wrappers of a deleted transfer cannot resurrect its content;
+conflicting same-ID payloads are rejected; explicit new transfers remain
 possible. Revocation cancels local channel work and rechecks commit ownership but
-cannot remove ciphertext retained by relays. Export uses a user-selected SAF URI,
-checksums and readback verification, excludes keys, and remains a plaintext one-way
-export. Google speech retains its configured voice/language; Reader inspects whether
-that voice requires a network connection rather than labeling all voices offline.
+cannot remove ciphertext retained by relays. Export is single-flight to a
+user-selected SAF URI, with checksums and readback verification, excludes keys
+(filenames and bodies), and remains a plaintext one-way export. Google speech retains
+its configured voice/language; Reader inspects whether that voice requires a network
+connection (refreshed after engine init) rather than labeling all voices offline;
+transient ducking does not pause.

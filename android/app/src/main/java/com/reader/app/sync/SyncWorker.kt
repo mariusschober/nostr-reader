@@ -95,6 +95,7 @@ class ReaderSyncSession(private val applicationContext: Context) {
       val ackDispatcher = AckDispatcher(db, tm, relays)
       var ackRetryNeeded = false
       var receiveFailed = false
+      var coverageIncomplete = false
       for (ch in channels) {
         val seckey = openActiveChannelKeyOrRevoke(db, keys, ch)
         if (seckey == null) {
@@ -143,8 +144,16 @@ class ReaderSyncSession(private val applicationContext: Context) {
               try {
                 lease.check(db)
                 val old = db.historyCoverage().get(ch.channelId, url)?.let { Json.decodeFromString<HistoryCoverage>(it.stateJson) }
-                val state = old?.takeIf { it.pending.isNotEmpty() } ?: HistoryCoverage.start(since, System.currentTimeMillis() / 1000 + 60).copy(
-                  incomplete = old?.incomplete.orEmpty().filter { it.until >= since })
+                // Always drop stale windows below the rolling since: a resumed
+                // state whose pending is empty previously kept stale incomplete
+                // buckets forever, pinning receiveFailed. Filter both lists.
+                val freshStart = HistoryCoverage.start(since, System.currentTimeMillis() / 1000 + 60)
+                val state = if (old != null) {
+                  val pending = old.pending.filter { it.until >= since }
+                  val incomplete = old.incomplete.filter { it.until >= since }
+                  if (pending.isNotEmpty()) HistoryCoverage(pending, incomplete)
+                  else freshStart.copy(incomplete = incomplete)
+                } else freshStart
                 val result = scanHistory(state, query = { window ->
                   lease.check(db)
                   runInterruptible { relays.subscribe(url, receiverPubkey, window.since, listOf(WRAP_KIND), 10, seckey, window.until, window.limit) }
@@ -162,7 +171,7 @@ class ReaderSyncSession(private val applicationContext: Context) {
                     db.historyCoverage().put(com.reader.app.data.HistoryCoverageEntity(ch.channelId, url, Json.encodeToString(next)))
                   }
                 })
-                if (result.pending.isNotEmpty() || result.incomplete.isNotEmpty()) receiveFailed = true
+                if (result.pending.isNotEmpty() || result.incomplete.isNotEmpty()) coverageIncomplete = true
               } catch (error: CancellationException) { throw error }
               catch (_: Exception) { receiveFailed = true }
             } }.awaitAll()
@@ -198,7 +207,15 @@ class ReaderSyncSession(private val applicationContext: Context) {
           } finally { lease.close() }
         }
       }
-      recordHealth(if (receiveFailed) "Some relay connections or incoming transfers could not be completed. Reader will retry." else null)
+      // Incomplete history coverage (budget-limited, not failed) is health
+      // info, not a transport failure: it resumes on the next periodic run
+      // without busy-looping retry. Only transport/ACK failures retry now.
+      val healthMessage = when {
+        receiveFailed -> "Some relay connections or incoming transfers could not be completed. Reader will retry."
+        coverageIncomplete -> "History coverage is incomplete and will resume on the next sync."
+        else -> null
+      }
+      recordHealth(healthMessage)
       syncNeedsRetry(pairingRetryNeeded, ackRetryNeeded) || receiveFailed
     } catch (error: CancellationException) {
       throw error

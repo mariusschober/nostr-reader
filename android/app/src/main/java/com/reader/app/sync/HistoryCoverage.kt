@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
 /** A checkpoint follows durable consumption, never receipt into a memory queue. */
 internal suspend fun <T> scanHistory(
   initial: HistoryCoverage,
-  budget: Int = 2,
+  budget: Int = 4,
   query: suspend (HistoryWindow) -> List<T>,
   consume: suspend (T) -> Unit,
   checkpoint: suspend (HistoryCoverage) -> Unit,

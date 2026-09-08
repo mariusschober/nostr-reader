@@ -1,4 +1,4 @@
-> Current hardening candidate: see [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) and [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). Results below describe their recorded checkpoints.
+> Current hardening: see [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) records the prior candidate checkpoint (Room v9, Chrome 136, Android 118). Finalization on `codex/reliability-finalize` moves to Room v10, Chrome 140, Android 120 unit tests with host gates passing; device validation of the new packages is NOT MEASURED here. Results below describe their recorded checkpoints.
 
 # Known limitations — 0.9.0-beta.1 candidate
 

@@ -89,11 +89,16 @@ Version 1 pairings are marked repair-required, not silently trusted under v2.
 ## Reliability-cycle additions
 
 - Permanent deletion is a local disposition of completed transfers, not a permanent
-  ban on a content hash. Durable commit proof permits historical receipts without
-  reconstructing deleted content.
+  ban on a content hash. Durable commit proof (Room v10 binds byte hash + chunk
+  count; conflicting same-ID payloads are rejected, never ACKed) permits historical
+  receipts without reconstructing deleted content.
 - Stored Android trust is revalidated against its key and relay digest. Revocable
-  channel jobs and transaction-time checks prevent new effects from obsolete leases.
-- Pending selection journals and legacy Chrome recovery-library rows are local
-  plaintext with explicit ownership; endpoint compromise can expose them.
+  channel jobs (bounded recent-revocation set) and transaction-time checks prevent
+  new effects from obsolete leases.
+- Pending selection journals (poison quarantined to `.bad`, identical retry does
+  not bump revisions) and legacy Chrome recovery-library rows are local
+  plaintext with explicit ownership; endpoint compromise can expose them. Chrome
+  dedupe tombstones are bounded and report terminal status truthfully.
 - Exported plaintext leaves the app at a user-chosen destination. Checksums detect
   incomplete/corrupt export components; they do not provide encryption or restoration.
+  Export is single-flight; a large coherent snapshot can delay writers.

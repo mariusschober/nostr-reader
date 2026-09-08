@@ -11,9 +11,18 @@ import kotlinx.serialization.json.*
 /** Each authenticated channel snapshot owns cancellable network work. */
 internal class ChannelLease(private val snapshot: ChannelEntity, private val job: Job) {
   companion object {
-    private val revoked = mutableSetOf<String>()
+    // Recently-revoked IDs for instant-cancel of late acquires. Bounded FIFO:
+    // channelIds are random, reuse is negligible, but an unbounded set would
+    // leak and permanently ban a reused ID. Cap at 128 recent revocations.
+    private const val MAX_REVOKED = 128
+    private val revoked: LinkedHashMap<String, Unit> = object : LinkedHashMap<String, Unit>(128, 0.75f, true) {
+      override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Unit>?): Boolean = size > MAX_REVOKED
+    }
     private val owners = mutableMapOf<String, MutableSet<ChannelLease>>()
-    @Synchronized fun revoke(id: String) { revoked += id; owners.remove(id)?.forEach { it.job.cancel(CancellationException("Channel revoked")) } }
+    @Synchronized fun revoke(id: String) {
+      revoked[id] = Unit
+      owners.remove(id)?.forEach { it.job.cancel(CancellationException("Channel revoked")) }
+    }
     @Synchronized fun acquire(channel: ChannelEntity, job: Job): ChannelLease = ChannelLease(channel, job).also {
       if (channel.channelId in revoked) job.cancel(CancellationException("Channel revoked"))
       else owners.getOrPut(channel.channelId) { mutableSetOf() }.add(it)
