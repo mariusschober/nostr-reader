@@ -103,3 +103,22 @@ Valid Reader v2 gzip bytes remain compatible. Concatenated gzip members and
 arbitrary bytes after a valid member were never part of the one-member wire
 contract; inputs that older convenience decoders accidentally accepted now
 fail closed on every runtime.
+
+## Current beta schema and upgrade (8 September 2026)
+
+The current database is Room v8. The v5→v6 migration adds the bounded ACK refresh
+counter. The v6→v7 migration moves article bodies to bounded content parts and adds
+a summary index. The v7→v8 migration adds durable highlights/review and sync-health
+storage. Existing documents, triage, progress,
+channel identity and preferences are preserved; no destructive fallback is used.
+Seven physical storage/migration/gzip checks passed on TCL (`tcl-storage-migration-tests.log`).
+The final owner upgrade uses versionCode 2 / versionName 0.9.0-beta.1. Before app
+startup, database/WAL, key-store preference file and DataStore file fingerprints
+were identical across installation. Matching final instrumentation opened the
+preserved database and passed SQLite integrity checking. This is scoped upgrade
+proof, not a restore-from-backup test. Downgrade to a pre-v8 build is unsupported.
+
+Article Markdown and highlight JSONL exports are one-way user-readable exports.
+Quotes include semantic/version/context anchors and review metadata; channel
+private keys and pairing bootstrap secrets are excluded. Import/restore of an
+export and exact review queue restoration are not implemented.

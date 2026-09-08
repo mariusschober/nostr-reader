@@ -1,0 +1,9 @@
+{
+  "com.reader.app": {
+    "installedSha256": "4536ab0387ec9cc2f439cacec4e42c72f7e801a6177c8e40a1efcb12ce4b6b07"
+  },
+  "com.reader.app.test": {
+    "installedSha256": "d9fcda548d914c36ed33c61ad9b0f221adc64890dfec64af70297b4c3940e3a1"
+  },
+  "ownerStorageFilesByteIdenticalAcrossInstall": true
+}

@@ -1,0 +1,45 @@
+{
+  "at": "2026-09-08T11:34:36.218Z",
+  "chromeSource": "19e8394",
+  "manualRetryAfterCooldown": true,
+  "android": {
+    "activeChannels": 1,
+    "channels": [
+      {
+        "receiverPubkey": "4b53dfe99fbb4c1877b9f7ae5e515db4e83821e00e19db4767d1b9a71661f738",
+        "senderPubkey": "efdbf951fb7750d0d0e968cbeefb5c5519cd09b0927c8027346880a39d566b93",
+        "sessionId": "3dc5bc7ec26a159b7ba3dc2cee3f3728",
+        "relayDigest": "40a19d37175f5f24bbcd1c8423ab28898af20dddb490e451db2db8531a3917f0"
+      }
+    ],
+    "documentCount": 21,
+    "documents": [
+      {
+        "documentId": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "stored": true,
+        "sha256": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "bytes": 328,
+        "list": "inbox",
+        "progressBlockId": "b1",
+        "progressCharOffset": 44
+      }
+    ],
+    "acks": [
+      {
+        "transferId": "bce78570f95649d3f2611f2a8ed6a781",
+        "documentId": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "attempts": 2,
+        "refreshes": 1,
+        "quorumComplete": true,
+        "status": "duplicate"
+      }
+    ]
+  },
+  "receipt": {
+    "deliveredAt": 1788867216,
+    "sourceUrl": "https://chatgpt.com/c/reader-qa",
+    "title": "Reader synthetic recovery case - ChatGPT",
+    "transferId": "bce78570f95649d3f2611f2a8ed6a781"
+  },
+  "passed": true
+}

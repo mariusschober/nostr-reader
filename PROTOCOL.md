@@ -282,3 +282,13 @@ lacked authenticated two-endpoint completion and used incompatible compression
 and routing behavior. Migration preserves documents, marks old channels
 `legacy_repair_required`, and requires reset/re-pair. The historical v1 vector
 is retained only as migration evidence; it is not a v2 acceptance vector.
+
+## Beta 0.9.0 receipt retry clarification
+
+Relay publication checkpoints are not device receipts. Normal resumable publication
+reuses an accepted fragment for up to 15 minutes. An explicit Retry while awaiting
+the device now sends a freshly encrypted manifest wrapper even when that manifest
+has a recent accepted checkpoint; accepted chunks remain reusable. This fresh,
+authenticated same-transfer demand lets Android reissue a lost completed receipt
+subject to its five-minute cooldown and maximum eight refreshes. It does not mint
+a new document identity, bypass ACK binding, or treat relay OK as delivered.

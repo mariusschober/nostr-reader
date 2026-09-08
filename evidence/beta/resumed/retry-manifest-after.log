@@ -1,0 +1,9 @@
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  12:32:20
+   Duration  173ms (tests 63%, transform 24%, import 9%, worker 3%, environment 1%)
+

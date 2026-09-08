@@ -1,0 +1,102 @@
+{
+  "at": "2026-09-08T11:22:18.425Z",
+  "android": {
+    "activeChannels": 1,
+    "channels": [
+      {
+        "receiverPubkey": "4b53dfe99fbb4c1877b9f7ae5e515db4e83821e00e19db4767d1b9a71661f738",
+        "senderPubkey": "efdbf951fb7750d0d0e968cbeefb5c5519cd09b0927c8027346880a39d566b93",
+        "sessionId": "3dc5bc7ec26a159b7ba3dc2cee3f3728",
+        "relayDigest": "40a19d37175f5f24bbcd1c8423ab28898af20dddb490e451db2db8531a3917f0"
+      }
+    ],
+    "documentCount": 21,
+    "documents": [
+      {
+        "documentId": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "stored": true,
+        "sha256": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "bytes": 328,
+        "list": "inbox",
+        "progressBlockId": "b0",
+        "progressCharOffset": 0
+      }
+    ],
+    "acks": [
+      {
+        "transferId": "bce78570f95649d3f2611f2a8ed6a781",
+        "documentId": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "attempts": 1,
+        "refreshes": 0,
+        "quorumComplete": true,
+        "status": "duplicate"
+      }
+    ]
+  },
+  "relay": {
+    "connects": 492,
+    "peakConnections": 18,
+    "bytesIn": 494339,
+    "bytesOut": 5781554,
+    "publications": 126,
+    "subscriptions": 402,
+    "invalidEvents": 0,
+    "activeConnections": 6,
+    "relays": [
+      {
+        "name": "nos.lol",
+        "retainedEvents": 20,
+        "retainedBytes": 66684,
+        "policy": {
+          "offline": false,
+          "dropRecipients": 1
+        }
+      },
+      {
+        "name": "relay.primal.net",
+        "retainedEvents": 20,
+        "retainedBytes": 66684,
+        "policy": {
+          "offline": false,
+          "dropRecipients": 1
+        }
+      },
+      {
+        "name": "relay.nostr.net",
+        "retainedEvents": 20,
+        "retainedBytes": 66684,
+        "policy": {
+          "offline": false,
+          "dropRecipients": 1
+        }
+      },
+      {
+        "name": "nostr.oxtr.dev",
+        "retainedEvents": 20,
+        "retainedBytes": 66684,
+        "policy": {
+          "offline": false,
+          "dropRecipients": 1
+        }
+      },
+      {
+        "name": "offchain.pub",
+        "retainedEvents": 20,
+        "retainedBytes": 66684,
+        "policy": {
+          "offline": false,
+          "dropRecipients": 1
+        }
+      },
+      {
+        "name": "nostr-pub.wellorder.net",
+        "retainedEvents": 20,
+        "retainedBytes": 66684,
+        "policy": {
+          "offline": false,
+          "dropRecipients": 1
+        }
+      }
+    ]
+  }
+}

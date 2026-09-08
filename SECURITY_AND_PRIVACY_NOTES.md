@@ -112,3 +112,20 @@ All live relay operations used generated disposable keys and synthetic public
 test text. No release, store upload, deployment, merge, push, production
 signing key, or real user identity was used. The APK is debug-signed and the
 Chrome ZIP is an unpacked/developer artifact only.
+
+## Beta candidate evidence boundary — 8 September 2026
+
+The current artifacts and source-site acceptance are indexed in `ARTIFACTS.json`
+and `docs/beta/SOURCE_SUPPORT_MATRIX.md`. The active native reader renders image descriptions as text without fetching
+remote image URLs. No image opt-in control is claimed. Synthetic relay fixtures use
+isolated QA identities and local TLS routing; their certificates, profiles and
+control tokens are excluded from Git. Committed evidence contains hashes and
+non-secret synthetic transport summaries. Owner storage fingerprints and raw
+screenshots/traces remain local. The final in-place upgrade retained byte-identical
+database/WAL, key preference and DataStore files before first startup.
+
+Current npm audit found zero vulnerabilities including development dependencies.
+This does not certify Android dependencies, live signers or provider DOMs. Quote
+sharing emits only the quote as text/plain, without subject, URL or stream; exact
+local receiver checks cover Unicode and line breaks. Exports exclude channel keys
+and are not restorable backups. No telemetry/backend or store publication was added.

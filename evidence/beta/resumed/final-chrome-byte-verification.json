@@ -1,0 +1,22 @@
+{
+  "zipSha256": "a2e4ce57587450b92695d080782df524a1a4a2f226540ab0a63aa298a8b66646",
+  "zipUnpackedAndLoadedFilesIdentical": true,
+  "files": {
+    "assets/theme-B1hBejmL.css": "040555e5004c08308926668cd61634fedea7223deebe6130633ca3da9794130b",
+    "background.js": "dc6c7a2583677e797a9715ecf594328d1291228351fd1b4af904c2d577945206",
+    "content.js": "20ef62abb98a764909d3898fd34f142b1f5659d1825409dd0abc84b5980910da",
+    "icons/icon128.png": "8747858d0fde135a7e5614f222cf0d1a8a3874b9e9aaf53ef2d0e22368e87dc4",
+    "icons/icon16.png": "1a55cfa6b68862c72d2a405d3ff1a8cf73348ba91fc9c0e1d4bb6ee7b5792bce",
+    "icons/icon32.png": "1fc5e85cb6c462ce33e89dbd9c1603454fe139b2652d3578ffcc60dc79eba312",
+    "icons/icon48.png": "50919e807eb36869986125939d2ea6862508006fe92abb82e2e08e3c228b9bea",
+    "manifest.json": "6f5c224adaa33d5001bd812f90b065bf19085195663516549ed9a7a9e7e8abbc",
+    "options.js": "2be4cba03aa48beb179b0ee13ea9ce6f7fc575245a1090e8b5eed6518b8f6bb3",
+    "pairing.js": "2b0f93b0f42db818fde619710a58386c1112770fb6f43b342f45500f3bf4f8c7",
+    "popup.js": "57bb6b2502d893920913248d861ad7089fe32383936f22cf477d85832979ab35",
+    "rolldown-runtime-DC62tzP2.js": "f74ce63fe4684f55be3ea69da3a4528da464f9d5f63cda903b76eb13e92d1954",
+    "src/ui/options.html": "2577494bb95da5492e2bd32109f3e3cc675560968ee93529b019fe3d6a2b495f",
+    "src/ui/pairing.html": "db58ae2238354daf9ff1cba5cdfc49522a1b35c253d66b0225755d11060bf96a",
+    "src/ui/popup.html": "a3aa3ae1a5db73632e07d44d15036616c54cc0775bdcd081d026ee58efccb1da",
+    "theme-C8qsnVx4.js": "5f074422673fc79aead00891785486d498665373430502ef710bf4019554d6d1"
+  }
+}

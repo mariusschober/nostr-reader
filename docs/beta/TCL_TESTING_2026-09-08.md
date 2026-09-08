@@ -1,6 +1,6 @@
 # TCL testing resumed — 2026-09-08
 
-Testing resumed at the owner's request after the pre-campaign pause. This is an interim report, not beta acceptance.
+Historical execution detail. Current candidate status and exact artifact boundaries are in [BETA_TEST_REPORT.md](../../BETA_TEST_REPORT.md).
 
 ## Bugs found and corrected
 
@@ -36,3 +36,7 @@ A single large-article run passed (`native-large-viewport-tcl-20.log`, 56.427 se
 On 2026-09-08 the owner requested minimal testing and no repetition of successful checks. Subsequent work reuses scoped passing evidence and performs only still-unverified scenarios. The original repeated 20/50-count campaigns are not claimed complete.
 
 Process-death restoration, remaining theme/accessibility and TTS/lifecycle checks, available provider acceptance and focused end-to-end recovery checks remain open. No final release or reliability acceptance is claimed. The main app and paired owner profile retain their data and keys; destructive faults belong only in the isolated QA app/profile.
+
+## Final focused checks
+
+TTS/theme lifecycle passed (`remaining-lifecycle-tcl-23.log`), followed by one settled system-bar check (`system-bars-tcl-24.log`). Final normal APK/test installation and one read-only integrity test passed with byte-identical owner storage files across installation. Controlled delivery/lost-receipt recovery and the explicit Retry fix are reported in BETA_TEST_REPORT.md. No successful broad tests were repeated. Original count-based campaigns and other unmeasured matrices remain unclaimed.

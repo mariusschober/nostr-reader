@@ -1,0 +1,14 @@
+{
+  "activeChannels": 1,
+  "channels": [
+    {
+      "receiverPubkey": "4b53dfe99fbb4c1877b9f7ae5e515db4e83821e00e19db4767d1b9a71661f738",
+      "senderPubkey": "efdbf951fb7750d0d0e968cbeefb5c5519cd09b0927c8027346880a39d566b93",
+      "sessionId": "3dc5bc7ec26a159b7ba3dc2cee3f3728",
+      "relayDigest": "40a19d37175f5f24bbcd1c8423ab28898af20dddb490e451db2db8531a3917f0"
+    }
+  ],
+  "documentCount": 17,
+  "documents": [],
+  "acks": []
+}

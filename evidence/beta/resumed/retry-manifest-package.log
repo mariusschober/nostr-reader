@@ -1,0 +1,19 @@
+Archive:  /Users/schober/Projects/Nostr Reader/artifacts/beta-0.9.0-beta.1/reader-chrome-0.9.0-beta.1.zip
+    testing: assets/theme-B1hBejmL.css   OK
+    testing: background.js            OK
+    testing: content.js               OK
+    testing: icons/icon128.png        OK
+    testing: icons/icon16.png         OK
+    testing: icons/icon32.png         OK
+    testing: icons/icon48.png         OK
+    testing: manifest.json            OK
+    testing: options.js               OK
+    testing: pairing.js               OK
+    testing: popup.js                 OK
+    testing: rolldown-runtime-DC62tzP2.js   OK
+    testing: src/ui/options.html      OK
+    testing: src/ui/pairing.html      OK
+    testing: src/ui/popup.html        OK
+    testing: theme-C8qsnVx4.js        OK
+No errors detected in compressed data of /Users/schober/Projects/Nostr Reader/artifacts/beta-0.9.0-beta.1/reader-chrome-0.9.0-beta.1.zip.
+a2e4ce57587450b92695d080782df524a1a4a2f226540ab0a63aa298a8b66646  /Users/schober/Projects/Nostr Reader/artifacts/beta-0.9.0-beta.1/reader-chrome-0.9.0-beta.1.zip

@@ -1,6 +1,9 @@
 # Beta execution ledger
 
-Started 2026-09-05. Requested target: 0.9.0-beta.1; not yet beta ready.
+Started 2026-09-05. Current target delivered: 0.9.0-beta.1 candidate with limits.
+
+**Current status:** BETA_TEST_REPORT.md, BETA_AUDIT_RESOLUTION.md and ARTIFACTS.json
+supersede all historical checkpoint statuses below. The earlier chronology is retained.
 
 ## Resumed execution — 8 September 2026
 
@@ -90,26 +93,12 @@ R07/R10–R15: TODO. R18: IN PROGRESS. Final campaigns: NOT MEASURED.
 
 | ID | Required scope | Status | Evidence |
 |---|---|---|---|
-| R01 | durable due-time scheduling across worker restarts | IN PROGRESS | repeated top-level alarm replacement confirmed in source |
-| R02 | truthful durable capture feedback | TODO | |
-| R03 | bounded streaming and typed receive failure | TODO | |
-| R04 | bounded resumable ACK history coverage | TODO | |
-| R05 | bounded ACK refresh after completed-quorum loss | TODO | |
-| R06 | authoritative literal short selection | TODO | |
-| R07 | resilient scoped provider adapters/live sites | TODO | |
-| R08 | resumable fragment publication, short locks | TODO | |
-| R09 | visible-app arrival-driven receiving | TODO | |
-| R10 | semantic cursor and restoration | TODO | |
-| R11 | end-to-end tables/code/list fidelity | TODO | |
-| R12 | lightweight lists/background parsing | TODO | |
-| R13 | discoverable settings/per-item recovery | TODO | |
-| R14 | active TTS speed and stale callbacks | TODO | |
-| R15 | theme/inbox/highlight/share/review/migration | TODO | |
-| R16 | profile/crypto/dependency assurance | TODO | |
-| R17 | executable orchestration/crash tests | IN PROGRESS | |
-| R18 | final package/privacy/compatibility evidence | TODO | |
+| R01–R18 | Current dispositions supersede historical TODOs | See BETA_AUDIT_RESOLUTION.md | BETA_TEST_REPORT.md and ARTIFACTS.json |
 
-Final physical campaigns and exact-package E2E: NOT MEASURED. No earlier build result counts toward final acceptance.
+Current candidate status: scoped physical and controlled-relay checks completed;
+original repeated campaigns NOT MEASURED under the owner's minimal-testing instruction.
+Exact final owner app/test installation and integrity PASS. Final Retry recovery PASS.
+Relocated clean Android build succeeds but app byte reproducibility FAIL.
 
 ## Decisions
 

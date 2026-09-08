@@ -1,0 +1,389 @@
+[
+  {
+    "path": "evidence/beta/resumed/camera-denied-2.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/camera-fresh-1.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/camera-fresh-2.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/controlled-tcl-campaign-1.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/core-tcl-instrumentation-1.log",
+    "reportedOkTestCounts": [
+      13
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/final-owner-instrumentation.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/large-storage-failure-first.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/native-large-viewport-tcl-20.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/native-selection-spike-1.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/native-selection-spike-2.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/native-viewport-review-tcl-19.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/native-viewport-tcl-18.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-flow-tcl-1.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-flow-tcl-2.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-flow-tcl-3.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-flow-tcl-4.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-flow-tcl-5.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-flow-tcl-native-fix.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-flow-tcl-standard-layout.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-handles-review-tcl-17.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-handles-tcl-13.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-handles-tcl-16.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-10.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-11.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 2,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-2.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-3.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-4.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-5.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-7.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-8.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl-9.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-review-tcl.log",
+    "reportedOkTestCounts": [],
+    "reportedFailures": [
+      {
+        "testsRun": 1,
+        "failures": 1
+      }
+    ],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/reader-unicode-tcl-12.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/remaining-lifecycle-tcl-23.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/system-bars-tcl-24.log",
+    "reportedOkTestCounts": [
+      1
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  },
+  {
+    "path": "evidence/beta/resumed/tcl-storage-migration-tests.log",
+    "reportedOkTestCounts": [
+      7
+    ],
+    "reportedFailures": [],
+    "instrumentationFailed": false,
+    "scope": "Invocation inventory only; opt-in helpers may be skipped. See narrative for assertion-bearing scope."
+  }
+]

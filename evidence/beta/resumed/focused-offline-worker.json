@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-08T11:19:06.766Z",
+  "items": [
+    {
+      "transferId": "bce78570f95649d3f2611f2a8ed6a781",
+      "documentId": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+      "status": "queued",
+      "attemptCount": 2,
+      "nextAttemptAt": 1788866358
+    }
+  ],
+  "workerTarget": "511F4E74041C7D7DE73E7DB069F66D03",
+  "closed": {
+    "success": true
+  }
+}

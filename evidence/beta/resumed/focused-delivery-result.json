@@ -1,0 +1,98 @@
+{
+  "captureCount": 5,
+  "uniqueDocuments": 4,
+  "allHashesMatch": true,
+  "allAcksQuorumComplete": true,
+  "android": {
+    "activeChannels": 1,
+    "channels": [
+      {
+        "receiverPubkey": "4b53dfe99fbb4c1877b9f7ae5e515db4e83821e00e19db4767d1b9a71661f738",
+        "senderPubkey": "efdbf951fb7750d0d0e968cbeefb5c5519cd09b0927c8027346880a39d566b93",
+        "sessionId": "3dc5bc7ec26a159b7ba3dc2cee3f3728",
+        "relayDigest": "40a19d37175f5f24bbcd1c8423ab28898af20dddb490e451db2db8531a3917f0"
+      }
+    ],
+    "documentCount": 21,
+    "documents": [
+      {
+        "documentId": "2f2cb77cfe811bc2a58b98f87346013f4f76619d9574fee52172608396a043a1",
+        "stored": true,
+        "sha256": "2f2cb77cfe811bc2a58b98f87346013f4f76619d9574fee52172608396a043a1",
+        "bytes": 334,
+        "list": "inbox",
+        "progressBlockId": "b0",
+        "progressCharOffset": 0
+      },
+      {
+        "documentId": "8ab6469c65d6a95cf0260a9b0789b71811f38f5e7e80e99285493000c631df23",
+        "stored": true,
+        "sha256": "8ab6469c65d6a95cf0260a9b0789b71811f38f5e7e80e99285493000c631df23",
+        "bytes": 279,
+        "list": "inbox",
+        "progressBlockId": "b0",
+        "progressCharOffset": 0
+      },
+      {
+        "documentId": "f787a1c95035a090f85164e501fdb213baddf62edbd63082add4db38c9b8e36b",
+        "stored": true,
+        "sha256": "f787a1c95035a090f85164e501fdb213baddf62edbd63082add4db38c9b8e36b",
+        "bytes": 313,
+        "list": "inbox",
+        "progressBlockId": "b0",
+        "progressCharOffset": 0
+      },
+      {
+        "documentId": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "stored": true,
+        "sha256": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "bytes": 328,
+        "list": "inbox",
+        "progressBlockId": "b0",
+        "progressCharOffset": 0
+      }
+    ],
+    "acks": [
+      {
+        "transferId": "ad19ca79c23a4297091d3428d1446c84",
+        "documentId": "2f2cb77cfe811bc2a58b98f87346013f4f76619d9574fee52172608396a043a1",
+        "attempts": 1,
+        "refreshes": 0,
+        "quorumComplete": true,
+        "status": "stored"
+      },
+      {
+        "transferId": "13b663404ff4c83032da5e6eeda4ccf9",
+        "documentId": "8ab6469c65d6a95cf0260a9b0789b71811f38f5e7e80e99285493000c631df23",
+        "attempts": 1,
+        "refreshes": 0,
+        "quorumComplete": true,
+        "status": "stored"
+      },
+      {
+        "transferId": "3fabe620f6169976978586ef7a72e386",
+        "documentId": "f787a1c95035a090f85164e501fdb213baddf62edbd63082add4db38c9b8e36b",
+        "attempts": 1,
+        "refreshes": 0,
+        "quorumComplete": true,
+        "status": "stored"
+      },
+      {
+        "transferId": "eb38aa85a8873f2462afa7afb222748a",
+        "documentId": "f787a1c95035a090f85164e501fdb213baddf62edbd63082add4db38c9b8e36b",
+        "attempts": 1,
+        "refreshes": 0,
+        "quorumComplete": true,
+        "status": "duplicate"
+      },
+      {
+        "transferId": "1cb90b60b5fe9e4c60e855b280686e8d",
+        "documentId": "1672752cc0af5ae77658b378cb1f263cb7a33539f98d83b1e8f327621bc09beb",
+        "attempts": 1,
+        "refreshes": 0,
+        "quorumComplete": true,
+        "status": "stored"
+      }
+    ]
+  }
+}

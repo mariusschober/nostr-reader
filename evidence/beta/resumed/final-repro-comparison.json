@@ -1,0 +1,15 @@
+{
+  "app": {
+    "onlyA": [],
+    "onlyB": [],
+    "different": [
+      "classes7.dex",
+      "classes8.dex"
+    ]
+  },
+  "test": {
+    "onlyA": [],
+    "onlyB": [],
+    "different": []
+  }
+}

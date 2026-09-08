@@ -1,0 +1,99 @@
+{
+  "version": "0.9.0-beta.1",
+  "status": "candidate-with-documented-limitations",
+  "date": "2026-09-08",
+  "branch": "codex/reader-0.9-beta",
+  "androidSourceCommit": "a4b378218aefa38e8551f41a5b403fedf77b0775",
+  "chromeSourceCommit": "19e839490f72fbeaa24e1e60365bde6db3ec9db5",
+  "documentationCommit": "Resolve repository HEAD; documentation does not contain its own future commit hash.",
+  "toolVersions": {
+    "node": "22.16.0",
+    "npm": "10.9.2",
+    "gradle": "8.9",
+    "jdk": "Eclipse Adoptium 17.0.19+10",
+    "macOS": "26.6.2 arm64",
+    "chromeForTesting": "151.0.7922.34",
+    "swift": "6.3.3",
+    "rust": "1.97.1"
+  },
+  "files": {
+    "reader-0.9.0-beta.1-test.apk": {
+      "path": "artifacts/beta-0.9.0-beta.1/reader-0.9.0-beta.1-test.apk",
+      "sha256": "d9fcda548d914c36ed33c61ad9b0f221adc64890dfec64af70297b4c3940e3a1",
+      "bytes": 601805
+    },
+    "reader-qa-0.9.0-beta.1-test.apk": {
+      "path": "artifacts/beta-0.9.0-beta.1/reader-qa-0.9.0-beta.1-test.apk",
+      "sha256": "ec8e5274acedfe98324abc1e2beef6b05188af089ae21ed47c67debaab1c1d36",
+      "bytes": 668244
+    },
+    "reader-0.9.0-beta.1.apk": {
+      "path": "artifacts/beta-0.9.0-beta.1/reader-0.9.0-beta.1.apk",
+      "sha256": "4536ab0387ec9cc2f439cacec4e42c72f7e801a6177c8e40a1efcb12ce4b6b07",
+      "bytes": 27980047
+    },
+    "reader-qa-0.9.0-beta.1.apk": {
+      "path": "artifacts/beta-0.9.0-beta.1/reader-qa-0.9.0-beta.1.apk",
+      "sha256": "4ea56fa0cd9bd488d6c967580c60c91481e616c848840cccfedff216afc46cb1",
+      "bytes": 28235242
+    },
+    "reader-chrome-0.9.0-beta.1.zip": {
+      "path": "artifacts/beta-0.9.0-beta.1/reader-chrome-0.9.0-beta.1.zip",
+      "sha256": "a2e4ce57587450b92695d080782df524a1a4a2f226540ab0a63aa298a8b66646",
+      "bytes": 271828
+    }
+  },
+  "android": {
+    "package": "com.reader.app",
+    "testPackage": "com.reader.app.test",
+    "runner": "com.reader.app.QaTestRunner",
+    "versionCode": 2,
+    "versionName": "0.9.0-beta.1",
+    "signature": "Android debug signing; not store signing",
+    "certificateSha256": "3af50cab6e0515f478413e79786958671913b2cae67037defe537bb1e7465069",
+    "device": "TCL T807D",
+    "androidVersion": "16",
+    "api": 36,
+    "installedAppAndTestHashesVerified": true,
+    "ownerStorageFilesByteIdenticalAcrossInstall": true,
+    "finalHashInstrumentation": {
+      "result": "PASS",
+      "tests": 1,
+      "class": "InstalledBetaInstrumentedTest",
+      "scope": "Installed version, preserved DB open and SQLite integrity; no synthetic owner data writes",
+      "evidence": "evidence/beta/resumed/final-owner-instrumentation.log"
+    },
+    "qa": {
+      "package": "com.reader.app.qa",
+      "testPackage": "com.reader.app.qa.test",
+      "app": "reader-qa-0.9.0-beta.1.apk",
+      "test": "reader-qa-0.9.0-beta.1-test.apk",
+      "scope": "Exact QA app/test-24 pair passed settled system bars and controlled delivery controller. Earlier same-app test-23 passed TTS/theme lifecycle. Earlier viewport build passed handles/review/performance; not repeated.",
+      "testSourceBoundary": "Test-24 predates a4b3782 final owner integrity test addition and QA guard; production app sources match a4b3782."
+    },
+    "reproducibility": {
+      "freshSourceBuild": "PASS",
+      "appByteIdentity": "FAIL across relocated clean export; classes7.dex and classes8.dex differ",
+      "testEntriesIdentity": "PASS: every test APK entry matches",
+      "evidence": "evidence/beta/resumed/final-repro-comparison.json",
+      "acceptedArtifact": "Incremental app whose installed hash and matching instrumentation were verified; clean-export app is not substituted"
+    }
+  },
+  "chrome": {
+    "manifestVersion": "0.9.0",
+    "versionName": "0.9.0-beta.1",
+    "unpackedPath": "artifacts/beta-0.9.0-beta.1/chrome-unpacked",
+    "loadedBytesMatchZip": true,
+    "testedBrowser": "Chrome for Testing 151.0.7922.34",
+    "minimumBrowserQualification": "Not measured; use the tested version or newer. No minimum_chrome_version is declared.",
+    "focusedFixedRecovery": "PASS one same-transfer manifest retry, one ACK refresh, authenticated delivery; evidence/beta/resumed/focused-lost-ack-fixed.json",
+    "reproducibility": "Earlier v6 source/build and deterministic ZIP reproduction passed. Final ZIP/extracted/loaded bytes match; no full repeated suite after narrow retry fix."
+  },
+  "reports": [
+    "BETA_TEST_REPORT.md",
+    "BETA_AUDIT_RESOLUTION.md",
+    "KNOWN_LIMITATIONS.md",
+    "docs/beta/SOURCE_SUPPORT_MATRIX.md"
+  ],
+  "publication": "Not merged, published to a store or deployed. Local artifacts only."
+}

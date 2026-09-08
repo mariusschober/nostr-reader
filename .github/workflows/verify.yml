@@ -1,0 +1,37 @@
+name: Verify Reader
+# Manual during beta qualification so pushing documentation does not rerun
+# already-passing campaigns. Physical and authenticated-site checks stay separate.
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  chrome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: chrome/package-lock.json
+      - run: npm ci && npm run typecheck && npm test && npm run build
+        working-directory: chrome
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: ./gradlew --no-daemon test lint assembleDebug assembleDebugAndroidTest
+        working-directory: android
+  references:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test --locked
+        working-directory: rust-core
+      - run: swift test
+        working-directory: mac

@@ -1,0 +1,36 @@
+
+ RUN  v5.0.0 /Users/schober/Projects/Nostr Reader/chrome
+
+ ❯ tests/resumable-publisher.test.ts (5 tests | 1 failed | 4 skipped) 6ms
+   × explicit receipt recovery refreshes only the manifest despite recent relay acceptance 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/resumable-publisher.test.ts > explicit receipt recovery refreshes only the manifest despite recent relay acceptance
+AssertionError: expected [] to deeply equal [ '0:a', '0:b' ]
+
+- Expected
++ Received
+
+- [
+-   "0:a",
+-   "0:b",
+- ]
++ []
+
+ ❯ tests/resumable-publisher.test.ts:66:23
+     64|     checkpoint: async () => true,
+     65|   });
+     66|   expect(sent.sort()).toEqual(["0:a", "0:b"]);
+       |                       ^
+     67| });
+     68|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  12:32:04
+   Duration  126ms (transform 57%, import 21%, tests 15%, worker 7%)
+
