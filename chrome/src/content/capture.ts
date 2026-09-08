@@ -46,7 +46,7 @@ async function sendCapture(doc: unknown, captureId: string): Promise<void> {
   watchReceipt(captureId, response.transferId);
 }
 
-function previewUncertain(doc: Awaited<ReturnType<typeof extractGeneric>>, captureId: string): void {
+function previewUncertain(doc: Awaited<ReturnType<typeof extractGeneric>>): void {
   document.querySelector('[data-reader-ui="preview"]')?.remove();
   const host = document.createElement("div"); host.dataset.readerUi = "preview";
   const root = host.attachShadow({ mode: "closed" });
@@ -61,6 +61,9 @@ function previewUncertain(doc: Awaited<ReturnType<typeof extractGeneric>>, captu
   save.addEventListener("click", event => {
     if (!event.isTrusted) return;
     host.remove();
+    // Explicit confirmation is a new gesture. The extraction warning ended
+    // the earlier notice, so its identity cannot show saving/error/receipt.
+    const captureId = crypto.randomUUID();
     beginCapture(captureId);
     void sendCapture(doc, captureId).catch(error => feedback.update(captureId, "error", String(error)));
   });
@@ -90,7 +93,7 @@ async function captureForToolbar(selectionSnapshot?: string): Promise<void> {
     const doc = await extractGeneric(document, location.href);
     if (doc.confidence === "low") {
       feedback.update(captureId, "error", "Check the capture preview, or select the text you want.");
-      previewUncertain(doc, captureId);
+      previewUncertain(doc);
       return;
     }
     await sendCapture(doc, captureId);

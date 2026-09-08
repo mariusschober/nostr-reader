@@ -1,0 +1,19 @@
+Archive:  /Users/schober/Projects/Nostr Reader/artifacts/beta-work/testing-resume/chrome-testing-v6.zip
+    testing: assets/theme-B1hBejmL.css   OK
+    testing: background.js            OK
+    testing: content.js               OK
+    testing: icons/icon128.png        OK
+    testing: icons/icon16.png         OK
+    testing: icons/icon32.png         OK
+    testing: icons/icon48.png         OK
+    testing: manifest.json            OK
+    testing: options.js               OK
+    testing: pairing.js               OK
+    testing: popup.js                 OK
+    testing: rolldown-runtime-DC62tzP2.js   OK
+    testing: src/ui/options.html      OK
+    testing: src/ui/pairing.html      OK
+    testing: src/ui/popup.html        OK
+    testing: theme-C8qsnVx4.js        OK
+No errors detected in compressed data of /Users/schober/Projects/Nostr Reader/artifacts/beta-work/testing-resume/chrome-testing-v6.zip.
+8c195f881691f242be21b3217066245cb4284dde158b27e7acb9a3319cc0313c  /Users/schober/Projects/Nostr Reader/artifacts/beta-work/testing-resume/chrome-testing-v6.zip
