@@ -1,36 +1,43 @@
-# Install and try the beta candidate
+# Build, install, and try Reader
 
-The normal Android beta is already installed on the connected TCL with existing
-data retained. The downloadable APK, test APK and Chrome ZIP are in
-`artifacts/beta-0.9.0-beta.1/`; verify hashes with `ARTIFACTS.json`.
+Current version: **0.9.0-beta.1**, including the September 8 archive/highlighting refresh. Chrome → Android is the implemented product path. There is no store release or public binary download attached to this source checkpoint.
 
-For another Android installation, open `reader-0.9.0-beta.1.apk` and allow the
-ordinary Android installation prompt. It is debug-signed; do not uninstall an
-existing Reader just to bypass a signature mismatch. Uninstalling deletes local
-data and keys. The test APK and `reader-qa-*` files are for isolated QA, not normal
-reading. Downgrading over the current v8 database is unsupported.
+## Build and install
 
-For Chrome, unzip `reader-chrome-0.9.0-beta.1.zip` into a stable folder. In Extensions,
-enable Developer mode and choose Load unpacked for that folder. If updating an
-existing unpacked installation, retain its original folder and browser profile,
-replace the built files there and use Reload. The owner's existing paired profile
-was not updated automatically. Chrome for Testing 151.0.7922.34 was exercised;
-the minimum supported browser release has not been qualified.
+Follow the [README build instructions](../../README.md#try-reader). Chrome builds into `chrome/dist`; the ordinary Android debug APK builds into `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-Pair from Reader settings and Android Settings → Connected devices. Capture selected
-text with the Reader toolbar action or Alt+Shift+R. Provider buttons require explicit
-site access. Uncertain article extraction asks for preview confirmation.
+For Chrome, open `chrome://extensions`, enable Developer mode, and Load unpacked from `chrome/dist`. When updating an existing installation, retain its folder and browser profile, update its files, and Reload the extension to preserve its local identity and captures.
 
-“Saved” confirms local durable capture. Relay acceptance is intermediate. “Delivered”
-requires Android's authenticated storage receipt. Use the pending item's Retry or
-Export text action if recovery needs attention.
+Install Android with `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` from the repository root, or open the APK on the phone. It is debug-signed. Do not uninstall an existing Reader to bypass a signature mismatch: uninstalling removes local articles and keys. QA/test packages are not needed for ordinary reading. Downgrading over the current database is unsupported.
 
-In an article, enable Highlight and select text with the native handles. Adjust the
-range, choose a color, or Undo. Open Highlights to review saved quotes. A left swipe
-advances; a right swipe toggles importance. Source and Share return to the same
-review card. Share sends only the quote. Exports are readable files, not restorable
-backups.
+The app declares Android API 26+ and the extension declares Chrome 120+. Current device acceptance is scoped to the documented TCL Android 16 runs; declarations do not constitute qualification of all platform versions. Listen requires Google's Android speech engine to be installed and enabled.
 
-This is a candidate for a scoped trial. See `KNOWN_LIMITATIONS.md` for live-provider,
-performance, reproducibility and unmeasured reliability/device conditions. Do not
-resume repeated campaigns without a new user request.
+## Connect and capture
+
+1. Open the extension's Settings and choose **Pair a device**.
+2. In Android, open **+ → Pair Chrome**. Scan the request or use the manual paste route.
+3. Review the device fingerprint and relays, then confirm connection. Allow the authenticated handshake to finish.
+4. Select text on a permitted browser page and use the Reader toolbar, context menu, or **Alt+Shift+R**. Without a selection, Reader attempts article extraction. Uncertain extraction asks for preview confirmation.
+5. Open Reader on Android and let it catch up. Optional provider capture buttons require site permission; see the [source support matrix](SOURCE_SUPPORT_MATRIX.md).
+
+Saved locally, relay acceptance, and phone delivery are separate states. A phone receipt confirms durable storage. Background arrival depends on Android scheduling, connectivity and relay availability; reopening Reader requests catch-up. Pending captures support Retry and Export text.
+
+## Read and keep useful passages
+
+Use Inbox, Priority and Later for active articles. Appearance controls the font, size, margins and background. Listen and Speed offer speech and word-by-word reading.
+
+Enable Highlight and select text with the native handles. Saving and recoloring are silent. The article overflow menu offers **Undo highlight change**. With Highlight off, ordinary native Copy and Share remain available.
+
+Highlights offers Shuffle, Newest and Review. Review supports importance, next-card navigation, source opening where the source still exists, and quote sharing. Saved highlights survive deleting their source.
+
+## Archive and delete
+
+The archive icon beside **+** opens a separate Archive destination. Back returns to the previous main view. Article menus and swipes provide move actions.
+
+In Archive, right swipe returns an article to Inbox with Undo. Left swipe past 60% and release permanently deletes the article **without confirmation or Undo**. This works in the list and in an open archived article. A partial swipe cancels; menu alternatives are available. Deletion removes the local source, not saved quotes, previous exports or remote relay copies.
+
+## Evidence and artifacts
+
+[ARCHIVE_REFRESH.md](../../ARCHIVE_REFRESH.md) records the latest focused archive/highlight checks; [UI_REFRESH.md](../../UI_REFRESH.md) records the preceding branding, speech and dock update. [ARTIFACTS.json](../../ARTIFACTS.json) retains local build hashes and historical candidate entries. These paths are not downloadable GitHub assets: generated packages are excluded from Git.
+
+Read [KNOWN_LIMITATIONS.md](../../KNOWN_LIMITATIONS.md) for unmeasured provider, reliability, accessibility and platform conditions. Exports are readable Markdown/JSONL, not restorable backups; pairing keys are excluded.

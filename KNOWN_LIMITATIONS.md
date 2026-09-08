@@ -1,8 +1,9 @@
 # Known limitations — 0.9.0-beta.1 candidate
 
-Current evidence is in [BETA_TEST_REPORT.md](BETA_TEST_REPORT.md). The owner requested
-minimal testing without repeating successful checks. This candidate is delivered
-with the following explicit limits; older checkpoints are historical.
+Latest focused evidence is in [ARCHIVE_REFRESH.md](ARCHIVE_REFRESH.md) and
+[UI_REFRESH.md](UI_REFRESH.md). [BETA_TEST_REPORT.md](BETA_TEST_REPORT.md) records
+the preceding beta checkpoint. These limits remain unless explicitly superseded
+by a later scoped result; older checks are historical.
 
 - **NOT MEASURED:** original 20-pairing/50-delivery/20-offline/replay/worker/browser-restart campaigns, exhaustive crash timing, full Doze/reboot/battery-saver/network-switch matrix and current public-network reliability. Focused controlled-relay checks do not establish a failure rate.
 - **NOT MEASURED:** current authenticated provider UIs and optional NIP-07/Amber signers. Preview adapters remain preview; see [source matrix](docs/beta/SOURCE_SUPPORT_MATRIX.md).
