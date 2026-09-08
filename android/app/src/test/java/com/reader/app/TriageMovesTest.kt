@@ -5,6 +5,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TriageMovesTest {
+  @Test fun archivedArticleActionsAndThresholds() {
+    val action = com.reader.app.ui.ArticleAction.Companion
+    assertEquals(com.reader.app.ui.ArticleAction.Unarchive, action.forArticle(Triage.ARCHIVED, true))
+    assertEquals(com.reader.app.ui.ArticleAction.Delete, action.forArticle(Triage.ARCHIVED, false))
+    assertFalse(action.commits(com.reader.app.ui.ArticleAction.Delete, -599f, 1000f))
+    assertTrue(action.commits(com.reader.app.ui.ArticleAction.Delete, -600f, 1000f))
+    assertFalse(action.commits(com.reader.app.ui.ArticleAction.Delete, -299f, 1000f))
+    assertTrue(action.commits(com.reader.app.ui.ArticleAction.Unarchive, 300f, 1000f))
+  }
+
   @Test
   fun inboxSwipes() {
     assertEquals(Triage.PRIORITY, Triage.swipeTarget(Triage.INBOX, Triage.Swipe.RIGHT))

@@ -7,6 +7,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RouteStackTest {
+  @Test fun archiveReaderReturnsThroughArchive() {
+    val stack = RouteStack()
+    stack.push(Route.Archive); stack.push(Route.Reader("archived"))
+    assertEquals(Route.Archive, stack.pop())
+    assertEquals(Route.Inbox, stack.pop())
+  }
+
   private fun cursor() = SemanticCursor("doc", "b0", 0)
 
   @Test

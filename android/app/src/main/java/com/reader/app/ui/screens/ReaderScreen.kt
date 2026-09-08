@@ -3,6 +3,8 @@ package com.reader.app.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.activity.compose.BackHandler
@@ -221,9 +223,9 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
             ArticleFont.ATKINSON -> "Atkinson Hyperlegible"
             ArticleFont.ABEEZEE -> "ABeeZee"
           }
-          Row(Modifier.fillMaxWidth().clickable { onChange(settings.copy(font = f)) }.padding(vertical = 6.dp)) {
+          Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(selected = settings.font == f, role = Role.RadioButton, onClick = { onChange(settings.copy(font = f)) }).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(
-              selected = settings.font == f, onClick = { onChange(settings.copy(font = f)) },
+              selected = settings.font == f, onClick = null,
               colors = RadioButtonDefaults.colors(selectedColor = c.text, unselectedColor = c.secondary),
             )
             Text(label, fontFamily = fontFor(f), color = c.text)
@@ -260,7 +262,7 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
           ArticleBackground.entries.forEach { b ->
             FilterChip(
               selected = settings.background == b, onClick = { onChange(settings.copy(background = b)) },
-              label = { Text(b.name.lowercase().replaceFirstChar { it.uppercase() }, fontFamily = ReaderFonts.Ui, maxLines = 1) },
+              label = { Text(when (b) { ArticleBackground.FOLLOW_APP -> "Follow system"; ArticleBackground.PAPER -> "Paper"; ArticleBackground.SOFT -> "Soft"; ArticleBackground.INK -> "Ink"; ArticleBackground.BLACK -> "Black" }, fontFamily = ReaderFonts.Ui, maxLines = 1) },
               modifier = Modifier.padding(end = 8.dp),
               colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = c.text, selectedLabelColor = c.background,

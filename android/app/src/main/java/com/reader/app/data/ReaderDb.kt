@@ -161,6 +161,9 @@ abstract class DocumentDao {
   @Query("UPDATE documents SET list = :list, updatedAt = :now WHERE documentId = :id")
   abstract suspend fun setList(id: String, list: String, now: Long)
 
+  @Query("DELETE FROM documents WHERE documentId = :id AND list = 'archived'")
+  abstract suspend fun deleteArchivedById(id: String): Int
+
   @Query("DELETE FROM documents WHERE documentId = :id")
   abstract suspend fun deleteById(id: String)
 

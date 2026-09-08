@@ -18,7 +18,7 @@ import com.reader.app.data.HighlightEntity
 @Composable
 fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean, error: String?,
                  onBack: () -> Unit, onNext: () -> Unit, onImportant: () -> Unit,
-                 onSource: () -> Unit, onShare: () -> Unit, onRestart: () -> Unit) {
+                 sourceAvailable: Boolean = true, onSource: () -> Unit, onShare: () -> Unit, onRestart: () -> Unit) {
   BackHandler(onBack = onBack)
   Scaffold(topBar = {
     Row(Modifier.fillMaxWidth().padding(8.dp)) {
@@ -54,9 +54,10 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
             val dark = com.reader.app.ui.theme.LocalReaderDark.current
             Text(quote.quote, style = MaterialTheme.typography.headlineSmall,
               color = com.reader.app.ui.theme.HighlightColor.text(dark),
-              modifier = Modifier.background(com.reader.app.ui.theme.HighlightColor.parse(quote.color).background(dark)).clickable(onClick = onSource).padding(12.dp))
+              modifier = Modifier.background(com.reader.app.ui.theme.HighlightColor.parse(quote.color).background(dark)).clickable(enabled = sourceAvailable, onClick = onSource).padding(12.dp))
             Spacer(Modifier.height(24.dp))
-            TextButton(onClick = onSource) { Text(quote.sourceTitle.ifBlank { "Open source" }) }
+            if (!sourceAvailable) Text(quote.sourceTitle)
+            TextButton(enabled = sourceAvailable, onClick = onSource) { Text(if (sourceAvailable) quote.sourceTitle.ifBlank { "Open source" } else "Source article deleted") }
           }
           Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onImportant) { Text(if (quote.important) "★ Important" else "☆ Important") }

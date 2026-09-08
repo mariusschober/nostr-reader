@@ -34,6 +34,10 @@ class ProgressWriter(private val db: ReaderDb) {
     signals.trySend(Unit)
   }
 
+  suspend fun discard(id: String): Unit = writing.withLock {
+    synchronized(lock) { pending.remove(id) }; Unit
+  }
+
   suspend fun flush() = writing.withLock {
     val batch = synchronized(lock) { pending.toMap() }
     for ((id, value) in batch) {

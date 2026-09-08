@@ -88,6 +88,8 @@ fun SettingsScreen(
       Spacer(Modifier.height(16.dp))
       Text("About", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
       Text("Reader $version · Licenses bundled in-app", fontFamily = ReaderFonts.Ui, color = c.text)
+      TextButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/mariusschober/nostr-reader"))) }) { Text("GitHub · Source code") }
+      Text("Vision and guidance: Marius Schober\nDevelopment and implementation: AI\nOne human. Many tokens.", fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 14.sp)
       Spacer(Modifier.height(16.dp))
       TextButton(onClick = { showAdvanced = !showAdvanced }) {
         Text(if (showAdvanced) "Hide Advanced" else "Advanced", fontFamily = ReaderFonts.Ui, color = c.text)

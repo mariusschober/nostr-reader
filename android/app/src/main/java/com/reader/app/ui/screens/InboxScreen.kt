@@ -13,6 +13,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoveToInbox
+import androidx.compose.foundation.background
+import com.reader.app.ui.ArticleAction
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
@@ -55,11 +62,17 @@ fun InboxScreen(
   highlights: @Composable () -> Unit,
   readerMove: Triple<String, String, String>? = null,
   onReaderMoveConsumed: () -> Unit = {},
+  archiveMode: Boolean = false,
+  onArchiveOpen: () -> Unit = {},
+  onArchiveBack: () -> Unit = {},
+  listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
 
 ) {
   val c = appColors()
-  val tab = selectedTab
+  val tab = if (archiveMode) Triage.ARCHIVED else selectedTab
+  BackHandler(enabled = archiveMode, onBack = onArchiveBack)
   LaunchedEffect(loaded, lists[Triage.INBOX]?.size, tab) {
+    if (!archiveMode && selectedTab == Triage.ARCHIVED) onSelectTab(Triage.PRIORITY)
     if (loaded && lists[Triage.INBOX].isNullOrEmpty() && tab == Triage.INBOX) onSelectTab(Triage.PRIORITY)
   }
   var menuFor by remember { mutableStateOf<String?>(null) }
@@ -69,7 +82,7 @@ fun InboxScreen(
   val scope = rememberCoroutineScope()
   LaunchedEffect(readerMove) {
     val move = readerMove ?: return@LaunchedEffect
-    if (snackbar.showSnackbar(if (move.third == Triage.ARCHIVED) "Archived" else "Moved to Later", "Undo", withDismissAction = true,
+    if (snackbar.showSnackbar(Triage.movedLabel(move.third), "Undo", withDismissAction = true,
         duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) onUndoMove(move.first, move.second)
     onReaderMoveConsumed()
   }
@@ -85,10 +98,14 @@ fun InboxScreen(
     },
     topBar = {
       Row(Modifier.fillMaxWidth().padding(20.dp, 16.dp, 20.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Reader", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = c.text)
+        if (archiveMode) IconButton(onClick = onArchiveBack) { Icon(Icons.Default.ArrowBack, "Back") }
+        Text(if (archiveMode) "Archive" else "Reader", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = c.text)
         Spacer(Modifier.weight(1f))
         IconButton(onClick = { showAdd = true }) {
           Icon(Icons.Default.Add, contentDescription = "Import, paste, or pair", tint = c.text)
+        }
+        IconButton(onClick = onArchiveOpen, enabled = !archiveMode) {
+          Icon(Icons.Default.Archive, contentDescription = "Open archive", tint = c.text)
         }
         IconButton(onClick = onSettings) {
           Icon(Icons.Default.MoreVert, contentDescription = "Settings", tint = c.text)
@@ -97,11 +114,11 @@ fun InboxScreen(
     },
   ) { pad ->
     Column(Modifier.padding(pad)) {
-      Row(
+      if (!archiveMode) Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.Bottom,
       ) {
-        (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights", Triage.ARCHIVED).filter { it != Triage.INBOX || !loaded || !lists[Triage.INBOX].isNullOrEmpty() }).forEachIndexed { i, key ->
+        (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights").filter { it != Triage.INBOX || !loaded || !lists[Triage.INBOX].isNullOrEmpty() }).forEachIndexed { i, key ->
           if (i > 0) Spacer(Modifier.width(20.dp))
           TabText(Triage.tabLabel(key), selected = tab == key, color = c, onClick = { onSelectTab(key) })
         }
@@ -119,10 +136,12 @@ fun InboxScreen(
           Text(emptyHint(tab), fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 15.sp)
         }
       } else {
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = listState) {
           items(list, key = { it.documentId }) { d ->
             if (tab == Triage.ARCHIVED) {
-              ArticleRow(d, c, onOpen = { onOpen(d.documentId) }, onMenu = { menuFor = d.documentId })
+              ArchiveSwipeRow(d, c, onOpen = { onOpen(d.documentId) }, onMenu = { menuFor = d.documentId }, onAction = { action ->
+                if (action == ArticleAction.Delete) onDelete(d.documentId) else onUnarchive(d.documentId)
+              })
             } else {
               SwipeRow(
                 doc = d, list = tab, colors = c,
@@ -199,7 +218,7 @@ fun InboxScreen(
       },
       dismissButton = {
         TextButton(onClick = { menuFor = null; onDelete(id) }, colors = ButtonDefaults.textButtonColors(contentColor = c.error)) {
-          Text("Delete", fontFamily = ReaderFonts.Ui)
+          Text("Delete permanently", fontFamily = ReaderFonts.Ui)
         }
       },
     )
@@ -210,7 +229,7 @@ private fun emptyHint(tab: String): String = when (tab) {
   Triage.INBOX -> "Nothing here yet.\nSend something from Chrome."
   Triage.PRIORITY -> "Nothing prioritized.\nSwipe a row right in the Inbox."
   Triage.LATER -> "Nothing saved for later."
-  else -> "Nothing archived."
+  else -> "No archived articles."
 }
 
 @Composable
@@ -367,5 +386,40 @@ fun ArticleRow(
         color = c.text, trackColor = c.divider,
       )
     }
+  }
+}
+
+
+@Composable
+private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.theme.ReaderColors,
+                            onOpen: () -> Unit, onMenu: () -> Unit, onAction: (ArticleAction) -> Unit) {
+  var offset by remember(doc.documentId) { mutableFloatStateOf(0f) }
+  var dragging by remember { mutableStateOf(false) }
+  val latestAction by rememberUpdatedState(onAction)
+  BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val width = with(LocalDensity.current) { maxWidth.toPx() }
+    val action = ArticleAction.forArticle(Triage.ARCHIVED, offset > 0)!!
+    val armed = ArticleAction.commits(action, offset, width)
+    if (offset != 0f) Row(Modifier.matchParentSize().padding(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = if (offset > 0) Arrangement.Start else Arrangement.End) {
+      val tint = if (action == ArticleAction.Delete) colors.error else colors.link
+      Icon(if (action == ArticleAction.Delete) Icons.Default.Delete else Icons.Default.MoveToInbox, null, tint = tint)
+      Spacer(Modifier.width(6.dp))
+      Text(if (armed) action.releaseLabel else action.label, color = tint, fontFamily = ReaderFonts.Ui, fontSize = 13.sp)
+    }
+    Box(Modifier.offset { IntOffset(offset.roundToInt(), 0) }.background(colors.background).pointerInput(doc.documentId, width) {
+      detectHorizontalDragGestures(
+        onDragStart = { dragging = true },
+        onDragCancel = { offset = 0f; dragging = false },
+        onDragEnd = {
+          val selected = ArticleAction.forArticle(Triage.ARCHIVED, offset > 0)!!
+          val commit = ArticleAction.commits(selected, offset, width)
+          offset = 0f; dragging = false
+          if (commit) latestAction(selected)
+        },
+        onHorizontalDrag = { change, amount -> change.consume(); offset = (offset + amount).coerceIn(-width, width) },
+      )
+    }) { ArticleRow(doc, colors, onOpen = { if (!dragging) onOpen() }, onMenu = onMenu) }
   }
 }

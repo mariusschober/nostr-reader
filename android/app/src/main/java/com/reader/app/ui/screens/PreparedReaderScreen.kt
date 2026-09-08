@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.reader.app.ui.ArticleAction
 import com.reader.app.ReaderApp
 import com.reader.app.core.RenderedProjection
 import com.reader.app.core.RENDERED_PROJECTION_VERSION
@@ -38,7 +39,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          onSettingsChange: (ReaderSettings) -> Unit, onBack: () -> Unit,
                          onListen: (RenderedProjection, SemanticCursor) -> Unit,
                          onSpeedRead: (SemanticCursor) -> Unit,
-                         onLater: () -> Unit, onArchive: () -> Unit,
+                         onArticleAction: (ArticleAction) -> Unit,
                          playerVisible: Boolean = false,
                          player: @Composable () -> Unit = {}) {
   val context = LocalContext.current
@@ -107,10 +108,11 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   LaunchedEffect(actions) { activeQuote = actions.firstOrNull()?.let { db.highlights().byId(it) } }
 
   fun leave() {
+    view?.flushSelection()
     if (view?.clearSelection() == true) return
     view?.reportCursor()
     scope.launch {
-      try { app.progress.flush(); onBack() }
+      try { selections.withLock { }; app.progress.flush(); onBack() }
       catch (_: Exception) { snackbar.showSnackbar("Couldn’t save reading position. Try again.") }
     }
   }
@@ -134,8 +136,24 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         Box {
           IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More actions") }
           DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(enabled = doc?.list != com.reader.app.ui.Triage.LATER, text = { Text("Move to Later") }, leadingIcon = { Icon(Icons.Default.Schedule, null) }, onClick = { menu = false; onLater() })
-            DropdownMenuItem(enabled = doc?.list != com.reader.app.ui.Triage.ARCHIVED, text = { Text("Archive") }, leadingIcon = { Icon(Icons.Default.Archive, null) }, onClick = { menu = false; onArchive() })
+            val archived = doc?.list == com.reader.app.ui.Triage.ARCHIVED
+            val menuActions = if (archived) listOf(ArticleAction.Unarchive, ArticleAction.Delete) else listOf(ArticleAction.Later, ArticleAction.Archive)
+            menuActions.forEach { action ->
+              DropdownMenuItem(enabled = action.target == null || doc?.list != action.target,
+                text = { Text(action.label, color = if (action == ArticleAction.Delete) colors.error else colors.text) },
+                onClick = { menu = false; view?.flushSelection(); scope.launch { selections.withLock { }; onArticleAction(action) } })
+            }
+            if (undo != null) DropdownMenuItem(text = { Text("Undo highlight change") }, onClick = {
+              menu = false
+              view?.flushSelection()
+              scope.launch {
+                selections.withLock { }
+                val change = undo ?: return@launch
+                view?.clearSelection()
+                try { if (highlights.undo(change)) undo = null else snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.") }
+                catch (_: Exception) { snackbar.showSnackbar("Couldn’t undo highlight change. Try again.") }
+              }
+            })
           }
         }
       }
@@ -143,15 +161,6 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }
   }, bottomBar = {
     Column {
-      if (undo != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Highlight saved", modifier = Modifier.padding(12.dp))
-        TextButton(onClick = {
-          val change = undo ?: return@TextButton
-          view?.clearSelection()
-          undo = null
-          scope.launch { if (!highlights.undo(change)) snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.") }
-        }) { Text("Undo") }
-      }
       player()
       if (pen) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
         HighlightColor.entries.forEach { color ->
@@ -183,7 +192,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     Column(Modifier.padding(padding).fillMaxSize()) {
       if (showSwipeHint) Surface(color = colors.surface) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-          Text("Swipe inside the page: ← Archive · Later →", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+          Text(if (doc?.list == com.reader.app.ui.Triage.ARCHIVED) "Swipe inside the page: ← Delete · Unarchive →" else "Swipe inside the page: ← Archive · Later →", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
           IconButton(onClick = { showSwipeHint = false; hints.edit().putBoolean("article_swipe_seen", true).apply() }) {
             Icon(Icons.Default.Close, contentDescription = "Dismiss swipe hint", modifier = Modifier.size(18.dp))
           }
@@ -213,9 +222,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             native.display(id, ready.projection, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, false), initial)
             native.tag = styleKey
           }
-          native.allowLater = doc?.list != com.reader.app.ui.Triage.LATER
-          native.allowArchive = doc?.list != com.reader.app.ui.Triage.ARCHIVED
-          native.onArticleSwipe = { later -> if (later) onLater() else onArchive() }
+          native.deleteTint = colors.error.toArgb()
+          native.articleList = doc?.list
+          native.onArticleSwipe = onArticleAction
           native.setPenMode(pen)
           native.setMarks(nativeMarks)
           native.onCursor = { cursor, _ -> app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))) }
@@ -254,7 +263,8 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       Column {
         if (actions.size > 1) TextButton(onClick = { actions = actions.drop(1) + actions.first() }) { Text("Next overlapping highlight") }
         HighlightColor.entries.forEach { color -> TextButton(onClick = { scope.launch {
-          undo = highlights.recolor(quote.id, color.name); actions = emptyList(); activeQuote = null
+          try { undo = highlights.recolor(quote.id, color.name); actions = emptyList(); activeQuote = null }
+          catch (_: Exception) { snackbar.showSnackbar("Couldn’t save highlight color. Try again.") }
         } }) { Text(color.label) } }
         TextButton(onClick = { scope.launch { activeQuote = review.toggleImportant(quote.id) } }) { Text(if (quote.important) "Remove importance" else "Mark important") }
         TextButton(onClick = { share(quote) }) { Text("Share quote") }

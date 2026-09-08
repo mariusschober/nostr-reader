@@ -29,6 +29,13 @@ class ArticleRepository(private val db: ReaderDb) {
   private val indexes = LinkedHashMap<String, ArticleIndex>()
   private val sections = LinkedHashMap<String, PreparedSection>()
 
+  /** Content rows cascade; saved quotations deliberately remain independent. */
+  suspend fun delete(id: String) = mutex.withLock {
+    withContext(Dispatchers.IO) { check(db.documents().deleteArchivedById(id) == 1) { "Article is no longer in Archive" } }
+    indexes.remove(id)
+    sections.entries.removeAll { it.value.index.documentId == id }
+  }
+
   suspend fun index(id: String): ArticleIndex = mutex.withLock {
     indexes[id]?.let { return@withLock it }
     val value = withContext(Dispatchers.IO) {
@@ -49,6 +56,7 @@ class ArticleRepository(private val db: ReaderDb) {
     val n = requested.coerceIn(index.sections.indices)
     val key = "$id:$n:$RENDERED_PROJECTION_VERSION"
     return mutex.withLock {
+      check(withContext(Dispatchers.IO) { db.documents().exists(id) }) { "Source article deleted" }
       sections[key]?.let { return@withLock it }
       val part = index.sections[n]
       val source = withContext(Dispatchers.IO) { db.documents().contentRange(id, part.startUtf16, part.endUtf16) }

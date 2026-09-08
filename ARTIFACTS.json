@@ -122,5 +122,15 @@
     "report": "UI_REFRESH.md",
     "installedAndroidSha256": "1aa6f7b07cd4b752bcd2d091529b7bdb6a202c23dbbdbbf08124ecbb7feb2128",
     "verification": "Focused TCL and Chrome checks passed; see UI_REFRESH.md."
+  },
+  "latestArchiveRefresh": {
+    "date": "2026-09-08",
+    "source": "Repository commit containing ARCHIVE_REFRESH.md",
+    "path": "artifacts/ui-refresh/archive/reader-archive-refresh.apk",
+    "sha256": "280d470dc4aedd6db2fb6afa4c61760d3bfe4ff7a568a5bb5acd9167b2e50450",
+    "bytes": 29060881,
+    "installedAndroidSha256": "280d470dc4aedd6db2fb6afa4c61760d3bfe4ff7a568a5bb5acd9167b2e50450",
+    "report": "ARCHIVE_REFRESH.md",
+    "verification": "Focused TCL archive gestures, highlight menu gate, storage preservation and appearance checks passed. Final icon tint visually verified."
   }
 }

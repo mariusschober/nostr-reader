@@ -19,6 +19,8 @@ import com.reader.app.cursor.SemanticCursor
 import com.reader.app.prefs.ArticleFont
 import com.reader.app.prefs.ReaderSettings
 import java.util.UUID
+import com.reader.app.ui.ArticleAction
+import com.reader.app.ui.Triage
 
 /** A single selectable native surface per bounded article part. No editing or clipboard reads. */
 class NativeArticleView(context: Context) : FrameLayout(context) {
@@ -46,10 +48,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onLink: (String) -> Unit = {}
   var onTap: () -> Unit = {}
 
-  var onArticleSwipe: (Boolean) -> Unit = {}
+  var onArticleSwipe: (ArticleAction) -> Unit = {}
   var onSwipeProgress: (Float, Boolean) -> Unit = { _, _ -> }
-  var allowLater = true
-  var allowArchive = true
+  var articleList: String? = null
+  var deleteTint: Int = 0xFFAF3029.toInt()
   private var swipeX = 0f
   private var swipeY = 0f
   private var swipeEligible = false
@@ -75,26 +77,29 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         if (pen || actionMode != null || body.selectionStart != body.selectionEnd) swipeEligible = false
         if (!swiping && kotlin.math.abs(dy) > dp(12)) swipeEligible = false
         if (!swiping && swipeEligible && kotlin.math.abs(dx) > dp(20) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.7f &&
-          (if (dx > 0) allowLater else allowArchive)) {
+          (ArticleAction.forArticle(articleList, dx > 0) != null)) {
           swiping = true
           val cancel = MotionEvent.obtain(event); cancel.action = MotionEvent.ACTION_CANCEL
           super.dispatchTouchEvent(cancel); cancel.recycle()
         }
         if (swiping) {
-          val allowed = if (dx > 0) allowLater else allowArchive
+          val action = ArticleAction.forArticle(articleList, dx > 0)
+          val allowed = action != null
           val offset = if (allowed && swipeEligible) dx.coerceIn(-width.toFloat(), width.toFloat()) else 0f
           body.translationX = offset
-          val armed = kotlin.math.abs(offset) >= width * .30f
+          val armed = ArticleAction.commits(action, offset, width.toFloat())
           if (armed && !swipeArmed) performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
           swipeArmed = armed
           swipeLabel.layoutParams = LayoutParams(kotlin.math.abs(offset).toInt().coerceAtLeast(1), LayoutParams.WRAP_CONTENT,
             android.view.Gravity.CENTER_VERTICAL or (if (offset > 0) android.view.Gravity.LEFT else android.view.Gravity.RIGHT))
           swipeLabel.gravity = android.view.Gravity.CENTER
-          val icon = context.getDrawable(if (offset > 0) R.drawable.ic_swipe_later else R.drawable.ic_swipe_archive)?.mutate()
-          icon?.setTint(swipeLabel.currentTextColor)
+          val icon = context.getDrawable(when (action) { ArticleAction.Delete -> R.drawable.ic_swipe_delete; ArticleAction.Unarchive -> R.drawable.ic_swipe_unarchive; ArticleAction.Later -> R.drawable.ic_swipe_later; else -> R.drawable.ic_swipe_archive })?.mutate()
+          val tint = if (action == ArticleAction.Delete) deleteTint else body.currentTextColor
+          swipeLabel.setTextColor(tint)
+          icon?.setTint(tint)
           swipeLabel.setCompoundDrawablesWithIntrinsicBounds(null, icon, null, null)
           swipeLabel.compoundDrawablePadding = dp(8)
-          swipeLabel.text = if (offset == 0f) "" else if (offset > 0) { if (armed) "Release to move\nto Later" else "Later →" } else { if (armed) "Release to\narchive" else "← Archive" }
+          swipeLabel.text = if (offset == 0f) "" else if (armed) action?.releaseLabel else action?.label
           onSwipeProgress(offset / width.coerceAtLeast(1), armed)
           return true
         }
@@ -107,7 +112,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         swipeLabel.text = ""
         swipeLabel.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)
         onSwipeProgress(0f, false)
-        if (commit) { reportCursor(); onArticleSwipe(later) }
+        if (commit) ArticleAction.forArticle(articleList, later)?.let { reportCursor(); onArticleSwipe(it) }
         return true
       }
     }
@@ -132,16 +137,19 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
         actionMode = mode
         selectionSession = UUID.randomUUID().toString()
-        menu.add(0, HIGHLIGHT_ACTION, 0, "Highlight")
+        if (pen) menu.clear() else menu.add(0, HIGHLIGHT_ACTION, 0, "Highlight")
         return true
       }
-      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+        if (pen) { menu.clear(); return true }; return false
+      }
       override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
         if (item.itemId != HIGHLIGHT_ACTION) return false
         emitSelection()
         return true
       }
       override fun onDestroyActionMode(mode: ActionMode) {
+        flushSelection()
         pendingSelection?.let { removeCallbacks(it) }
         pendingSelection = null
         actionMode = null
@@ -216,7 +224,9 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
 
   fun setPenMode(enabled: Boolean) {
     if (pen == enabled) return
+    if (!enabled) flushSelection()
     pen = enabled
+    actionMode?.invalidate()
     if (enabled) selectionChanged(body.selectionStart, body.selectionEnd)
     else pendingSelection?.let { removeCallbacks(it) }
   }
@@ -269,14 +279,23 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     val expectedStart = start; val expectedEnd = end
     pendingSelection = Runnable {
       if (pen && body.selectionStart == expectedStart && body.selectionEnd == expectedEnd) emitSelection()
-    }.also { postDelayed(it, 450) }
+    }.also { postDelayed(it, 100) }
   }
 
+  fun flushSelection() {
+    pendingSelection?.let { removeCallbacks(it) }
+    pendingSelection = null
+    if (pen) emitSelection()
+  }
+
+  private var lastSelection: Pair<String, IntRange>? = null
   private fun emitSelection() {
     val value = projection ?: return
     if (body.selectionStart < 0 || body.selectionEnd < 0) return
     val range = value.range(body.selectionStart, body.selectionEnd) ?: return
     val session = selectionSession ?: UUID.randomUUID().toString().also { selectionSession = it }
+    if (lastSelection == (session to range)) return
+    lastSelection = session to range
     onSelection(session, ++selectionSequence, range)
   }
 

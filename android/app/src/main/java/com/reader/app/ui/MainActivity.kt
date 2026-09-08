@@ -97,6 +97,12 @@ class MainActivity : ComponentActivity() {
       var lists by remember { mutableStateOf(mapOf<String, List<com.reader.app.data.DocumentSummary>>()) }
       var libraryLoaded by remember { mutableStateOf(false) }
       var selectedTab by rememberSaveable { mutableStateOf(Triage.INBOX) }
+      val mainScrollStates = mapOf(
+        Triage.INBOX to androidx.compose.foundation.lazy.rememberLazyListState(),
+        Triage.PRIORITY to androidx.compose.foundation.lazy.rememberLazyListState(),
+        Triage.LATER to androidx.compose.foundation.lazy.rememberLazyListState(),
+      )
+      val archiveScrollState = androidx.compose.foundation.lazy.rememberLazyListState()
       val highlightSeed = rememberSaveable { java.security.SecureRandom().nextLong() }
       var highlightsNewest by rememberSaveable { mutableStateOf(false) }
       val highlightSummaries by remember { db.highlights().observeSummaries() }.collectAsState(initial = emptyList())
@@ -141,7 +147,7 @@ class MainActivity : ComponentActivity() {
         minutesByList = mins
       }
       LaunchedEffect(refreshTick.value, route) {
-        if (route == Route.Inbox) {
+        if (route == Route.Inbox || route == Route.Archive) {
           db.documents().observeSummaries().collect { summaries ->
             lists = summaries.groupBy { it.list }
             minutesByList = lists.mapValues { (_, values) -> ((values.sumOf { it.wordCount.toLong() } + 224) / 225).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
@@ -205,8 +211,31 @@ class MainActivity : ComponentActivity() {
         }
       }
 
+      val deleting = remember { mutableStateListOf<String>() }
+      fun deleteArticle(id: String) {
+        if (id in deleting) return
+        deleting.add(id)
+        lifecycleScope.launch {
+          try {
+            if (ttsDocId == id) { ttsController?.pause(); ttsState = null; ttsDocId = null }
+            (application as com.reader.app.ReaderApp).deleteArticle(id)
+            if ((stack.current() as? Route.Reader)?.id == id) { stack.pop(); tick++ }
+          } catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t delete article. Try again.", Toast.LENGTH_LONG).show() }
+          finally { deleting.remove(id) }
+        }
+      }
+      fun unarchive(id: String) {
+        lifecycleScope.launch {
+          try { moveToListDb(id, Triage.INBOX); readerMove = Triple(id, Triage.ARCHIVED, Triage.INBOX) }
+          catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t unarchive article. Try again.", Toast.LENGTH_LONG).show() }
+        }
+      }
+
       when (val r = route) {
-        is Route.Inbox -> InboxScreen(
+        is Route.Inbox, is Route.Archive -> InboxScreen(
+          archiveMode = r == Route.Archive,
+          onArchiveOpen = { go(Route.Archive) }, onArchiveBack = { stack.pop(); tick++ },
+          listState = if (r == Route.Archive) archiveScrollState else mainScrollStates[selectedTab] ?: mainScrollStates.getValue(Triage.PRIORITY),
           lists = lists, minutes = minutesByList, settings = settings,
           readerMove = readerMove, onReaderMoveConsumed = { readerMove = null },
           loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = { selectedTab = it },
@@ -217,13 +246,8 @@ class MainActivity : ComponentActivity() {
           onOpen = { go(Route.Reader(it)) },
           onMove = { id, target -> lifecycleScope.launch { moveToListDb(id, target); refresh() } },
           onUndoMove = { id, previous -> lifecycleScope.launch { moveToListDb(id, previous); refresh() } },
-          onUnarchive = { id -> lifecycleScope.launch { moveToListDb(id, Triage.INBOX); refresh() } },
-          onDelete = { id ->
-            lifecycleScope.launch {
-              withContext(Dispatchers.IO) { db.documents().deleteById(id) }
-              refresh()
-            }
-          },
+          onUnarchive = ::unarchive,
+          onDelete = ::deleteArticle,
           onImportFile = { filePicker.launch(arrayOf("text/plain", "text/markdown", "*/*")) },
           onPasteText = { text ->
             lifecycleScope.launch {
@@ -256,7 +280,8 @@ class MainActivity : ComponentActivity() {
             finally { busy = false }
           }
           LaunchedEffect(Unit) { loadReview() }
-          ReviewScreen(reviewState, quote, busy, reviewError,
+          val sourceDocument by remember(quote?.documentId) { db.documents().observeMetadata(quote?.documentId ?: "") }.collectAsState(initial = null)
+          ReviewScreen(reviewState, quote, busy, reviewError, sourceAvailable = sourceDocument != null,
             onBack = { stack.pop(); tick++ },
             onNext = {
               val id = quote?.id
@@ -303,8 +328,9 @@ class MainActivity : ComponentActivity() {
           },
           onListen = { projection, cursor -> openTts(r.id, projection, cursor) },
           onSpeedRead = { cursor -> go(Route.Rsvp(r.id, cursor)) },
-          onLater = { moveReader(r.id, Triage.LATER) },
-          onArchive = { moveReader(r.id, Triage.ARCHIVED) },
+          onArticleAction = { action ->
+            if (action == ArticleAction.Delete) deleteArticle(r.id) else action.target?.let { moveReader(r.id, it) }
+          },
           playerVisible = ttsDocId == r.id && ttsState != null,
           player = {
             if (ttsDocId == r.id) ttsState?.let { state ->
