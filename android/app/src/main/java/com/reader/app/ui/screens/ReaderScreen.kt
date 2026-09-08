@@ -8,9 +8,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -205,6 +205,7 @@ private fun inlineLen(i: com.reader.app.core.Inline): Int = when (i) {
   is com.reader.app.core.Inline.FootnoteRef -> 0
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit, onClose: () -> Unit) {
   val c = readerColors(settings.background)
@@ -213,7 +214,7 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
     containerColor = c.background,
     title = { Text("Appearance", fontFamily = ReaderFonts.Ui, color = c.text) },
     text = {
-      Column {
+      Column(Modifier.verticalScroll(rememberScrollState())) {
         Text("Font", fontFamily = ReaderFonts.Ui, color = c.secondary)
         ArticleFont.entries.forEach { f ->
           val label = when (f) {
@@ -228,7 +229,7 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
               selected = settings.font == f, onClick = null,
               colors = RadioButtonDefaults.colors(selectedColor = c.text, unselectedColor = c.secondary),
             )
-            Text(label, fontFamily = fontFor(f), color = c.text)
+            Text(label, fontFamily = fontFor(f), color = c.text, modifier = Modifier.weight(1f))
           }
         }
         Spacer(Modifier.height(8.dp))
@@ -239,12 +240,13 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
           colors = SliderDefaults.colors(thumbColor = c.text, activeTrackColor = c.text, inactiveTrackColor = c.divider),
         )
         Text("Margins", fontFamily = ReaderFonts.Ui, color = c.secondary)
-        Row(Modifier.horizontalScroll(rememberScrollState())) {
+        // Wrapping row: every choice stays reachable on narrow screens and
+        // large text. No horizontal clipping; no new settings.
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           ArticleMargin.entries.forEach { m ->
             FilterChip(
               selected = settings.margin == m, onClick = { onChange(settings.copy(margin = m)) },
               label = { Text(m.name.lowercase().replaceFirstChar { it.uppercase() }, fontFamily = ReaderFonts.Ui) },
-              modifier = Modifier.padding(end = 8.dp),
               colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = c.text, selectedLabelColor = c.background,
                 containerColor = c.background, labelColor = c.text,
@@ -258,12 +260,11 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
         }
         Spacer(Modifier.height(8.dp))
         Text("Background", fontFamily = ReaderFonts.Ui, color = c.secondary)
-        Row(Modifier.horizontalScroll(rememberScrollState())) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           ArticleBackground.entries.forEach { b ->
             FilterChip(
               selected = settings.background == b, onClick = { onChange(settings.copy(background = b)) },
-              label = { Text(when (b) { ArticleBackground.FOLLOW_APP -> "Follow system"; ArticleBackground.PAPER -> "Paper"; ArticleBackground.SOFT -> "Soft"; ArticleBackground.INK -> "Ink"; ArticleBackground.BLACK -> "Black" }, fontFamily = ReaderFonts.Ui, maxLines = 1) },
-              modifier = Modifier.padding(end = 8.dp),
+              label = { Text(when (b) { ArticleBackground.FOLLOW_APP -> "Follow system"; ArticleBackground.PAPER -> "Paper"; ArticleBackground.SOFT -> "Soft"; ArticleBackground.INK -> "Ink"; ArticleBackground.BLACK -> "Black" }, fontFamily = ReaderFonts.Ui, maxLines = 2) },
               colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = c.text, selectedLabelColor = c.background,
                 containerColor = c.background, labelColor = c.text,

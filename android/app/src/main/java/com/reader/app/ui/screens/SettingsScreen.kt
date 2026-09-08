@@ -17,6 +17,7 @@ import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
 
 /** Minimal normal settings. Nostr details stay under Advanced. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
   settings: ReaderSettings,
@@ -49,10 +50,12 @@ fun SettingsScreen(
   ) { pad ->
     Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
       Text("Appearance", color = c.secondary)
-      Row {
+      // Wrapping row so System/Light/Dark stay reachable on narrow screens
+      // and large text. No new settings.
+      FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         com.reader.app.prefs.ThemeMode.entries.forEach { mode ->
           FilterChip(selected = settings.themeMode == mode, onClick = { onSettingsChange(settings.copy(themeMode = mode)) },
-            label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) }, modifier = Modifier.padding(end = 8.dp))
+            label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) })
         }
       }
       Spacer(Modifier.height(16.dp))
