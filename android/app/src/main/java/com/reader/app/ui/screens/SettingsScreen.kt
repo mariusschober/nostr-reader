@@ -34,6 +34,8 @@ fun SettingsScreen(
 ) {
   BackHandler { onBack() }
   val c = appColors()
+  val context = androidx.compose.ui.platform.LocalContext.current
+  val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "beta" }
   var showAdvanced by remember { mutableStateOf(false) }
   Scaffold(
     containerColor = c.background,
@@ -85,7 +87,7 @@ fun SettingsScreen(
       TextButton(onClick = onSignerInfo) { Text("About signing", fontFamily = ReaderFonts.Ui, color = c.text) }
       Spacer(Modifier.height(16.dp))
       Text("About", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
-      Text("Reader 0.1.0 · Licenses bundled in-app", fontFamily = ReaderFonts.Ui, color = c.text)
+      Text("Reader $version · Licenses bundled in-app", fontFamily = ReaderFonts.Ui, color = c.text)
       Spacer(Modifier.height(16.dp))
       TextButton(onClick = { showAdvanced = !showAdvanced }) {
         Text(if (showAdvanced) "Hide Advanced" else "Advanced", fontFamily = ReaderFonts.Ui, color = c.text)

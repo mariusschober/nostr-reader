@@ -369,6 +369,136 @@ class ReaderFlowInstrumentedTest {
     }
   }
 
+  @Test fun readerSystemBarContrast() = runBlocking {
+    assumeTrue(context.packageName == "com.reader.app.qa")
+    check(context.packageName == "com.reader.app.qa")
+    val db = ReaderDb.get(context)
+    val original = Prefs(context).load()
+    val title = "System bar contrast ${System.nanoTime()}"
+    val markdown = ReaderCore.canonicalize("$title\n\nA short synthetic article for checking the system bars.")
+    val id = ReaderCore.documentId(markdown)
+    val now = System.currentTimeMillis()
+    Prefs(context).save(ReaderSettings(themeMode = ThemeMode.LIGHT))
+    db.documents().insert(DocumentEntity(id, title, "web", null, "https://example.org/reader-synthetic", null, null,
+      now, null, markdown, ReaderCore.wordCount(markdown), 1, "unread", "inbox", "b0", 0, 0f, 0, now, now))
+    try {
+      ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+        tap("Inbox"); tap(title)
+        Prefs(context).save(Prefs(context).load().copy(themeMode = ThemeMode.DARK))
+        waitFor("dark reader system bars") {
+          var correct = false
+          scenario.onActivity {
+            val bars = androidx.core.view.WindowCompat.getInsetsController(it.window, it.window.decorView)
+            correct = !bars.isAppearanceLightStatusBars && !bars.isAppearanceLightNavigationBars
+          }
+          correct
+        }
+        runner.uiAutomation.waitForIdle(500, 5000)
+        screenshot("reader-system-bars-settled")
+      }
+    } finally {
+      db.documents().deleteById(id)
+      Prefs(context).save(original)
+    }
+  }
+
+  @Test fun speechFocusBackgroundAndThemeChanges() = runBlocking {
+    assumeTrue(InstrumentationRegistry.getArguments().getString("qaReaderLifecycle") == "true")
+    check(context.packageName == "com.reader.app.qa")
+    val db = ReaderDb.get(context)
+    val original = Prefs(context).load()
+    val unique = System.nanoTime()
+    val title = "Speech lifecycle check $unique"
+    val markdown = ReaderCore.canonicalize((1..40).joinToString("\n\n") {
+      "Paragraph $it. A saved idea deserves patient attention. Reading aloud should preserve our place when the speed changes or another app needs audio. Returning to the article should remain calm and predictable."
+    } + "\n\nRun $unique\n")
+    val id = ReaderCore.documentId(markdown)
+    val now = System.currentTimeMillis()
+    Prefs(context).save(ReaderSettings(themeMode = ThemeMode.LIGHT))
+    db.documents().insert(DocumentEntity(id, title, "web", null, "https://example.org/reader-synthetic", null, null,
+      now, null, markdown, ReaderCore.wordCount(markdown), 1, "unread", "inbox", "b0", 0, 0f, 0, now, now))
+    val audio = context.getSystemService(android.media.AudioManager::class.java)
+    val focus = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+      .setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).build())
+      .setOnAudioFocusChangeListener { }.build()
+    try {
+      ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+        tap("Inbox"); tap(title); tap("Listen")
+        var controller: com.reader.app.tts.TtsController? = null
+        val field = MainActivity::class.java.getDeclaredField("ttsController").apply { isAccessible = true }
+        fun state(): com.reader.app.tts.TtsController.State? {
+          var result: com.reader.app.tts.TtsController.State? = null
+          scenario.onActivity { controller = field.get(it) as? com.reader.app.tts.TtsController; result = controller?.state }
+          return result
+        }
+        waitFor("speech controller is available") { state() != null }
+        val initialSpeech = state()!!
+        waitFor("real speech callbacks advance") {
+          state()?.let { value ->
+            check(value.error == null) { "Speech unavailable: ${value.error}" }
+            value.playing && (value.offset != initialSpeech.offset || value.index != initialSpeech.index)
+          } == true
+        }
+        tap("1.0x")
+        waitFor("active speech uses the changed speed") { state()?.let { it.playing && it.speed == 1.25f } == true }
+        assertEquals(1.25f, Prefs(context).load().ttsSpeed)
+        assertEquals(android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED, audio.requestAudioFocus(focus))
+        waitFor("audio focus loss pauses speech") { state()?.playing == false && node("Play") != null }
+        audio.abandonAudioFocusRequest(focus)
+        val paused = state()!!
+        SystemClock.sleep(700)
+        assertEquals(paused, state())
+        tap("Next sentence")
+        waitFor("next sentence while paused") { state()?.index == paused.index + 1 }
+        tap("Previous sentence")
+        waitFor("previous sentence while paused") { state()?.index == paused.index }
+        tap("Play")
+        waitFor("speech resumed") { state()?.playing == true }
+        check(runner.uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
+        // Read the existing controller without asking ActivityScenario to resume it.
+        waitFor("background stops narration") {
+          var pausedInBackground = false
+          runner.runOnMainSync { pausedInBackground = controller?.state?.playing == false }
+          pausedInBackground
+        }
+        context.startActivity(android.content.Intent(context, MainActivity::class.java)
+          .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        waitFor("return leaves speech paused") { node("Play") != null }
+        screenshot("reader-speech-return-paused")
+        tap("Close player")
+        var native: NativeArticleView? = null
+        fun find(view: View): NativeArticleView? {
+          if (view is NativeArticleView) return view
+          if (view is ViewGroup) for (i in 0 until view.childCount) find(view.getChildAt(i))?.let { return it }
+          return null
+        }
+        scenario.onActivity { native = find(it.window.decorView) }
+        val body = native!!.getChildAt(0) as TextView
+        var before: com.reader.app.cursor.SemanticCursor? = null
+        runner.runOnMainSync { before = native!!.currentCursor() }
+        Prefs(context).save(Prefs(context).load().copy(themeMode = ThemeMode.DARK))
+        waitFor("follow-app reader becomes dark") { body.currentTextColor == 0xFFFFFCF0.toInt() }
+        var after: com.reader.app.cursor.SemanticCursor? = null
+        runner.runOnMainSync { after = native!!.currentCursor() }
+        assertEquals("Theme change preserves the semantic reading position", before, after)
+        screenshot("reader-follow-app-dark")
+        Prefs(context).save(Prefs(context).load().copy(background = ArticleBackground.PAPER))
+        waitFor("explicit Paper overrides dark app") { body.currentTextColor == 0xFF100F0F.toInt() }
+        screenshot("reader-explicit-paper-dark-app")
+        scenario.recreate()
+        waitFor("explicit appearance survives recreation") { node("Appearance") != null }
+        assertEquals(ArticleBackground.PAPER, Prefs(context).load().background)
+        tap("Back"); tap("Settings")
+        waitFor("versioned settings and theme controls") { node("Dark") != null && node("Reader 0.9.0-beta.1 · Licenses bundled in-app") != null }
+        screenshot("reader-settings-dark-beta")
+      }
+    } finally {
+      audio.abandonAudioFocusRequest(focus)
+      db.documents().deleteById(id)
+      Prefs(context).save(original)
+    }
+  }
+
   @Test fun largeArticleViewportPerformance() = runBlocking {
     assumeTrue(InstrumentationRegistry.getArguments().getString("qaReaderPerf") == "true")
     check(context.packageName == "com.reader.app.qa")
