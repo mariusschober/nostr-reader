@@ -592,7 +592,7 @@ class UiCompletionInstrumentedTest {
       var n = node(label)
       var focused = false
       while (n != null && !focused) {
-        focused = n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+        focused = n.isAccessibilityFocused || n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
         if (!focused) n = n.parent
       }
       check(focused) { "Cannot accessibility-focus $label" }
@@ -657,7 +657,9 @@ class UiCompletionInstrumentedTest {
         accessibleReach("Black"); focus("Ink"); focus("Black"); click("Done")
         click("Highlight")
         for (color in listOf("Yellow", "Green", "Cyan", "Purple")) {
-          accessibleReach("Highlight color $color"); click("Highlight color $color"); focus("Highlight color $color")
+          accessibleReach("Highlight color $color"); click("Highlight color $color")
+          waitFor("selected $color") { node("Highlight color $color")?.isChecked == true }
+          focus("Highlight color $color")
         }
         screenshot("talkback-swatches")
         back(); click("Highlights"); click("Newest"); click("Highlight options")
