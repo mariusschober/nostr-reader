@@ -1,3 +1,5 @@
+> Latest scoped Android UI completion: [UI_UX_COMPLETION_REPORT.md](UI_UX_COMPLETION_REPORT.md), source `ca06d1d`. TCL enlarged text/display, landscape, strict TalkBack controls, tables and review checks passed; this does not complete the broader beta campaigns below.
+
 > Current hardening: see [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) records the prior candidate checkpoint (Room v9, Chrome 136, Android 118). Finalization on `codex/reliability-finalize` moves to Room v10, Chrome 140, Android 120 unit tests with host gates passing; device validation of the new packages is NOT MEASURED here. Results below describe their recorded checkpoints.
 
 # Known limitations — 0.9.0-beta.1 candidate
@@ -11,7 +13,7 @@ by a later scoped result; older checks are historical.
 - **NOT MEASURED:** current authenticated provider UIs and optional NIP-07/Amber signers. Preview adapters remain preview; see [source matrix](docs/beta/SOURCE_SUPPORT_MATRIX.md).
 - **Observed performance limit:** one TCL debug/instrumented 166,939-byte article opened in 1,160 ms including tap waits; six of 390 frames exceeded 100 ms, maximum 303.97 ms. p95 was 9.41 ms. This is a single run, not a release benchmark or leak assessment. The 1,000-document/10,000-highlight corpus was not measured.
 - Very large articles use explicit bounded parts of approximately 196,608 canonical UTF-16 units. Selection and narration operate within the current part; dragging across part boundaries and automatic speech continuation are not implemented.
-- **NOT MEASURED:** full process-death, tablet/foldable, large-font, TalkBack, wide-table and review accessibility matrix. Activity recreation, exact native sharing, source deletion, handles/autoscroll and review swipes have scoped physical passes.
+- **NOT MEASURED:** full process-death, tablet/foldable and exhaustive accessibility matrix. Activity recreation, exact native sharing, source deletion, handles/autoscroll and review swipes have scoped physical passes.
 - TTS pauses on background and audio-focus loss. Native callbacks/speed/pause were tested; acoustic quality, real calls/headsets and a background media service are not claimed.
 - Android background delivery uses OS-scheduled catch-up. Timing depends on the OS/network; a user force-stop requires reopen.
 - Export is one-way Markdown/JSONL, not a restorable backup. Pairing keys are excluded. Export import/review-queue restore is not implemented.

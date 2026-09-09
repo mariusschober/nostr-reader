@@ -140,5 +140,75 @@
     "bytes": 29060881,
     "change": "Remove redundant 96dp native text bottom inset; use 8dp because Scaffold separately reserves the reading dock.",
     "report": "VIEWPORT_FIX.md"
+  },
+  "historicalBaselineNote": "Top-level candidate fields and earlier patch entries describe historical checkpoints; latestUiCompletion identifies the current locally installed Android build.",
+  "latestUiCompletion": {
+    "date": "2026-09-09",
+    "source": "ca06d1d3ca4005550f1b8cc7a6922c0b34f93ee0",
+    "branch": "codex/reliability-finalize",
+    "files": {
+      "reader-qa-test.apk": {
+        "path": "artifacts/ui-completion/final/reader-qa-test.apk",
+        "sha256": "35b6d39b4a1ff865c645ee4a707789daafc19712848a3c4bd914020c77ad27bb",
+        "bytes": 735406
+      },
+      "reader.apk": {
+        "path": "artifacts/ui-completion/final/reader.apk",
+        "sha256": "4e8c9c843b2981d03361be39cc2afe3e68dadd51343d2afb7aa9030dba055048",
+        "bytes": 28196606
+      },
+      "reader-test.apk": {
+        "path": "artifacts/ui-completion/final/reader-test.apk",
+        "sha256": "ae52e5a89127cc3df4a89584e2e0117abb96378eb34b22907c227945ece2a562",
+        "bytes": 735402
+      },
+      "reader-qa.apk": {
+        "path": "artifacts/ui-completion/final/reader-qa.apk",
+        "sha256": "b25c1e175811ff698702a61e4e1ad03a775414513240b2e8ee713545d19996f9",
+        "bytes": 28196606
+      }
+    },
+    "report": "UI_UX_COMPLETION_REPORT.md",
+    "ownerInstall": {
+      "installedSha256": "4e8c9c843b2981d03361be39cc2afe3e68dadd51343d2afb7aa9030dba055048",
+      "packagedSha256": "4e8c9c843b2981d03361be39cc2afe3e68dadd51343d2afb7aa9030dba055048",
+      "storageHashesUnchangedAcrossInstall": true,
+      "integrityPassed": true
+    },
+    "coreQualification": {
+      "source": "19c8937",
+      "reportedTests": 35,
+      "executedTests": 34,
+      "skippedTests": 1,
+      "files": {
+        "reader-qa-test.apk": {
+          "sha256": "35b6d39b4a1ff865c645ee4a707789daafc19712848a3c4bd914020c77ad27bb",
+          "bytes": 735406
+        },
+        "reader.apk": {
+          "sha256": "9550f2510a0d84928e50bf74e5c00762055c1a3676c3f8f191ac65309e342363",
+          "bytes": 28196606
+        },
+        "reader-test.apk": {
+          "sha256": "ae52e5a89127cc3df4a89584e2e0117abb96378eb34b22907c227945ece2a562",
+          "bytes": 735402
+        },
+        "reader-qa.apk": {
+          "sha256": "78b914d312a947ec45b16efb3a253eb6c21ec0b5d520a1c01d40b2e50445c6e6",
+          "bytes": 28196606
+        }
+      }
+    },
+    "finalQualification": {
+      "unitTestsDebug": 137,
+      "unitTestsRelease": 137,
+      "deviceChecks": 6,
+      "manualChecks": [
+        "enlarged highlight editing",
+        "OS edge-back"
+      ],
+      "boundary": "Core run preceded final inline HTML whitespace fix; imports/configurations/TalkBack rerun on final bytes."
+    },
+    "publication": "Local only; not pushed, merged or published"
   }
 }
