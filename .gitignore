@@ -35,3 +35,7 @@ android/local.properties
 
 # Isolated reliability-cycle artifacts and local diagnostics.
 /artifacts/hardening/
+
+# Live-web eval reports are regenerated on demand (see docs/eval/); only the
+# URL list and the harness are tracked.
+docs/eval/report-*.tsv
