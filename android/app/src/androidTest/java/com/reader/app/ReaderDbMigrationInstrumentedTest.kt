@@ -14,6 +14,7 @@ import com.reader.app.data.MIGRATION_5_6
 import com.reader.app.data.MIGRATION_6_7
 import com.reader.app.data.MIGRATION_8_9
 import com.reader.app.data.MIGRATION_9_10
+import com.reader.app.data.MIGRATION_10_11
 import com.reader.app.data.MIGRATION_7_8
 import com.reader.app.data.MIGRATION_4_5
 import com.reader.app.data.ChannelEntity
@@ -175,7 +176,7 @@ class ReaderDbMigrationInstrumentedTest {
     helper.close()
 
     val migrated = Room.databaseBuilder(context, ReaderDb::class.java, name)
-      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
       .build()
     try {
       migrated.openHelper.writableDatabase

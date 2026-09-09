@@ -643,6 +643,40 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
   }
 }
 
+/**
+ * Stage A URL capture: durable capture-request state, separate from
+ * DocumentEntity reading content. No document, pairing, key, highlight, or
+ * review rows are touched. Deletion rules: capture rows are never cascade-
+ * deleted with documents; cancelling/deleting only bumps generation so stale
+ * workers cannot commit. Deliberate recapture inserts a new request row.
+ */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL(
+      """CREATE TABLE IF NOT EXISTS capture_requests (
+        requestId TEXT NOT NULL PRIMARY KEY,
+        originalUrl TEXT NOT NULL,
+        normalizedUrl TEXT NOT NULL,
+        subjectTitle TEXT,
+        sourceType TEXT NOT NULL,
+        state TEXT NOT NULL,
+        documentId TEXT,
+        resolvedUrl TEXT,
+        title TEXT,
+        errorCode TEXT,
+        errorMessage TEXT,
+        attemptCount INTEGER NOT NULL DEFAULT 0,
+        nextAttemptAt INTEGER,
+        generation INTEGER NOT NULL DEFAULT 0,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      )""".trimIndent(),
+    )
+    db.execSQL("CREATE INDEX IF NOT EXISTS index_capture_requests_normalizedUrl ON capture_requests(normalizedUrl)")
+    db.execSQL("CREATE INDEX IF NOT EXISTS index_capture_requests_state_nextAttemptAt ON capture_requests(state, nextAttemptAt)")
+  }
+}
+
 @Database(
   entities = [
     DocumentEntity::class,
@@ -657,8 +691,9 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     HighlightEntity::class,
     ReviewStatePartEntity::class,
     SyncHealthEntity::class,
+    com.reader.app.capture.CaptureRequestEntity::class,
   ],
-  version = 10,
+  version = 11,
   exportSchema = true,
 )
 abstract class ReaderDb : RoomDatabase() {
@@ -673,13 +708,14 @@ abstract class ReaderDb : RoomDatabase() {
   abstract fun highlights(): HighlightDao
   abstract fun review(): ReviewDao
   abstract fun syncHealth(): SyncHealthDao
+  abstract fun captureRequests(): com.reader.app.capture.CaptureRequestDao
 
   companion object {
     @Volatile
     private var instance: ReaderDb? = null
     fun get(ctx: Context): ReaderDb = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(ctx.applicationContext, ReaderDb::class.java, "reader.db")
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
         .build()
         .also { instance = it }
     }
