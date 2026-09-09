@@ -8,3 +8,18 @@ Captured on TCL T807D, Android 16/API 36, 9 September 2026. Synthetic article te
 - `appearance.png`: font controls.
 
 Unretouched device captures at density 456 and system font scale 1. QA fixtures were removed with the isolated package after validation. The September 8 images at these same paths are superseded and recoverable through Git history. No owner articles, pairing payloads or keys are shown. See [the completion report](../../UI_UX_COMPLETION_REPORT.md) for enlarged layouts, TalkBack, and verification boundaries.
+
+## URL-capture evidence (same device, later the same day)
+
+Unpaired debug install (`com.reader.app`, no pairing, Chrome closed), app source with
+Room v11 URL capture plus the extraction-quality pass. Real public-web content fetched
+live on device (not synthetic): English/German Wikipedia, `example.com`, the author's
+own public blog post, an image URL, and a login page. No private articles, pairing
+payloads, keys, or highlights are shown.
+
+- `capture-inbox.png`: inbox with captured articles (`url · N min`) alongside honest
+  link-only fallbacks (`link · 1 min`).
+- `capture-article-de.png`: German article rendering with links and the Listen /
+  Highlight / Speed dock.
+- `capture-linkonly.png`: link-only fallback with the "Article text is unavailable"
+  banner, Open original / Retry actions, and selected-text import guidance.

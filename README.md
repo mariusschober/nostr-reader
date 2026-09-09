@@ -60,6 +60,7 @@ Actual screenshots from the final September 9 Android QA build on a TCL T807D, u
 - Five bundled typefaces: Newsreader, Crimson Pro, Asul, Atkinson Hyperlegible, and ABeeZee. Adjust size, margins, and **Follow system / Paper / Soft / Ink / Black** backgrounds.
 - **Listen** uses the system-default Android speech engine and its configured voice. **Speed** offers word-by-word RSVP reading with adjustable pace. Reading modes share semantic positions within the current article part.
 - Import text through Android sharing, paste, or supported local files as well as the Chrome transport. Markdown and semantic HTML retain formatting and ordinary tables; wide tables open in a sideways-scrollable reading view. Already-flattened imports need reimport to recover formatting.
+- Share or paste an article link with no pairing and no account: Reader fetches the page itself over a bounded HTTPS path, extracts the article text on-device, and keeps an honest link fallback (with Open original and Retry) when a page is a login wall, needs JavaScript, or has no confident article text. See [URL-capture acceptance](CAPTURE_URL_ACCEPTANCE.md).
 - Native scrolling continues after a fling while retaining Android selection handles; library and quote positions survive navigation and activity recreation.
 
 ### Highlight and remember
@@ -179,6 +180,7 @@ Current reliability-cycle implementation and evidence: [RELIABILITY_HARDENING.md
 | [`UI_UX_COMPLETION_REPORT.md`](UI_UX_COMPLETION_REPORT.md) | Current installed UI, imports, accessibility and device evidence |
 | [`docs/README.md`](docs/README.md) | Current documentation and historical evidence index |
 | [`RELIABILITY_HARDENING.md`](RELIABILITY_HARDENING.md) | Current storage, capture and transport ownership |
+| [`CAPTURE_URL_ACCEPTANCE.md`](CAPTURE_URL_ACCEPTANCE.md) | Unpaired Android URL capture and extraction quality |
 | [`BETA_TEST_REPORT.md`](BETA_TEST_REPORT.md) | Earlier beta evidence checkpoint |
 | [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) | Outstanding acceptance and implementation limits |
 
