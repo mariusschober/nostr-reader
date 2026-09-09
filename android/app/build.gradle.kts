@@ -68,7 +68,7 @@ dependencies {
   implementation("io.coil-kt:coil-compose:2.6.0")
   // Nostr transport (no NDK: BC secp256k1 + OkHttp WS)
   implementation("com.squareup.okhttp3:okhttp:4.12.0")
-  implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+  implementation("org.bouncycastle:bcprov-jdk18on:1.85.2")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
   // Markdown
@@ -79,7 +79,7 @@ dependencies {
   implementation("org.commonmark:commonmark-ext-autolink:0.24.0")
   // QR (pure-JVM zxing core; camera via CameraX)
   implementation("com.google.zxing:core:3.5.3")
-  implementation("org.jsoup:jsoup:1.17.2")
+  implementation("org.jsoup:jsoup:1.23.2")
   implementation("androidx.camera:camera-core:1.4.2")
   implementation("androidx.camera:camera-camera2:1.4.2")
   implementation("androidx.camera:camera-lifecycle:1.4.2")

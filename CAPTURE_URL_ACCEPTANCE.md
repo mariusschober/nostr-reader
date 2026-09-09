@@ -213,6 +213,20 @@ existing `sprich_review_16k` AVD (Pixel 6) pointed at it. Booted headless
 and ran a full share→capture cycle (`example.com` → honest `link_only/too_short`,
 durable row committed). No physical 16 KiB device attached; emulator evidence stands.
 
+## Dependency security (2026-09-10)
+
+- Chrome: `npm audit` 0 vulnerabilities; `osv-scanner` over `package-lock.json` (207 packages): no issues.
+- Android: OSV batch over all 134 pinned `debugRuntimeClasspath` modules — 2 findings, both
+  unreachable in our call graph (BouncyCastle GOST-CTR/LDAP helpers we never call;
+  Jsoup `Cleaner`, which the codebase never uses — verified by grep; hostile HTML goes
+  through parse + `select().remove()`, and hostile JSON through depth-capped `StrictJson`
+  max 32). Closed anyway by upgrading `bcprov-jdk18on:1.78.1→1.85.2` and
+  `jsoup:1.17.2→1.23.2`; full 196-test unit suite (crypto vectors + extraction goldens)
+  green after the bump. coil/okhttp/zxing/kotlinx-serialization: clean.
+- Licenses (POM-verified): MIT (jsoup), Bouncy Castle Licence, Apache-2.0
+  (okhttp/coil/coroutines/serialization), BSD-2-Clause (commonmark); no copyleft in
+  production. Re-scan on every dependency change.
+
 ## Capture-state / permission / privacy note
 
 - States: `pending → fetching → completed | link_only | failed | cancelled`.
