@@ -16,11 +16,42 @@ object RsvpModel {
     for (unit in com.reader.app.tts.Narration.sentences(projection)) {
       for (match in Regex("\\S+").findAll(unit.text)) {
         if (match.value.startsWith("http://") || match.value.startsWith("https://")) continue
-        val start = unit.blockOffset(match.range.first)
-        val end = unit.blockOffset(match.range.last) + 1
-        add(RsvpToken(match.value, unit.blockId, start, end, unit.heading))
+        // Spaceless scripts yield paragraph-long "words": slice into short
+        // tokens at CJK punctuation, else hard slices (offsets stay exact).
+        for (slice in cjkSlices(match.value)) {
+          val start = unit.blockOffset(match.range.first + slice.first)
+          val end = unit.blockOffset(match.range.first + slice.last) + 1
+          add(RsvpToken(match.value.substring(slice.first, slice.last + 1), unit.blockId, start, end, unit.heading))
+        }
       }
     }
+  }
+
+  private val cjkTokenEnd = setOf('。', '！', '？', '…', '、', '，', '；', '：', '」', '』', '）', '、')
+
+  private fun cjkSlices(token: String): List<IntRange> {
+    if (token.length <= 24) return listOf(token.indices)
+    val out = mutableListOf<IntRange>()
+    var start = 0
+    while (start < token.length) {
+      var end = (start + 12).coerceAtMost(token.length)
+      if (end < token.length) {
+        var boundary = -1
+        var i = start + 2
+        while (i < end) {
+          if (token[i] in cjkTokenEnd) boundary = i + 1
+          i++
+        }
+        if (boundary > start) end = boundary
+        // Never split a surrogate pair across tokens.
+        if (end < token.length && end > start + 1 &&
+          Character.isHighSurrogate(token[end - 1]) && Character.isLowSurrogate(token[end])
+        ) end--
+      }
+      out += start until end
+      start = end
+    }
+    return out
   }
 
   /** Monotonic-deadline scheduler: no drift accumulation. */

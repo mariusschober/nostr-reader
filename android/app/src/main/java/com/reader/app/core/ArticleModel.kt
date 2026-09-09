@@ -99,6 +99,12 @@ object ArticleParser {
     is org.commonmark.ext.gfm.tables.TableHead -> null
     is org.commonmark.ext.gfm.tables.TableBody -> null
     is ThematicBreak -> ArticleBlock.Divider(nextId(node))
+    // Footnote definitions are their own (un-narrated) block kind; without
+    // this branch they degraded into body paragraphs that TTS would speak.
+    is org.commonmark.ext.footnotes.FootnoteDefinition -> {
+      val t = textOf(node).trim()
+      if (t.isEmpty()) null else ArticleBlock.Footnotes(nextId(node), listOf(t))
+    }
     is HtmlBlock -> {
       val t = node.literal.trim().replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
       if (t.isEmpty()) null else ArticleBlock.Paragraph(nextId(node), listOf(Inline.Text(t)))
@@ -149,6 +155,9 @@ object ArticleParser {
         is StrongEmphasis -> out.add(Inline.Strong(inlinesOf(c)))
         is org.commonmark.ext.gfm.strikethrough.Strikethrough -> out.add(Inline.Strike(inlinesOf(c)))
         is Code -> out.add(Inline.InlineCode(c.literal))
+        // Footnote markers render small (FOOTNOTE_REF style) and are skipped
+        // by narration, matching reading-time counting.
+        is org.commonmark.ext.footnotes.FootnoteReference -> out.add(Inline.FootnoteRef(c.label))
         is Link -> {
           val url = sanitizeUrl(c.destination)
           if (url != null) out.add(Inline.Link(inlinesOf(c), url))

@@ -82,6 +82,43 @@ object ReaderCore {
     return n
   }
 
+  /**
+   * Spaceless-script characters (Han, Hiragana, Katakana, Hangul, Thai):
+   * whitespace splitting counts a whole Chinese paragraph as one "word",
+   * which false-tripped the article floor and broke reading time.
+   */
+  fun cjkCount(canonical: String): Int {
+    var n = 0
+    for (ch in canonical) {
+      when (Character.UnicodeBlock.of(ch)) {
+        Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS,
+        Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A,
+        Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS,
+        Character.UnicodeBlock.HIRAGANA,
+        Character.UnicodeBlock.KATAKANA,
+        Character.UnicodeBlock.KATAKANA_PHONETIC_EXTENSIONS,
+        Character.UnicodeBlock.HANGUL_SYLLABLES,
+        Character.UnicodeBlock.HANGUL_JAMO,
+        Character.UnicodeBlock.HANGUL_COMPATIBILITY_JAMO,
+        Character.UnicodeBlock.THAI,
+        -> n++
+        else -> {}
+      }
+    }
+    return n
+  }
+
+  /** Reading words: whitespace words plus spaceless-script characters. */
+  fun effectiveWords(canonical: String): Int = wordCount(canonical) + cjkCount(canonical)
+
+  /**
+   * Article floor across scripts: 30 whitespace words, or 60 spaceless-script
+   * characters (~2-3 CJK sentences; one CJK character carries roughly a word's
+   * meaning, and CJK prose runs denser than spaced text).
+   */
+  fun hasEnoughText(canonical: String): Boolean =
+    wordCount(canonical) >= 30 || cjkCount(canonical) >= 60
+
   fun readingMinutes(words: Int): Int = maxOf(1, (words + 224) / 225)
 
   fun formatAttention(totalMinutes: Int): String = when {

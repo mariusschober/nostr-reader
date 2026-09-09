@@ -7,7 +7,7 @@ import java.util.Locale
 const val RENDERED_PROJECTION_VERSION = 2
 
 enum class TextKind { PARAGRAPH, HEADING, CODE, TABLE, FOOTNOTE, DIVIDER }
-enum class TextStyle { BOLD, ITALIC, STRIKE, CODE, LINK }
+enum class TextStyle { BOLD, ITALIC, STRIKE, CODE, LINK, FOOTNOTE_REF }
 data class TableCell(val start: Int, val end: Int)
 data class ProjectedTable(val rows: List<List<TableCell>>)
 data class ProjectedStyle(val start: Int, val end: Int, val style: TextStyle, val value: String? = null)
@@ -73,7 +73,10 @@ object RenderedText {
           is Inline.Strike -> { inlines(item.inlines); styles += ProjectedStyle(start, text.length, TextStyle.STRIKE) }
           is Inline.InlineCode -> { text.append(item.code); styles += ProjectedStyle(start, text.length, TextStyle.CODE) }
           is Inline.Link -> { inlines(item.inlines); styles += ProjectedStyle(start, text.length, TextStyle.LINK, item.url) }
-          is Inline.FootnoteRef -> text.append("[${item.label}]")
+          is Inline.FootnoteRef -> {
+            text.append("[${item.label}]")
+            styles += ProjectedStyle(start, text.length, TextStyle.FOOTNOTE_REF)
+          }
         }
       }
     }
