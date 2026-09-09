@@ -84,6 +84,34 @@ class ArticleExtractorTest {
     }
   }
 
+  @Test fun chromeHeavyLoginPageReportsLoginWallPrecisely() {
+    // GitHub-style: password form + login-titled page buried in hundreds of
+    // footer/nav words. Precision matters — the label, not the fallback.
+    val footer = "<p>" + "Footer link text privacy terms status docs contact. ".repeat(30) + "</p>"
+    val page = html(
+      """<main><h1>Sign in to ExampleHub</h1>
+        <form action="/session"><input type="text" name="login"><input type="password" name="pw">
+        <input type="submit" value="Sign in"></form>$footer</main>""",
+      "<title>Sign in to ExampleHub · Build software better, together</title>",
+    )
+    try {
+      ArticleExtractor.extract(page, "https://example.com/session")
+      fail("login must be rejected")
+    } catch (e: ArticleExtractor.ExtractionFailed) {
+      assertEquals("login_wall", e.errorCode)
+    }
+  }
+
+  @Test fun articleMentioningLoginWithoutPasswordFieldStillExtracts() {
+    val page = html(
+      """<article><h1>Login Security Basics</h1>
+        <p>Logging in safely matters: use a password manager and turn on two-factor authentication everywhere you can.</p>
+        <p>Security keys beat codes by text message, and recovery codes belong on paper in a drawer.</p>
+        <p>Adopt these habits once and every future sign in gets calmer and safer for good.</p></article>""",
+    )
+    val out = ArticleExtractor.extract(page, "https://example.com/security")
+    assertTrue(out.markdown.contains("password manager"))
+  }
   @Test fun paywallPageIsRejected() {
     val page = html(
       """<div class="paywall"><p>Subscribe to continue reading.</p></div>

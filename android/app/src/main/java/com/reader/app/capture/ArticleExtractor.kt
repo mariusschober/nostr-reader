@@ -357,10 +357,18 @@ object ArticleExtractor {
       "weiterlesen nur mit abo", "nur für abonnenten",
     )
     val loginHits = loginPhrases.count { it in lower }
-    // A password field plus a login phrase, an explicit paywall marker with
-    // thin text, or repeated login phrases → blocked. A single incidental
-    // phrase ("please sign in" in comments) must not veto a real article.
-    if (hasPassword && loginHits >= 1) {
+    // A password field is the strong signal: with a login phrase it was
+    // already decisive, and with a login-titled page (h1/title like
+    // "Sign in to GitHub") it is decisive regardless of how much footer
+    // chrome surrounds the form. This labels precisely; it never bypasses —
+    // the outcome is always the honest link fallback.
+    val titleText = ((doc.title() ?: "") + " " + (doc.selectFirst("h1")?.text() ?: "")).lowercase()
+    val loginTitle = listOf(
+      "sign in", "log in", "login", "sign-in",
+      "anmelden", "einloggen", "anmeldung",
+      "se connecter", "connexion", "iniciar sesión",
+    ).any { it in titleText }
+    if (hasPassword && (loginHits >= 1 || loginTitle)) {
       throw ExtractionFailed("login_wall", "This page needs a login; Reader does not bypass access controls")
     }
     if (hasPaywallMarker && bodyText.split(Regex("\\s+")).size < 120) {
