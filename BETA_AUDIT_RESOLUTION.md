@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](CONTINUE.md) for the installed build and remaining limits.
+
 > Current hardening candidate: see [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) and [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). Results below describe their recorded checkpoints.
 
 # Beta audit resolution — 8 September 2026

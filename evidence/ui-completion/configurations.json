@@ -1,0 +1,23 @@
+[
+  {
+    "name": "final-landscape",
+    "rotation": 1,
+    "density": 456,
+    "fontScale": 1.0,
+    "passed": true
+  },
+  {
+    "name": "final-narrow-large",
+    "rotation": 0,
+    "density": 540,
+    "fontScale": 2.0,
+    "passed": true
+  },
+  {
+    "name": "final-landscape-large",
+    "rotation": 1,
+    "density": 540,
+    "fontScale": 2.0,
+    "passed": true
+  }
+]

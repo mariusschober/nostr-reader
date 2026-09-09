@@ -1,6 +1,6 @@
 # Reader UI completion — 9 September 2026
 
-Completed and installed on TCL T807D, Android 16/API 36. Source: `ca06d1d3ca4005550f1b8cc7a6922c0b34f93ee0`, branch `codex/reliability-finalize`. Local commits and artifacts only; no push, merge or publication.
+Completed and installed on TCL T807D, Android 16/API 36. Source: `ca06d1d3ca4005550f1b8cc7a6922c0b34f93ee0`, branch `codex/reliability-finalize`. The completed source is on `codex/reliability-finalize`; the subsequent September 9 documentation/push update is described in [current status](CONTINUE.md). No main merge or binary release is implied.
 
 ## Delivered scope
 
@@ -39,3 +39,7 @@ Final synthetic screenshots are under `artifacts/ui-completion/final/device/file
 ## Boundaries
 
 The seven original reference images were not supplied; current synthetic TCL screenshots support functional and visual verification, not a seven-image fidelity comparison. This is a scoped Android UI completion, not certification of all beta/public-relay campaigns, other devices, tablet/foldable layouts, process-death timings or acoustic TalkBack/TTS quality. HTML is imported as semantic reading content, not an executing browser/CSS layout. Complex merged/nested tables are not claimed as browser-identical. A previously imported article whose formatting was already discarded needs reimport from its source; immutable existing article text and quotation anchors are not guessed or rewritten.
+
+## GitHub evidence
+
+Compact sanitized device result logs, configuration records, package hashes and install summary are tracked under [evidence/ui-completion](evidence/ui-completion/). Current synthetic screenshots are in [docs/screenshots](docs/screenshots/README.md). Detailed raw screenshots, owner storage fingerprints and generated APKs stay local and ignored. Local artifact paths above are provenance references, not GitHub downloads.

@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](CONTINUE.md) for the installed build and remaining limits.
+
 # Reading viewport fix — 8 September 2026
 
 The native article TextView retained a 96dp bottom inset intended to leave room for controls. The Compose Scaffold already reserves the reading dock separately, so this inset blanked out an additional strip of the text viewport. Reduced it to 8dp, recovering 88dp (approximately 250 pixels on the TCL) while keeping the controls outside the text.

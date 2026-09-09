@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](CONTINUE.md) for the installed build and remaining limits.
+
 # Pairing root cause
 
 ## Result

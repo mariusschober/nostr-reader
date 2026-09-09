@@ -1,6 +1,6 @@
 # Build, install, and try Reader
 
-Current version: **0.9.0-beta.1**, including the September 8 archive/highlighting refresh. Chrome → Android is the implemented product path. There is no store release or public binary download attached to this source checkpoint.
+Current version: **0.9.0-beta.1**, including the September 9 UI, import and accessibility completion. Chrome → Android is the implemented product path. There is no store release or public binary download attached to this source checkpoint.
 
 ## Build and install
 
@@ -10,7 +10,7 @@ For Chrome, open `chrome://extensions`, enable Developer mode, and Load unpacked
 
 Install Android with `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` from the repository root, or open the APK on the phone. It is debug-signed. Do not uninstall an existing Reader to bypass a signature mismatch: uninstalling removes local articles and keys. QA/test packages are not needed for ordinary reading. Downgrading over the current database is unsupported.
 
-The app declares Android API 26+ and the extension declares Chrome 120+. Current device acceptance is scoped to the documented TCL Android 16 runs; declarations do not constitute qualification of all platform versions. Listen requires Google's Android speech engine to be installed and enabled.
+The app declares Android API 26+ and the extension declares Chrome 120+. Current device acceptance is scoped to the documented TCL Android 16 runs; declarations do not constitute qualification of all platform versions. Listen uses the system-default Android text-to-speech engine and its configured voice; that engine must be installed and working.
 
 ## Connect and capture
 
@@ -26,7 +26,7 @@ Saved locally, relay acceptance, and phone delivery are separate states. A phone
 
 Use Inbox, Priority and Later for active articles. Appearance controls the font, size, margins and background. Listen and Speed offer speech and word-by-word reading.
 
-Enable Highlight and select text with the native handles. Saving and recoloring are silent. The article overflow menu offers **Undo highlight change**. With Highlight off, ordinary native Copy and Share remain available.
+Enable Highlight and select text with the native handles. Saving and recoloring are silent. The compact dock’s **Reading tools** menu offers Listen and Speed; the article’s top overflow menu offers **Undo highlight change**. With Highlight off, ordinary native Copy and Share remain available.
 
 Highlights offers Shuffle, Newest and Review. Review supports importance, next-card navigation, source opening where the source still exists, and quote sharing. Saved highlights survive deleting their source.
 
@@ -38,6 +38,6 @@ In Archive, right swipe returns an article to Inbox with Undo. Left swipe past 6
 
 ## Evidence and artifacts
 
-[ARCHIVE_REFRESH.md](../../ARCHIVE_REFRESH.md) records the latest focused archive/highlight checks; [UI_REFRESH.md](../../UI_REFRESH.md) records the preceding branding, speech and dock update. [ARTIFACTS.json](../../ARTIFACTS.json) retains local build hashes and historical candidate entries. These paths are not downloadable GitHub assets: generated packages are excluded from Git.
+[UI_UX_COMPLETION_REPORT.md](../../UI_UX_COMPLETION_REPORT.md) records the current installed build and exact verification boundaries. [CONTINUE.md](../../CONTINUE.md) is the current handover; [docs/README.md](../README.md) indexes earlier evidence. [ARTIFACTS.json](../../ARTIFACTS.json) retains local build hashes and historical candidate entries. These paths are not downloadable GitHub assets: generated packages are excluded from Git.
 
 Read [KNOWN_LIMITATIONS.md](../../KNOWN_LIMITATIONS.md) for unmeasured provider, reliability, accessibility and platform conditions. Exports are readable Markdown/JSONL, not restorable backups; pairing keys are excluded.

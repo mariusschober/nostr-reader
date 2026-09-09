@@ -15,7 +15,7 @@ Encrypted delivery over Nostr. No Reader account. No Reader-operated backend.</p
   <a href="LICENSE">MIT license</a>
 </p>
 
-**Current status: 0.9.0-beta.1.** Chrome → Android is implemented and has focused physical-device verification. This is a source-build beta, not a store release. macOS is a reference package; iOS is not implemented. See [known limitations](KNOWN_LIMITATIONS.md) before relying on it. The current reliability candidate, exact artifacts and scoped acceptance are recorded in [the hardening test report](HARDENING_TEST_REPORT.md).
+**Current status: 0.9.0-beta.1.** Chrome → Android is implemented and has focused physical-device verification. This is a source-build beta, not a store release. macOS is a reference package; iOS is not implemented. See [known limitations](KNOWN_LIMITATIONS.md) before relying on it. The September 9 completion is installed and verified on TCL: see [current status](CONTINUE.md), [UI completion evidence](UI_UX_COMPLETION_REPORT.md), and the [documentation index](docs/README.md).
 
 ## Why Reader?
 
@@ -31,13 +31,13 @@ What makes it special is the combination:
 
 ## Screenshots
 
-Actual screenshots from the baseline Android build on a TCL T807D, captured on 8 September 2026 using original demonstration text. These are app screens, not mockups.
+Actual screenshots from the final September 9 Android QA build on a TCL T807D, using synthetic demonstration text. The QA package contains the same application source as the installed normal build. These are app screens, not mockups.
 
 <table>
   <tr>
     <td align="center"><img src="docs/screenshots/reader-light.png" width="250" alt="Reader in a light appearance with Listen, Highlight and Speed controls"><br><strong>Read without the browser</strong></td>
     <td align="center"><img src="docs/screenshots/highlight-mode.png" width="250" alt="Highlight mode with yellow, green, cyan and purple choices"><br><strong>Keep the passages that matter</strong></td>
-    <td align="center"><img src="docs/screenshots/reader-dark.png" width="250" alt="Reader with its dark Ink background"><br><strong>Make reading comfortable</strong></td>
+    <td align="center"><img src="docs/screenshots/reader-dark.png" width="250" alt="Reader with its Black background"><br><strong>Make reading comfortable</strong></td>
   </tr>
 </table>
 
@@ -58,21 +58,22 @@ Actual screenshots from the baseline Android build on a TCL T807D, captured on 8
 - Organize articles into **Inbox**, **Priority**, and **Later**, with estimated reading time and saved progress. **Archive** has its own destination beside the Add button.
 - Native text rendering, links, selection handles, and normal Android Copy / Share actions. Images are represented by descriptions; remote article images are not fetched.
 - Five bundled typefaces: Newsreader, Crimson Pro, Asul, Atkinson Hyperlegible, and ABeeZee. Adjust size, margins, and **Follow system / Paper / Soft / Ink / Black** backgrounds.
-- **Listen** uses Google’s Android speech engine and its configured voice. **Speed** offers word-by-word RSVP reading with adjustable pace. Reading modes share semantic positions within the current article part.
-- Import text through Android sharing, paste, or supported local files as well as the Chrome transport.
+- **Listen** uses the system-default Android speech engine and its configured voice. **Speed** offers word-by-word RSVP reading with adjustable pace. Reading modes share semantic positions within the current article part.
+- Import text through Android sharing, paste, or supported local files as well as the Chrome transport. Markdown and semantic HTML retain formatting and ordinary tables; wide tables open in a sideways-scrollable reading view. Already-flattened imports need reimport to recover formatting.
+- Native scrolling continues after a fling while retaining Android selection handles; library and quote positions survive navigation and activity recreation.
 
 ### Highlight and remember
 
 - Turn on **Highlight**, select text, and adjust the native handles. Choose yellow, green, cyan, or purple; saving is automatic and silent.
-- Highlight mode hides the floating Android action menu while retaining native selection. **Undo highlight change** is available in the article’s overflow menu.
-- Browse quotes by **Shuffle** or **Newest**, review them individually, mark important passages, and share quote text.
+- Highlight mode uses one compact row: pen off, four color targets and **Reading tools**. Listen and Speed remain available through Reading tools; **Undo highlight change** remains in the article’s top overflow menu. The floating Android action menu stays hidden while native handles remain available.
+- Saved quotations use Asul in Highlights and Review. **Shuffle** changes the order on each request; review cards follow a swipe and animate offscreen before advancing. Mark important passages and share exact quote text.
 - In Highlights, swipe right to mark a passage important (yellow star, top right) or left past the mark to remove the quote. Long-press selects several quotes to remove at once. Removed quotes have no Undo; their articles stay in your library.
 - Long-press articles to select several and archive or unarchive them together, with Undo. Permanent deletion remains an explicit single-article action inside Archive.
 - Saved highlights and review history survive permanent deletion of the source article. The retained quote shows its source title and identifies when the local source is gone.
 
 ### Finish and move on
 
-- Swipe inside an article to move it to Later or Archive, with Undo. Menu alternatives are available.
+- Swipe inside an article to move it to Later or Archive, with Undo. Menu alternatives are available. Move notices expire and can be dismissed; grouped moves have one grouped Undo. Cancelled gestures do not commit a move.
 - In Archive, swipe right to return an article to Inbox. Swipe left past the deletion threshold and release to **delete it permanently, without confirmation or Undo**. These actions work on archive rows and open archived articles.
 - Export a verified ZIP of readable Markdown, versioned metadata and retained quotes to a destination you choose. Exports are one-way files, **not** a restorable backup or a transfer of pairing keys.
 
@@ -159,7 +160,7 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The app declares Android 8.0/API 26+; the current focused acceptance device is a TCL T807D running Android 16. This build is debug-signed. Google speech must be installed and enabled for Listen. Preserve an existing Reader installation’s data and keys when updating; do not uninstall just to bypass a signing mismatch.
+The app declares Android 8.0/API 26+; the current focused acceptance device is a TCL T807D running Android 16. This build is debug-signed. A functioning Android text-to-speech engine must be installed and selected as the system default for Listen. Preserve an existing Reader installation’s data and keys when updating; do not uninstall just to bypass a signing mismatch.
 
 Open the extension’s pairing screen and use Android’s Add menu to scan or paste the pairing request. Confirm the connection, save an article from Chrome, and wait for the phone’s receipt. See the [installation and trial guide](docs/beta/INSTALL_AND_TRIAL.md) for the full workflow.
 
@@ -175,8 +176,9 @@ Current reliability-cycle implementation and evidence: [RELIABILITY_HARDENING.md
 | [`rust-core/`](rust-core/) | Shared algorithm/reference implementation |
 | [`mac/`](mac/) | Reference Swift package; not a finished Mac product |
 | [`PROTOCOL.md`](PROTOCOL.md) | Authoritative v2 wire contract |
-| [`ARCHIVE_REFRESH.md`](ARCHIVE_REFRESH.md) | Latest archive/highlighting behavior and focused verification |
-| [`UI_REFRESH.md`](UI_REFRESH.md) | Branding, reader dock, Google speech and preceding UI checks |
+| [`UI_UX_COMPLETION_REPORT.md`](UI_UX_COMPLETION_REPORT.md) | Current installed UI, imports, accessibility and device evidence |
+| [`docs/README.md`](docs/README.md) | Current documentation and historical evidence index |
+| [`RELIABILITY_HARDENING.md`](RELIABILITY_HARDENING.md) | Current storage, capture and transport ownership |
 | [`BETA_TEST_REPORT.md`](BETA_TEST_REPORT.md) | Earlier beta evidence checkpoint |
 | [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) | Outstanding acceptance and implementation limits |
 

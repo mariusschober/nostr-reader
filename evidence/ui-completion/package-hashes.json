@@ -1,0 +1,22 @@
+{
+  "reader-qa-test.apk": {
+    "path": "artifacts/ui-completion/final/reader-qa-test.apk",
+    "sha256": "35b6d39b4a1ff865c645ee4a707789daafc19712848a3c4bd914020c77ad27bb",
+    "bytes": 735406
+  },
+  "reader.apk": {
+    "path": "artifacts/ui-completion/final/reader.apk",
+    "sha256": "4e8c9c843b2981d03361be39cc2afe3e68dadd51343d2afb7aa9030dba055048",
+    "bytes": 28196606
+  },
+  "reader-test.apk": {
+    "path": "artifacts/ui-completion/final/reader-test.apk",
+    "sha256": "ae52e5a89127cc3df4a89584e2e0117abb96378eb34b22907c227945ece2a562",
+    "bytes": 735402
+  },
+  "reader-qa.apk": {
+    "path": "artifacts/ui-completion/final/reader-qa.apk",
+    "sha256": "b25c1e175811ff698702a61e4e1ad03a775414513240b2e8ee713545d19996f9",
+    "bytes": 28196606
+  }
+}

@@ -209,6 +209,7 @@
       ],
       "boundary": "Core run preceded final inline HTML whitespace fix; imports/configurations/TalkBack rerun on final bytes."
     },
-    "publication": "Local only; not pushed, merged or published"
+    "publication": "Source branch codex/reliability-finalize; no main merge or public binary release. Verify remote commit against repository HEAD.",
+    "trackedEvidence": "evidence/ui-completion/"
   }
 }

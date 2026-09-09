@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](../../CONTINUE.md) for the installed build and remaining limits.
+
 # System-default TTS patch — 8 September 2026
 
 Installed in place on TCL T807D, without data reset or engine settings changes.

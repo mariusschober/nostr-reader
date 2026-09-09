@@ -1,5 +1,7 @@
 # Audit artifact policy
 
+Current installed Android package: read root [ARTIFACTS.json](../ARTIFACTS.json), entry `latestUiCompletion`, and [UI completion](../UI_UX_COMPLETION_REPORT.md). Local binaries remain ignored; sanitized current results are tracked under `evidence/ui-completion/`. The generic audit outputs below describe a separate build workflow.
+
 `artifacts/` is the local output directory for reproducible QA builds. The
 generated binaries and machine-readable manifest are intentionally ignored by
 Git because each manifest records the clean source commit used to build it;

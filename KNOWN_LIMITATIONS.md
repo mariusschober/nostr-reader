@@ -1,11 +1,10 @@
 > Latest scoped Android UI completion: [UI_UX_COMPLETION_REPORT.md](UI_UX_COMPLETION_REPORT.md), source `ca06d1d`. TCL enlarged text/display, landscape, strict TalkBack controls, tables and review checks passed; this does not complete the broader beta campaigns below.
 
-> Current hardening: see [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) records the prior candidate checkpoint (Room v9, Chrome 136, Android 118). Finalization on `codex/reliability-finalize` moves to Room v10, Chrome 140, Android 120 unit tests with host gates passing; device validation of the new packages is NOT MEASURED here. Results below describe their recorded checkpoints.
+> Current hardening: see [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) records the prior candidate checkpoint (Room v9, Chrome 136, Android 118). Finalization on `codex/reliability-finalize` moves to Room v10, Chrome 140, Android 120 unit tests with host gates passing; the later UI completion report records scoped TCL device validation of finalization; this earlier report does not. Results below describe their recorded checkpoints.
 
 # Known limitations — 0.9.0-beta.1 candidate
 
-Latest focused evidence is in [ARCHIVE_REFRESH.md](ARCHIVE_REFRESH.md) and
-[UI_REFRESH.md](UI_REFRESH.md). [BETA_TEST_REPORT.md](BETA_TEST_REPORT.md) records
+Latest focused evidence is in [UI_UX_COMPLETION_REPORT.md](UI_UX_COMPLETION_REPORT.md). Earlier UI checkpoints remain in [ARCHIVE_REFRESH.md](ARCHIVE_REFRESH.md) and [UI_REFRESH.md](UI_REFRESH.md). [BETA_TEST_REPORT.md](BETA_TEST_REPORT.md) records
 the preceding beta checkpoint. These limits remain unless explicitly superseded
 by a later scoped result; older checks are historical.
 
@@ -21,6 +20,6 @@ by a later scoped result; older checks are historical.
 - Chrome npm audit reports zero vulnerabilities at the recorded date. No equivalent complete Android CVE scan was performed. Public relay policies and retention can change.
 - NIP-44 has no forward secrecy. Relays can observe routing keys, IP, timing and sizes. Compromised endpoints can access local plaintext and keys. The current native reader renders image descriptions as text without remote image fetches.
 - Mac is a reference Swift package; iOS, UniFFI integration and store releases are incomplete. Chrome-to-Android is the implemented product path.
-- Automatic inexpensive host checks are enabled for relevant code changes, but this branch has not run on GitHub. No hosted CI pass or store-ready conclusion is claimed.
+- Automatic inexpensive host checks are enabled for relevant code changes, and run on GitHub when matching source paths change. Consult the workflow run for the pushed commit; local passing tests do not establish a hosted CI pass or store readiness.
 
 - **FAIL:** full Android app byte reproducibility across a relocated clean source export. The build succeeds; two DEX files differ from the installed incremental artifact. Delivered APK hashes and their exact installed integrity check are verified.

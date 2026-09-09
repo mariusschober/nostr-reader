@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](../../CONTINUE.md) for the installed build and remaining limits.
+
 # Nostr Reader — autonomous execution brief for Astra / local Mac Codex
 
 **Target:** a trustworthy, feature-complete `0.9.0-beta.1` of the Chrome extension and Android reader.  
@@ -15,7 +17,7 @@ You are the principal engineer and product craftsperson responsible for executin
 
 **Implement, test, red-team, document, and deliver. Do not stop at another review or plan.** Work through this brief autonomously, making the smallest sound product and engineering decisions where details are unspecified. Maintain a concise execution ledger so work survives context compaction. Do not repeatedly ask the owner to make technical choices you can resolve from source, tests, or inspection.
 
-Read this entire brief before editing. Read the companion `nostr-reader-red-team-audit-2026-09-05.md` when supplied, plus the repository’s `AI_CONTINUATION_CONTEXT.md`, `TEST_REPORT.md`, `KNOWN_LIMITATIONS.md`, `PROTOCOL.md`, `THREAT_MODEL.md`, and `RELIABILITY_STATE_MACHINES.md`. Inspect current code; an audit finding is a starting hypothesis to verify, not permission to change something blindly. Preserve any newer valid work discovered after the audited commit.
+Read this entire brief before editing. Read the companion `nostr-reader-red-team-audit-2026-09-05.md` when supplied, plus the repository’s `CONTINUE.md`, `TEST_REPORT.md`, `KNOWN_LIMITATIONS.md`, `PROTOCOL.md`, `THREAT_MODEL.md`, and `RELIABILITY_STATE_MACHINES.md`. Inspect current code; an audit finding is a starting hypothesis to verify, not permission to change something blindly. Preserve any newer valid work discovered after the audited commit.
 
 The product promise is:
 
@@ -443,7 +445,7 @@ Produce:
 2. **Chrome extension ZIP and unpacked directory**, verified to contain the same built worker/content/UI bytes that were tested. Test the packaged output, not only the dev source tree. Include installation/update instructions and minimum browser version.
 3. **`BETA_TEST_REPORT.md`**, requirement-by-requirement outcomes, counts including failures, exact environments, final artifact hashes, evidence paths, performance measurements, and live-site coverage.
 4. **`BETA_AUDIT_RESOLUTION.md`**, disposition of R01–R18 plus new defects found, their fixes/tests, and any residual risk. Separate confirmed fixes from disproved suspicions and unmeasured behavior.
-5. **Updated `KNOWN_LIMITATIONS.md`, `PROTOCOL.md`, security/privacy notes, source-site support matrix, migration/export documentation, and `AI_CONTINUATION_CONTEXT.md`.** Do not copy forward resolved historical failures as current limitations or remove untested caveats just because code compiles.
+5. **Updated `KNOWN_LIMITATIONS.md`, `PROTOCOL.md`, security/privacy notes, source-site support matrix, migration/export documentation, and `CONTINUE.md`.** Do not copy forward resolved historical failures as current limitations or remove untested caveats just because code compiles.
 6. **`ARTIFACTS.json`** with source/build identifiers, hashes, build/tool versions, app/test package relationship, and links/paths to reports. Avoid the impossible requirement that a commit contain its own future hash; separate tested source commit from later documentation-only commits explicitly.
 7. **A short nontechnical handoff** explaining what now works, how capture status behaves, how to highlight/review/share, where the tested downloads are, and what remains genuinely blocked.
 

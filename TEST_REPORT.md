@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](CONTINUE.md) for the installed build and remaining limits.
+
 > **2026-09-08 checkpoint:** Implementation is paused before reliability campaigns/intensive testing at the user’s request. See [PRE_CAMPAIGN_CHECKPOINT.md](docs/beta/PRE_CAMPAIGN_CHECKPOINT.md) for current source scope, exact build hashes, passing local checks and unverified limits. Older device evidence does not certify this candidate.
 
 # Reader v2 repair test report

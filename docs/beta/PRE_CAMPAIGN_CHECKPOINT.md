@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](../../CONTINUE.md) for the installed build and remaining limits.
+
 # Implementation checkpoint — 2026-09-08
 
 **Historical checkpoint from the pause before testing. Testing resumed at the owner's request on 2026-09-08; see [the TCL testing report](TCL_TESTING_2026-09-08.md) for subsequent fixes and installation evidence. This is not beta acceptance.**

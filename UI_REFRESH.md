@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](CONTINUE.md) for the installed build and remaining limits.
+
 # Reader UI refresh — 8 September 2026
 
 Source commit: `58a84ae751e2e75b94824005c1476859a24183db`. Final APK checksum was verified directly against the installed TCL package; only `com.reader.app` remains installed.

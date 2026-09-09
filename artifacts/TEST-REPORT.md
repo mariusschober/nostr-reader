@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](../CONTINUE.md) for the installed build and remaining limits.
+
 # Historical Reader test report — superseded
 
 This file preserves the 2026-09-04 triage/camera evidence below. It is not the

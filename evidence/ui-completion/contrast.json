@@ -1,0 +1,18 @@
+{
+  "YELLOW": {
+    "lightText": 14.86,
+    "darkText": 7.78
+  },
+  "GREEN": {
+    "lightText": 14.21,
+    "darkText": 9.14
+  },
+  "CYAN": {
+    "lightText": 14.36,
+    "darkText": 9.08
+  },
+  "PURPLE": {
+    "lightText": 13.98,
+    "darkText": 12.02
+  }
+}

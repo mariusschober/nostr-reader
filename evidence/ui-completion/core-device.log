@@ -1,0 +1,18 @@
+
+com.reader.app.UiCompletionInstrumentedTest:...............
+com.reader.app.ArticleMovesInstrumentedTest:..
+com.reader.app.NativeGestureSafetyInstrumentedTest:.
+com.reader.app.NativeScrollMeasurementInstrumentedTest:..
+com.reader.app.HighlightMenuGateInstrumentedTest:.
+com.reader.app.SelectionFinalizationInstrumentedTest:.
+com.reader.app.ReaderTransitionInstrumentedTest:.
+com.reader.app.HardeningStorageInstrumentedTest:...
+com.reader.app.ReaderDbMigrationInstrumentedTest:......
+com.reader.app.ArchiveStorageInstrumentedTest:.
+com.reader.app.ReaderFlowInstrumentedTest:.
+
+Time: 1.144,516
+
+OK (35 tests)
+
+

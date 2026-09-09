@@ -146,7 +146,7 @@ conflicting same-ID payloads are rejected; explicit new transfers remain
 possible. Revocation cancels local channel work and rechecks commit ownership but
 cannot remove ciphertext retained by relays. Export is single-flight to a
 user-selected SAF URI, with checksums and readback verification, excludes keys
-(filenames and bodies), and remains a plaintext one-way export. Google speech retains
+(filenames and bodies), and remains a plaintext one-way export. The system-default speech engine retains
 its configured voice/language; Reader inspects whether that voice requires a network
 connection (refreshed after engine init) rather than labeling all voices offline;
 transient ducking does not pause.

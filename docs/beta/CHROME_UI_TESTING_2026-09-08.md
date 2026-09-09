@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](../../CONTINUE.md) for the installed build and remaining limits.
+
 # Packaged Chrome UI testing — 2026-09-08
 
 Interim evidence from a fresh isolated Chrome for Testing 151.0.7922.34 profile. The owner profile and `chrome/dist` were preserved. The ChatGPT-shaped page is a local synthetic fixture behind the controlled relay proxy; these results do not establish live provider compatibility.

@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](CONTINUE.md) for the installed build and remaining limits.
+
 # Reliability hardening candidate — 2026-09-08
 
 Baseline: `1e55b7d4021637520402cb1773ac4e1ffd3b43cf`.

@@ -1,3 +1,5 @@
+> Historical checkpoint: results and instructions below apply to their recorded source and date. Start with [current status](CONTINUE.md) for the installed build and remaining limits.
+
 # Archive and highlighting refresh — 2026-09-08
 
 Implemented on Android and installed on the TCL T807D (Android 16). Local commit only; not pushed or published.
