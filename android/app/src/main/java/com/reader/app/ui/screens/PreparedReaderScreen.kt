@@ -5,6 +5,9 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,6 +83,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var selectedColor by rememberSaveable { mutableStateOf("YELLOW") }
   var menu by remember { mutableStateOf(false) }
   var appearance by remember { mutableStateOf(false) }
+  var expandedTable by remember(id, part) { mutableStateOf<Int?>(null) }
   var actions by remember { mutableStateOf<List<String>>(emptyList()) }
   var activeQuote by remember { mutableStateOf<HighlightEntity?>(null) }
   var undo by remember { mutableStateOf<HighlightMutation?>(null) }
@@ -181,14 +185,16 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   }
 
   ReaderTheme(if (dark) com.reader.app.prefs.ThemeMode.DARK else com.reader.app.prefs.ThemeMode.LIGHT) {
-  Scaffold(containerColor = colors.background, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
+  BoxWithConstraints(Modifier.fillMaxSize()) {
+  val dockMaxHeight = maxHeight * 0.45f
+  Scaffold(containerColor = colors.background, contentColor = colors.text, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
     Column {
       Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         TextButton(onClick = { leave() }, enabled = !transitioning) { Text("Back") }
         Spacer(Modifier.weight(1f))
         TextButton(onClick = { appearance = true }, enabled = !transitioning) { Text("Appearance") }
         Box {
-          IconButton(onClick = { menu = true }, enabled = !transitioning) { Icon(Icons.Default.MoreVert, contentDescription = "More actions") }
+          IconButton(onClick = { menu = true }, enabled = !transitioning) { Icon(Icons.Default.MoreVert, contentDescription = "More actions", tint = colors.text) }
           DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             val archived = doc?.list == com.reader.app.ui.Triage.ARCHIVED
             val menuActions = if (archived) listOf(ArticleAction.Unarchive, ArticleAction.Delete) else listOf(ArticleAction.Later, ArticleAction.Archive)
@@ -197,6 +203,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                 text = { Text(action.label, color = if (action == ArticleAction.Delete) colors.error else colors.text) },
                 onClick = { menu = false; transition { onArticleAction(action) } })
             }
+            if (prepared?.projection?.tables?.isNotEmpty() == true) DropdownMenuItem(
+              text = { Text("View tables", color = colors.text) },
+              onClick = { menu = false; expandedTable = 0 })
             if (undo != null) DropdownMenuItem(text = { Text("Undo highlight change") }, onClick = {
               menu = false
               transition {
@@ -213,46 +222,52 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
 
     }
   }, bottomBar = {
-    Column {
+    Column(Modifier.heightIn(max = dockMaxHeight).verticalScroll(rememberScrollState())) {
       player()
       if (pen) {
-        // Wrapping swatch row: actual highlight fills plus accessible names
-        // and a check indicator. Logical color identity (YELLOW/GREEN/CYAN/
-        // PURPLE) is persisted as a name, independently of theme.
-        FlowRow(
-          Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-          horizontalArrangement = Arrangement.Center,
-          verticalArrangement = Arrangement.spacedBy(4.dp),
+        var toolsOpen by remember { mutableStateOf(false) }
+        Row(
+          Modifier.fillMaxWidth().navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
+          horizontalArrangement = Arrangement.SpaceEvenly,
+          verticalAlignment = Alignment.CenterVertically,
         ) {
+          IconButton(onClick = { pen = false }, modifier = Modifier.size(48.dp).semantics {
+            stateDescription = "Highlighting on"
+          }) {
+            Icon(Icons.Default.BorderColor, contentDescription = "Turn highlighting off", tint = colors.link)
+          }
           HighlightColor.entries.forEach { color ->
             val selected = selectedColor == color.name
-            FilterChip(
-              selected = selected,
-              onClick = { selectedColor = color.name },
-              modifier = Modifier.padding(horizontal = 4.dp).semantics {
+            IconToggleButton(checked = selected, onCheckedChange = { selectedColor = color.name },
+              modifier = Modifier.size(48.dp).semantics {
                 contentDescription = "Highlight color ${color.label}"
                 stateDescription = if (selected) "Selected" else "Not selected"
-              },
-              leadingIcon = {
-                Box(
-                  Modifier.size(16.dp)
-                    .background(color.background(dark), CircleShape)
-                    .border(1.dp, colors.text.copy(alpha = 0.4f), CircleShape),
-                  contentAlignment = Alignment.Center,
-                ) {
-                  if (selected) Icon(
-                    Icons.Default.Check, contentDescription = null,
-                    tint = HighlightColor.text(dark), modifier = Modifier.size(12.dp),
-                  )
-                }
-              },
-              label = { Text(color.label) },
-            )
+              }) {
+              Box(Modifier.size(28.dp)
+                .background(color.background(dark), CircleShape)
+                .border(if (selected) 2.dp else 1.dp, colors.text.copy(alpha = if (selected) 1f else .4f), CircleShape),
+                contentAlignment = Alignment.Center) {
+                if (selected) Icon(Icons.Default.Check, contentDescription = null,
+                  tint = HighlightColor.text(dark), modifier = Modifier.size(18.dp))
+              }
+            }
+          }
+          Box {
+            IconButton(onClick = { toolsOpen = true }, modifier = Modifier.size(48.dp)) {
+              Icon(Icons.Default.MoreVert, contentDescription = "Reading tools", tint = colors.text)
+            }
+            DropdownMenu(expanded = toolsOpen, onDismissRequest = { toolsOpen = false }, modifier = Modifier.background(colors.surface)) {
+              DropdownMenuItem(text = { Text("Listen", color = colors.text) },
+                enabled = prepared != null && !playerVisible && !transitioning,
+                onClick = { toolsOpen = false; prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } })
+              DropdownMenuItem(text = { Text("Speed", color = colors.text) }, enabled = prepared != null && !transitioning,
+                onClick = { toolsOpen = false; val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } })
+            }
           }
         }
-      }
-      Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+      } else
+      FlowRow(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         TextButton(onClick = { prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } }, enabled = prepared != null && !playerVisible && !transitioning) {
           Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Listen")
         }
@@ -275,13 +290,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             else Text("Highlight")
           })
         TextButton(onClick = { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } }, enabled = prepared != null && !transitioning) {
-          Icon(Icons.Default.Speed, "Speed reading", Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Speed")
+          Icon(Icons.Default.Speed, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Speed")
         }
       }
     }
   }) { padding ->
     Column(Modifier.padding(padding).fillMaxSize()) {
-      if (showSwipeHint) Surface(color = colors.surface) {
+      if (showSwipeHint) Surface(color = colors.surface, contentColor = colors.text) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
           Text(if (doc?.list == com.reader.app.ui.Triage.ARCHIVED) "Swipe inside the page: ← Delete · Unarchive →" else "Swipe inside the page: ← Archive · Later →", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
           IconButton(onClick = { showSwipeHint = false; hints.edit().putBoolean("article_swipe_seen", true).apply() }) {
@@ -290,12 +305,12 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         }
       }
       // Display-only duplicate-title suppression: when the metadata title and
-      // the first rendered H1 genuinely match (normalized), the heading in
+      // the first rendered heading genuinely match (normalized), the heading in
       // the article body carries the title and the redundant header line is
       // hidden. Extraction, canonical Markdown, hashes and anchors untouched.
       val ready = prepared
       val text = content
-      val titleDuplicate = ready != null && isDuplicateTitle(doc?.title.orEmpty(), ready.projection)
+      val titleDuplicate = part == 0 && ready != null && isDuplicateTitle(doc?.title.orEmpty(), ready.projection)
       if (!titleDuplicate && !doc?.title.isNullOrBlank()) {
         Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp))
       }
@@ -303,7 +318,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)
       else if (ready == null || text == null) CircularProgressIndicator(Modifier.padding(24.dp))
       else {
-        if (ready.index.sections.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        if (ready.index.sections.size > 1) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
           TextButton(enabled = part > 0 && !transitioning, onClick = { transition { initial = SemanticCursor.start(id); liveCursor = null; part-- } }) { Text("Previous part") }
           Text("${part + 1} / ${ready.index.sections.size}", modifier = Modifier.padding(12.dp))
           TextButton(enabled = part < ready.index.sections.lastIndex && !transitioning, onClick = { transition { initial = SemanticCursor.start(id); liveCursor = null; part++ } }) { Text("Next part") }
@@ -335,6 +350,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             }
           }
           native.onMark = { actions = it }
+          native.onTable = { expandedTable = it }
           native.onLink = { url ->
             if (Uri.parse(url).scheme in listOf("http", "https")) {
               runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -364,10 +380,16 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       }
     }
   }
+  }
+  expandedTable?.let { selected ->
+    prepared?.projection?.let { projection ->
+      TableViewer(projection, selected, settings, colors, onSelect = { expandedTable = it }, onDismiss = { expandedTable = null })
+    }
+  }
   if (appearance) AppearanceSheet(settings, onSettingsChange) { appearance = false }
   activeQuote?.let { quote ->
     AlertDialog(onDismissRequest = { actions = emptyList(); activeQuote = null }, title = { Text("Highlight") }, text = {
-      Column {
+      Column(Modifier.verticalScroll(rememberScrollState())) {
         if (actions.size > 1) TextButton(onClick = { actions = actions.drop(1) + actions.first() }) { Text("Next overlapping highlight") }
         // Recolor uses the same actual swatches, accessible names and check
         // indicator as the pen row. The stored value remains the logical

@@ -21,6 +21,8 @@ import com.reader.app.core.ArticleBlock
 import com.reader.app.core.ArticleParser
 import com.reader.app.cursor.SemanticCursor
 import com.reader.app.data.ReaderDb
+import com.reader.app.data.ArticleMoves
+import com.reader.app.data.ArticleMove
 import com.reader.app.nostr.READER_DEFAULT_RELAYS
 import com.reader.app.nostr.READER_RELAY_WRITE_QUORUM
 import com.reader.app.prefs.Prefs
@@ -114,7 +116,10 @@ class MainActivity : ComponentActivity() {
         Triage.LATER to androidx.compose.foundation.lazy.rememberLazyListState(),
       )
       val archiveScrollState = androidx.compose.foundation.lazy.rememberLazyListState()
-      val highlightSeed = rememberSaveable { java.security.SecureRandom().nextLong() }
+      val highlightsScrollState = androidx.compose.foundation.lazy.rememberLazyListState()
+      val reviewScrollState = androidx.compose.foundation.rememberScrollState()
+      var reviewScrollId by rememberSaveable { mutableStateOf<String?>(null) }
+      var highlightSeed by rememberSaveable { mutableLongStateOf(java.security.SecureRandom().nextLong()) }
       var highlightsNewest by rememberSaveable { mutableStateOf(false) }
       val highlightSummaries by remember { db.highlights().observeSummaries() }.collectAsState(initial = emptyList())
       var channels by remember { mutableStateOf(listOf<com.reader.app.data.ChannelEntity>()) }
@@ -123,7 +128,8 @@ class MainActivity : ComponentActivity() {
       var pairingStatus by remember { mutableStateOf<String?>(null) }
       var pairingChannelId by remember { mutableStateOf<String?>(null) }
       var ttsState by remember { mutableStateOf<TtsController.State?>(null) }
-      var readerMove by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+      var readerMove by remember { mutableStateOf<MoveNotice?>(null) }
+      val articleMoves = remember { ArticleMoves(db) }
       var readerMoving by remember { mutableStateOf(false) }
       var ttsDocId by remember { mutableStateOf<String?>(null) }
       // Room invalidation keeps a visible inbox truthful when a background
@@ -217,8 +223,8 @@ class MainActivity : ComponentActivity() {
             (application as com.reader.app.ReaderApp).progress.flush()
             val previous = db.documents().observeMetadata(id).first()?.list ?: return@launch
             if (previous == target) return@launch
-            moveToListDb(id, target)
-            readerMove = Triple(id, previous, target)
+            val changes = articleMoves.move(setOf(id), target)
+            if (changes.isNotEmpty()) readerMove = MoveNotice(changes)
             ttsController?.pause(); ttsState = null; ttsDocId = null
             refresh(); stack.pop(); tick++
           } catch (_: Exception) {
@@ -240,10 +246,25 @@ class MainActivity : ComponentActivity() {
           finally { deleting.remove(id) }
         }
       }
-      fun unarchive(id: String) {
+      fun moveArticles(ids: Set<String>, target: String) {
         lifecycleScope.launch {
-          try { moveToListDb(id, Triage.INBOX); readerMove = Triple(id, Triage.ARCHIVED, Triage.INBOX) }
-          catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t unarchive article. Try again.", Toast.LENGTH_LONG).show() }
+          try {
+            val changes = articleMoves.move(ids, target)
+            if (changes.isNotEmpty()) readerMove = MoveNotice(changes)
+          } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+          catch (_: Exception) {
+            Toast.makeText(this@MainActivity, "Couldn’t move articles. Nothing was moved. Try again.", Toast.LENGTH_LONG).show()
+          }
+        }
+      }
+      fun undoMoves(moves: List<ArticleMove>) {
+        lifecycleScope.launch {
+          try {
+            if (articleMoves.undo(moves) < moves.size) {
+              Toast.makeText(this@MainActivity, "Restored available articles. Later changes were kept.", Toast.LENGTH_LONG).show()
+            }
+          } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+          catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t undo the move. Try again.", Toast.LENGTH_LONG).show() }
         }
       }
 
@@ -253,9 +274,23 @@ class MainActivity : ComponentActivity() {
           onArchiveOpen = { go(Route.Archive) }, onArchiveBack = { stack.pop(); tick++ },
           listState = if (r == Route.Archive) archiveScrollState else mainScrollStates[selectedTab] ?: mainScrollStates.getValue(Triage.PRIORITY),
           lists = lists, minutes = minutesByList, settings = settings,
-          readerMove = readerMove, onReaderMoveConsumed = { readerMove = null },
+          readerMove = readerMove, onReaderMoveConsumed = { noticeId -> if (readerMove?.id == noticeId) readerMove = null },
           loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = { selectedTab = it },
-          highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, { highlightsNewest = it },
+          highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, {
+            highlightsNewest = it
+            if (!it) {
+              val ids = highlightSummaries.map { quote -> quote.id }
+              fun order(seed: Long) = ids.sortedWith(compareBy<String> { id -> com.reader.app.core.ReviewScheduler.feedKey(seed, id) }.thenBy { id -> id })
+              val previous = order(highlightSeed)
+              val random = java.security.SecureRandom()
+              var candidate = random.nextLong()
+              var attempts = 0
+              while (ids.size > 1 && order(candidate) == previous && attempts++ < 128) candidate = random.nextLong()
+              highlightSeed = candidate
+            }
+            lifecycleScope.launch { highlightsScrollState.scrollToItem(0) }
+          },
+            listState = highlightsScrollState,
             onReview = { chosen -> lifecycleScope.launch {
               try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
               catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn’t open review: ${e.message?.take(100)}", Toast.LENGTH_LONG).show() }
@@ -274,9 +309,8 @@ class MainActivity : ComponentActivity() {
             } },
           ) },
           onOpen = { go(Route.Reader(it)) },
-          onMove = { id, target -> lifecycleScope.launch { moveToListDb(id, target); refresh() } },
-          onUndoMove = { id, previous -> lifecycleScope.launch { moveToListDb(id, previous); refresh() } },
-          onUnarchive = ::unarchive,
+          onMove = ::moveArticles,
+          onUndoMove = ::undoMoves,
           onDelete = ::deleteArticle,
           onImportFile = { filePicker.launch(arrayOf("text/plain", "text/markdown", "*/*")) },
           onPasteText = { text ->
@@ -311,7 +345,12 @@ class MainActivity : ComponentActivity() {
           }
           LaunchedEffect(Unit) { loadReview() }
           val sourceDocument by remember(quote?.documentId) { db.documents().observeMetadata(quote?.documentId ?: "") }.collectAsState(initial = null)
+          LaunchedEffect(quote?.id) {
+            val current = quote?.id ?: return@LaunchedEffect
+            if (reviewScrollId != current) { reviewScrollState.scrollTo(0); reviewScrollId = current }
+          }
           ReviewScreen(reviewState, quote, busy, reviewError, sourceAvailable = sourceDocument != null,
+            scrollState = reviewScrollState,
             onBack = { stack.pop(); tick++ },
             onNext = {
               val id = quote?.id
@@ -552,9 +591,6 @@ class MainActivity : ComponentActivity() {
     refreshTick.value++
   }
 
-  private suspend fun moveToListDb(id: String, target: String) {
-    withContext(Dispatchers.IO) { db.documents().setList(id, target, System.currentTimeMillis()) }
-  }
 
   private fun handleIncomingIntent(intent: Intent) {
     if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_PROCESS_TEXT) return
@@ -564,7 +600,7 @@ class MainActivity : ComponentActivity() {
         val id = if (text.startsWith("__HTML__")) {
           Ingest.importHtml(this@MainActivity, text.removePrefix("__HTML__"), "android-share")
         } else {
-          Ingest.importPlainText(this@MainActivity, text, if (intent.action == Intent.ACTION_PROCESS_TEXT) "android-process-text" else "android-share", subject)
+          Ingest.importSharedText(this@MainActivity, text, if (intent.action == Intent.ACTION_PROCESS_TEXT) "android-process-text" else "android-share", subject)
         }
         Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
         refreshTick.value++

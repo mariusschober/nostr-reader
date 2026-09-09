@@ -1,6 +1,11 @@
 package com.reader.app.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -19,6 +24,7 @@ import com.reader.app.data.HighlightEntity
 @Composable
 fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean, error: String?,
                  onBack: () -> Unit, onNext: () -> Unit, onImportant: () -> Unit,
+                 scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
                  sourceAvailable: Boolean = true, onSource: () -> Unit, onShare: () -> Unit, onRestart: () -> Unit) {
   BackHandler(onBack = onBack)
   Scaffold(topBar = {
@@ -38,27 +44,50 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
           if (state.members.isNotEmpty()) Button(onClick = onRestart) { Text("Review again") }
         }
         quote != null -> {
-          var distance by remember(quote.id) { mutableFloatStateOf(0f) }
+          var distance by remember(quote.id) { mutableFloatStateOf(64f) }
+          LaunchedEffect(quote.id) { distance = 0f }
+          var dragging by remember(quote.id) { mutableStateOf(false) }
+          var exiting by remember(quote.id) { mutableStateOf(false) }
+          var width by remember { mutableFloatStateOf(1f) }
           val next by rememberUpdatedState(onNext)
           val important by rememberUpdatedState(onImportant)
-          Column(Modifier.weight(1f).fillMaxWidth().pointerInput(quote.id) {
+          val translation by animateFloatAsState(
+            targetValue = distance,
+            animationSpec = if (dragging) snap() else tween(220),
+            label = "Review card",
+            finishedListener = { if (exiting) next() },
+          )
+          fun advance() {
+            if (!exiting) { dragging = false; exiting = true; distance = -width * 1.2f }
+          }
+          Column(Modifier.weight(1f).fillMaxWidth().onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
+            .graphicsLayer {
+              translationX = translation
+              rotationZ = (translation / width * 7f).coerceIn(-9f, 9f)
+              alpha = (1f - kotlin.math.abs(translation) / width * .45f).coerceIn(.2f, 1f)
+            }.pointerInput(quote.id) {
             val threshold = 80.dp.toPx()
             detectHorizontalDragGestures(
-              onDragStart = { distance = 0f }, onDragCancel = { distance = 0f },
+              onDragStart = { if (!exiting) { dragging = true; distance = 0f } },
+              onDragCancel = { if (!exiting) { dragging = false; distance = 0f } },
               onDragEnd = {
-                if (distance < -threshold) next() else if (distance > threshold) important()
-                distance = 0f
+                if (!exiting) {
+                  dragging = false
+                  if (distance < -threshold) advance()
+                  else { if (distance > threshold) important(); distance = 0f }
+                }
               },
-              onHorizontalDrag = { change, amount -> change.consume(); distance += amount },
+              onHorizontalDrag = { change, amount -> change.consume(); if (!exiting) distance += amount },
             )
-          }.verticalScroll(rememberScrollState())) {
+          }.verticalScroll(scrollState)) {
             val dark = com.reader.app.ui.theme.LocalReaderDark.current
             Text(quote.quote, style = MaterialTheme.typography.headlineSmall,
+              fontFamily = com.reader.app.ui.theme.ReaderFonts.Asul,
               color = com.reader.app.ui.theme.HighlightColor.text(dark),
-              modifier = Modifier.background(com.reader.app.ui.theme.HighlightColor.parse(quote.color).background(dark)).clickable(enabled = sourceAvailable, onClick = onSource).padding(12.dp))
+              modifier = Modifier.background(com.reader.app.ui.theme.HighlightColor.parse(quote.color).background(dark)).clickable(enabled = sourceAvailable && !exiting, onClick = onSource).padding(12.dp))
             Spacer(Modifier.height(24.dp))
             if (!sourceAvailable) Text(quote.sourceTitle)
-            TextButton(enabled = sourceAvailable, onClick = onSource) { Text(if (sourceAvailable) quote.sourceTitle.ifBlank { "Open source" } else "Source article deleted") }
+            TextButton(enabled = sourceAvailable && !exiting, onClick = onSource) { Text(if (sourceAvailable) quote.sourceTitle.ifBlank { "Open source" } else "Source article deleted") }
           }
           // Action bar wraps instead of clipping on narrow screens and large
           // fonts. Next stays the emphasized button; all three remain
@@ -68,9 +97,9 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalArrangement = Arrangement.spacedBy(4.dp),
           ) {
-            TextButton(onClick = onImportant) { Text(if (quote.important) "★ Important" else "☆ Important") }
-            TextButton(onClick = onShare) { Text("Share") }
-            Button(onClick = onNext) { Text("Next") }
+            TextButton(enabled = !exiting, onClick = onImportant) { Text(if (quote.important) "★ Important" else "☆ Important") }
+            TextButton(enabled = !exiting, onClick = onShare) { Text("Share") }
+            Button(enabled = !exiting, onClick = { advance() }) { Text("Next") }
           }
         }
       }

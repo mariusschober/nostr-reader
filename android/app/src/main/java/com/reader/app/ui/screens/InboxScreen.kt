@@ -1,8 +1,9 @@
 package com.reader.app.ui.screens
 
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -13,6 +14,14 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import com.reader.app.data.ArticleMove
+import com.reader.app.ui.MoveNotice
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.activity.compose.BackHandler
@@ -42,18 +51,17 @@ import com.reader.app.prefs.ReaderSettings
 import com.reader.app.ui.Triage
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun InboxScreen(
   lists: Map<String, List<DocumentSummary>>,
   minutes: Map<String, Int>,
   settings: ReaderSettings,
   onOpen: (String) -> Unit,
-  onMove: (id: String, target: String) -> Unit,
-  onUndoMove: (id: String, previous: String) -> Unit,
-  onUnarchive: (String) -> Unit,
+  onMove: (ids: Set<String>, target: String) -> Unit,
+  onUndoMove: (List<ArticleMove>) -> Unit,
   onDelete: (String) -> Unit,
   onImportFile: () -> Unit,
   onPasteText: (String) -> Unit,
@@ -63,8 +71,8 @@ fun InboxScreen(
   selectedTab: String,
   onSelectTab: (String) -> Unit,
   highlights: @Composable () -> Unit,
-  readerMove: Triple<String, String, String>? = null,
-  onReaderMoveConsumed: () -> Unit = {},
+  readerMove: MoveNotice? = null,
+  onReaderMoveConsumed: (String) -> Unit = {},
   archiveMode: Boolean = false,
   onArchiveOpen: () -> Unit = {},
   onArchiveBack: () -> Unit = {},
@@ -86,7 +94,7 @@ fun InboxScreen(
   var selecting by rememberSaveable { mutableStateOf(false) }
   var selectedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
   BackHandler(enabled = selecting) { selecting = false; selectedIds = emptyList() }
-  LaunchedEffect(tab, archiveMode) {
+  LaunchedEffect(tab, archiveMode, lists[tab]) {
     val live = lists[tab].orEmpty().mapTo(hashSetOf()) { it.documentId }
     selectedIds = selectedIds.filter { it in live }
     if (selectedIds.isEmpty()) selecting = false
@@ -97,12 +105,15 @@ fun InboxScreen(
   var showAdd by remember { mutableStateOf(false) }
   var showPaste by remember { mutableStateOf(false) }
   val snackbar = remember { SnackbarHostState() }
-  val scope = rememberCoroutineScope()
-  LaunchedEffect(readerMove) {
+  LaunchedEffect(readerMove?.id) {
     val move = readerMove ?: return@LaunchedEffect
-    if (snackbar.showSnackbar(Triage.movedLabel(move.third), "Undo", withDismissAction = true,
-        duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) onUndoMove(move.first, move.second)
-    onReaderMoveConsumed()
+    try {
+      // Action labels default to Indefinite in Material. Always set a finite
+      // duration; accessibility may extend it. A newer notice cancels this one.
+      snackbar.currentSnackbarData?.dismiss()
+      if (snackbar.showSnackbar(move.message, "Undo", withDismissAction = true,
+          duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) onUndoMove(move.moves)
+    } finally { onReaderMoveConsumed(move.id) }
   }
   Scaffold(
     containerColor = c.background,
@@ -115,10 +126,9 @@ fun InboxScreen(
       }
     },
     topBar = {
-      Row(Modifier.fillMaxWidth().padding(20.dp, 16.dp, 20.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
+      Row(Modifier.fillMaxWidth().padding(12.dp, 8.dp, 12.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (archiveMode) IconButton(onClick = onArchiveBack) { Icon(Icons.Default.ArrowBack, "Back") }
-        Text(if (archiveMode) "Archive" else "Reader", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = c.text)
-        Spacer(Modifier.weight(1f))
+        Text(if (archiveMode) "Archive" else "Reader", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = c.text, modifier = Modifier.weight(1f))
         IconButton(onClick = { showAdd = true }) {
           Icon(Icons.Default.Add, contentDescription = "Import, paste, or pair", tint = c.text)
         }
@@ -136,7 +146,7 @@ fun InboxScreen(
     Column(Modifier.padding(pad)) {
       if (!archiveMode) Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.Bottom,
+        verticalAlignment = Alignment.CenterVertically,
       ) {
         (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights").filter { it != Triage.INBOX || !loaded || !lists[Triage.INBOX].isNullOrEmpty() }).forEachIndexed { i, key ->
           if (i > 0) Spacer(Modifier.width(20.dp))
@@ -157,31 +167,16 @@ fun InboxScreen(
         }
       } else {
         if (selecting) {
-          Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-              "${selectedIds.size} selected", fontFamily = ReaderFonts.Ui, fontSize = 15.sp,
-              color = c.text, modifier = Modifier.weight(1f),
-            )
-            if (tab == Triage.ARCHIVED) {
-              TextButton(onClick = {
-                val doomed = selectedIds.toSet()
-                selecting = false; selectedIds = emptyList()
-                doomed.forEach { onUnarchive(it) }
-              }, enabled = selectedIds.isNotEmpty()) { Text("Unarchive", fontFamily = ReaderFonts.Ui, color = c.text) }
-            } else {
-              TextButton(onClick = {
-                val doomed = selectedIds.toSet()
-                val previous = tab
-                selecting = false; selectedIds = emptyList()
-                doomed.forEach { onMove(it, Triage.ARCHIVED) }
-                scope.launch {
-                  val res = snackbar.showSnackbar(
-                    if (doomed.size == 1) Triage.movedLabel(Triage.ARCHIVED) else "Archived ${doomed.size} articles",
-                    actionLabel = "Undo",
-                  )
-                  if (res == SnackbarResult.ActionPerformed) doomed.forEach { onUndoMove(it, previous) }
-                }
-              }, enabled = selectedIds.isNotEmpty()) { Text("Archive", fontFamily = ReaderFonts.Ui, color = c.text) }
+          FlowRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("${selectedIds.size} selected", fontFamily = ReaderFonts.Ui, fontSize = 15.sp,
+              color = c.text, modifier = Modifier.align(Alignment.CenterVertically))
+            TextButton(onClick = {
+              val ids = selectedIds.toSet()
+              selecting = false; selectedIds = emptyList()
+              onMove(ids, if (tab == Triage.ARCHIVED) Triage.INBOX else Triage.ARCHIVED)
+            }, enabled = selectedIds.isNotEmpty()) {
+              Text(if (tab == Triage.ARCHIVED) "Unarchive" else "Archive", fontFamily = ReaderFonts.Ui, color = c.text)
             }
             TextButton(onClick = { selecting = false; selectedIds = emptyList() }) { Text("Done", fontFamily = ReaderFonts.Ui, color = c.text) }
           }
@@ -198,7 +193,7 @@ fun InboxScreen(
                 },
                 onToggle = { toggleSelect(d.documentId) },
                 onMenu = { menuFor = d.documentId }, onAction = { action ->
-                if (action == ArticleAction.Delete) onDelete(d.documentId) else onUnarchive(d.documentId)
+                if (action == ArticleAction.Delete) onDelete(d.documentId) else onMove(setOf(d.documentId), Triage.INBOX)
               })
             } else {
               SwipeRow(
@@ -211,14 +206,7 @@ fun InboxScreen(
                 },
                 onToggle = { toggleSelect(d.documentId) },
                 onMenu = { rowMenu = d },
-                onSwiped = { target ->
-                  val previous = tab
-                  onMove(d.documentId, target)
-                  scope.launch {
-                    val res = snackbar.showSnackbar(Triage.movedLabel(target), actionLabel = "Undo")
-                    if (res == SnackbarResult.ActionPerformed) onUndoMove(d.documentId, previous)
-                  }
-                },
+                onSwiped = { target -> onMove(setOf(d.documentId), target) },
               )
             }
             Divider(color = c.divider, thickness = 0.5.dp)
@@ -284,7 +272,7 @@ fun InboxScreen(
         }
       },
       confirmButton = {
-        TextButton(onClick = { menuFor = null; onUnarchive(id) }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+        TextButton(onClick = { menuFor = null; onMove(setOf(id), Triage.INBOX) }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
           Text("Unarchive", fontFamily = ReaderFonts.Ui)
         }
       },
@@ -303,18 +291,14 @@ fun InboxScreen(
     fun move(target: String) {
       rowMenu = null
       if (target == previous) return
-      onMove(d.documentId, target)
-      scope.launch {
-        val res = snackbar.showSnackbar(Triage.movedLabel(target), actionLabel = "Undo")
-        if (res == SnackbarResult.ActionPerformed) onUndoMove(d.documentId, previous)
-      }
+      onMove(setOf(d.documentId), target)
     }
     AlertDialog(
       onDismissRequest = { rowMenu = null },
       containerColor = c.background,
       title = { Text("Move article", fontFamily = ReaderFonts.Ui, color = c.text) },
       text = {
-        Column {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
           if (previous != Triage.PRIORITY) TextButton(onClick = { move(Triage.PRIORITY) }) { Text("Move to Priority", fontFamily = ReaderFonts.Ui, color = c.text) }
           if (previous != Triage.INBOX) TextButton(onClick = { move(Triage.INBOX) }) { Text("Move to Inbox", fontFamily = ReaderFonts.Ui, color = c.text) }
           if (previous != Triage.LATER) TextButton(onClick = { move(Triage.LATER) }) { Text("Save for later", fontFamily = ReaderFonts.Ui, color = c.text) }
@@ -350,7 +334,7 @@ private fun AddOption(label: String, c: com.reader.app.ui.theme.ReaderColors, on
 
 @Composable
 private fun TabText(text: String, selected: Boolean, color: com.reader.app.ui.theme.ReaderColors, onClick: () -> Unit) {
-  Column(Modifier.clickable(onClick = onClick)) {
+  Column(Modifier.heightIn(min = 48.dp).selectable(selected = selected, role = Role.Tab, onClick = onClick), verticalArrangement = Arrangement.Center) {
     Text(
       text, fontFamily = ReaderFonts.Ui, fontSize = 17.sp,
       fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
@@ -385,37 +369,24 @@ private fun SwipeRow(
   // so no recomposition ever rendered the new route. Fixed by keying the
   // route lookup on tick. (Also: Log.d is invisible on the TCL — verify
   // via screenshots/DB only.)
-  val offset = remember { Animatable(0f) }
-  val scope = rememberCoroutineScope()
-
+  var offset by remember(doc.documentId) { mutableFloatStateOf(0f) }
   var gestureDrag by remember { mutableStateOf(false) }
+  val displayedOffset by animateFloatAsState(offset, if (gestureDrag) snap() else tween(160), label = "Article swipe")
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val density = LocalDensity.current
     val widthPx = with(density) { maxWidth.toPx() }
     val thresholdPx = widthPx * 0.35f
-    fun settle() {
-      scope.launch {
-        val end = offset.value
-        val hit = if (kotlin.math.abs(end) > thresholdPx) {
-          Triage.swipeTarget(
-            list,
-            if (end > 0) Triage.Swipe.RIGHT else Triage.Swipe.LEFT,
-          )
-        } else {
-          null
-        }
-        if (hit != null) {
-          onSwiped(hit)
-          offset.snapTo(0f)
-        } else {
-          offset.animateTo(0f)
-        }
-        gestureDrag = false
-      }
+    fun settle(commit: Boolean) {
+      val hit = if (commit && kotlin.math.abs(offset) > thresholdPx) {
+        Triage.swipeTarget(list, if (offset > 0) Triage.Swipe.RIGHT else Triage.Swipe.LEFT)
+      } else null
+      offset = 0f
+      gestureDrag = false
+      if (hit != null) onSwiped(hit)
     }
-    val target = if (offset.value > 1f) {
+    val target = if (offset > 1f) {
       Triage.swipeTarget(list, Triage.Swipe.RIGHT)
-    } else if (offset.value < -1f) {
+    } else if (offset < -1f) {
       Triage.swipeTarget(list, Triage.Swipe.LEFT)
     } else {
       null
@@ -424,7 +395,7 @@ private fun SwipeRow(
       val tint = if (target == Triage.PRIORITY) colors.success else colors.warning
       Box(
         Modifier.matchParentSize().padding(horizontal = 8.dp),
-        contentAlignment = if (offset.value > 0) Alignment.CenterStart else Alignment.CenterEnd,
+        contentAlignment = if (offset > 0) Alignment.CenterStart else Alignment.CenterEnd,
       ) {
         Text(
           Triage.tabLabel(target), fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold,
@@ -438,15 +409,15 @@ private fun SwipeRow(
     // long-press selection entry — verified on the TCL.
     Box(
       Modifier
-        .offset { IntOffset(offset.value.roundToInt(), 0) }
+        .offset { IntOffset(displayedOffset.roundToInt(), 0) }
         .pointerInput(list, widthPx, selecting) {
           if (selecting) return@pointerInput
           detectHorizontalDragGestures(
             onDragStart = { gestureDrag = true },
-            onDragCancel = { settle() },
-            onDragEnd = { settle() },
+            onDragCancel = { settle(false) },
+            onDragEnd = { settle(true) },
             onHorizontalDrag = { change, dx ->
-              scope.launch { offset.snapTo((offset.value + dx).coerceIn(-widthPx, widthPx)) }
+              offset = (offset + dx).coerceIn(-widthPx, widthPx)
               change.consume()
             },
           )
@@ -478,14 +449,15 @@ fun ArticleRow(
     if (selecting) {
       Checkbox(
         checked = selected, onCheckedChange = { onToggleSelect?.invoke() },
-        modifier = Modifier.padding(end = 8.dp),
+        modifier = Modifier.padding(end = 8.dp).semantics { contentDescription = "Select ${d.title}" },
       )
     }
     Column(
-      Modifier.weight(1f).combinedClickable(
+      Modifier.weight(1f).semantics { if (selecting) stateDescription = if (selected) "Selected" else "Not selected" }.combinedClickable(
         indication = null,
         interactionSource = remember { MutableInteractionSource() },
         onClick = { onOpen() },
+        onLongClickLabel = "Select article",
         onLongClick = onLongPress,
       ),
     ) {
@@ -558,7 +530,7 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
       )
     }) {
       ArticleRow(doc, colors,
-        onOpen = { if (!dragging && !selecting) onOpen() },
+        onOpen = { if (!dragging) onOpen() },
         onMenu = if (selecting) null else onMenu,
         selecting = selecting, selected = selected, onToggleSelect = onToggle,
         onLongPress = onLongPress)

@@ -28,9 +28,9 @@ class DuplicateTitleTest {
     assertFalse(isDuplicateTitle("Hello Reader", projection))
   }
 
-  @Test fun secondLevelHeadingStaysVisible() {
+  @Test fun matchingSecondLevelHeadingAlsoSuppressesDuplicate() {
     val projection = RenderedText.project(ArticleParser.parseWithSources("## Hello Reader\n\nBody.\n"))
-    assertFalse(isDuplicateTitle("Hello Reader", projection))
+    assertTrue(isDuplicateTitle("Hello Reader", projection))
   }
 
   @Test fun blankTitleNeverCountsAsDuplicate() {
@@ -46,4 +46,16 @@ class DuplicateTitleTest {
     isDuplicateTitle("Hello Reader", projection)
     assertEquals(before, projection.text)
   }
+  @Test fun inlineFormattingAndUnicodeWhitespaceMatchOnlyRenderedHeading() {
+    val projection = RenderedText.project(ArticleParser.parseWithSources("## **Café** Reader\n\nBody.\n"))
+    assertTrue(isDuplicateTitle("Café\u00a0Reader", projection))
+    assertFalse(isDuplicateTitle("Cafe Reader", projection))
+    assertFalse(isDuplicateTitle("Body.", projection))
+  }
+
+  @Test fun headingAfterIntroductionDoesNotHideMetadata() {
+    val projection = RenderedText.project(ArticleParser.parseWithSources("Introduction.\n\n# Hello Reader\n"))
+    assertFalse(isDuplicateTitle("Hello Reader", projection))
+  }
+
 }

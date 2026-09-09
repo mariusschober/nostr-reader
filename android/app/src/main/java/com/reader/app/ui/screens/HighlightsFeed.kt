@@ -1,10 +1,14 @@
 package com.reader.app.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -14,6 +18,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,10 +35,9 @@ import com.reader.app.core.ReviewScheduler
 import com.reader.app.data.HighlightSummary
 import com.reader.app.ui.HighlightAction
 import com.reader.app.ui.theme.Flexoki
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun HighlightsFeed(
   quotes: List<HighlightSummary>,
@@ -40,6 +47,7 @@ fun HighlightsFeed(
   onReview: (String?) -> Unit,
   onToggleImportant: (String) -> Unit = {},
   onRemoveHighlights: (Set<String>) -> Unit = {},
+  listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
   val sorted = remember(quotes, newest, seed) {
     if (newest) quotes.sortedWith(compareByDescending<HighlightSummary> { it.createdAt }.thenBy { it.id })
@@ -48,6 +56,7 @@ fun HighlightsFeed(
   var selecting by rememberSaveable { mutableStateOf(false) }
   var selectedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
   var confirmRemove by remember { mutableStateOf(false) }
+  var menuId by remember { mutableStateOf<String?>(null) }
   // Forget selections for quotes that disappeared elsewhere.
   LaunchedEffect(quotes) {
     val live = quotes.mapTo(hashSetOf()) { it.id }
@@ -61,8 +70,8 @@ fun HighlightsFeed(
 
   Column(Modifier.fillMaxSize()) {
     if (selecting) {
-      Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("${selectedIds.size} selected", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+      FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("${selectedIds.size} selected", style = MaterialTheme.typography.titleSmall, modifier = Modifier.align(Alignment.CenterVertically))
         TextButton(
           onClick = { confirmRemove = true }, enabled = selectedIds.isNotEmpty(),
           colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
@@ -70,7 +79,7 @@ fun HighlightsFeed(
         TextButton(onClick = { selecting = false; selectedIds = emptyList() }) { Text("Done") }
       }
     } else {
-      Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+      FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         FilterChip(selected = !newest, onClick = { onNewest(false) }, label = { Text("Shuffle") })
         FilterChip(selected = newest, onClick = { onNewest(true) }, label = { Text("Newest") })
         Button(enabled = quotes.isNotEmpty(), onClick = { onReview(null) }) { Text("Review") }
@@ -84,7 +93,7 @@ fun HighlightsFeed(
       }
     }
     if (quotes.isEmpty()) Text("Save a passage while reading to find it here.", modifier = Modifier.padding(24.dp))
-    else LazyColumn(Modifier.fillMaxSize()) {
+    else LazyColumn(Modifier.fillMaxSize(), state = listState) {
       items(sorted, key = { it.id }) { quote ->
         HighlightSwipeRow(
           quote = quote,
@@ -96,6 +105,7 @@ fun HighlightsFeed(
             else toggle(quote.id)
           },
           onToggle = { toggle(quote.id) },
+          onMenu = { menuId = quote.id },
           onSwiped = { action ->
             when (action) {
               HighlightAction.Important -> onToggleImportant(quote.id)
@@ -106,6 +116,25 @@ fun HighlightsFeed(
         HorizontalDivider()
       }
     }
+  }
+  quotes.firstOrNull { it.id == menuId }?.let { quote ->
+    AlertDialog(
+      onDismissRequest = { menuId = null },
+      title = { Text("Highlight actions") },
+      text = {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+          TextButton(onClick = { menuId = null; onToggleImportant(quote.id) }) {
+            Text(if (quote.important) "Remove importance" else "Mark important")
+          }
+          TextButton(onClick = { menuId = null; selecting = true; selectedIds = listOf(quote.id) }) { Text("Select") }
+          TextButton(onClick = {
+            menuId = null; selectedIds = listOf(quote.id); confirmRemove = true
+          }) { Text("Remove highlight", color = MaterialTheme.colorScheme.error) }
+        }
+      },
+      confirmButton = { TextButton(onClick = { menuId = null; onReview(quote.id) }) { Text("Review quote") } },
+      dismissButton = { TextButton(onClick = { menuId = null }) { Text("Cancel") } },
+    )
   }
   if (confirmRemove) {
     val count = selectedIds.size
@@ -138,46 +167,38 @@ private fun HighlightSwipeRow(
   onOpen: () -> Unit,
   onLongPress: () -> Unit,
   onToggle: () -> Unit,
+  onMenu: () -> Unit,
   onSwiped: (HighlightAction) -> Unit,
 ) {
   // Same tap-vs-swipe arbitration as the article rows: the click owns taps
   // (long-press enters selection), the drag detector owns horizontal swipes
   // and sets a guard so the up ending a swipe can't double-fire onClick.
-  val offset = remember { Animatable(0f) }
-  val scope = rememberCoroutineScope()
+  var offset by remember(quote.id) { mutableFloatStateOf(0f) }
   var gestureDrag by remember { mutableStateOf(false) }
+  val displayedOffset by animateFloatAsState(offset, if (gestureDrag) snap() else tween(160), label = "Highlight swipe")
 
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val density = LocalDensity.current
     val widthPx = with(density) { maxWidth.toPx() }
-    fun settle() {
-      scope.launch {
-        val end = offset.value
-        val action = when {
-          end > 1f -> HighlightAction.Important
-          end < -1f -> HighlightAction.Remove
-          else -> null
-        }?.takeIf { HighlightAction.commits(it, end, widthPx) }
-        if (action != null) {
-          onSwiped(action)
-          offset.snapTo(0f)
-        } else {
-          offset.animateTo(0f)
-        }
-        gestureDrag = false
-      }
+    fun settle(commit: Boolean) {
+      val action = if (commit) {
+        HighlightAction.forSwipe(offset > 0).takeIf { HighlightAction.commits(it, offset, widthPx) }
+      } else null
+      offset = 0f
+      gestureDrag = false
+      if (action != null) onSwiped(action)
     }
     val action = when {
-      offset.value > 1f -> HighlightAction.Important
-      offset.value < -1f -> HighlightAction.Remove
+      offset > 1f -> HighlightAction.Important
+      offset < -1f -> HighlightAction.Remove
       else -> null
     }
     if (action != null && !selecting) {
-      val armed = HighlightAction.commits(action, offset.value, widthPx)
+      val armed = HighlightAction.commits(action, offset, widthPx)
       val tint = if (action == HighlightAction.Remove) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
       Box(
         Modifier.matchParentSize().padding(horizontal = 20.dp),
-        contentAlignment = if (offset.value > 0) Alignment.CenterStart else Alignment.CenterEnd,
+        contentAlignment = if (offset > 0) Alignment.CenterStart else Alignment.CenterEnd,
       ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
           if (action == HighlightAction.Important) {
@@ -196,21 +217,22 @@ private fun HighlightSwipeRow(
     }
     Row(
       Modifier
-        .offset { IntOffset(offset.value.roundToInt(), 0) }
+        .offset { IntOffset(displayedOffset.roundToInt(), 0) }
         .combinedClickable(
           indication = null,
           interactionSource = remember { MutableInteractionSource() },
           onClick = { if (!gestureDrag) onOpen() },
+          onLongClickLabel = "Select highlight",
           onLongClick = onLongPress,
         )
         .pointerInput(selecting, widthPx) {
           if (selecting) return@pointerInput
           detectHorizontalDragGestures(
             onDragStart = { gestureDrag = true },
-            onDragCancel = { settle() },
-            onDragEnd = { settle() },
+            onDragCancel = { settle(false) },
+            onDragEnd = { settle(true) },
             onHorizontalDrag = { change, dx ->
-              scope.launch { offset.snapTo((offset.value + dx).coerceIn(-widthPx, widthPx)) }
+              offset = (offset + dx).coerceIn(-widthPx, widthPx)
               change.consume()
             },
           )
@@ -221,15 +243,16 @@ private fun HighlightSwipeRow(
       if (selecting) {
         Checkbox(
           checked = selected, onCheckedChange = { onToggle() },
-          modifier = Modifier.padding(end = 8.dp),
+          modifier = Modifier.padding(end = 8.dp).semantics { contentDescription = "Select quote from ${quote.sourceTitle}" },
         )
       }
-      Column(Modifier.weight(1f)) {
+      Column(Modifier.weight(1f).semantics { if (selecting) stateDescription = if (selected) "Selected" else "Not selected" }) {
         val dark = com.reader.app.ui.theme.LocalReaderDark.current
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
           Text(
             quote.preview + if (quote.quoteLength > 800) "…" else "",
             style = MaterialTheme.typography.bodyLarge,
+            fontFamily = com.reader.app.ui.theme.ReaderFonts.Asul,
             color = com.reader.app.ui.theme.HighlightColor.text(dark),
             modifier = Modifier.weight(1f)
               .background(com.reader.app.ui.theme.HighlightColor.parse(quote.color).background(dark))
@@ -248,6 +271,9 @@ private fun HighlightSwipeRow(
         }
         Spacer(Modifier.height(8.dp))
         Text(quote.sourceTitle, style = MaterialTheme.typography.labelMedium)
+      }
+      if (!selecting) IconButton(onClick = onMenu) {
+        Icon(Icons.Default.MoreVert, contentDescription = "Highlight options")
       }
     }
   }

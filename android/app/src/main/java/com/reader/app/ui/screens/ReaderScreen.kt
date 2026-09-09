@@ -11,6 +11,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -235,6 +238,7 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
         Spacer(Modifier.height(8.dp))
         Text("Size: ${settings.fontSizeSp.toInt()}", fontFamily = ReaderFonts.Ui, color = c.secondary)
         Slider(
+          modifier = Modifier.semantics { contentDescription = "Article text size"; stateDescription = "${settings.fontSizeSp.toInt()}" },
           value = settings.fontSizeSp, onValueChange = { onChange(settings.copy(fontSizeSp = it)) },
           valueRange = 14f..32f,
           colors = SliderDefaults.colors(thumbColor = c.text, activeTrackColor = c.text, inactiveTrackColor = c.divider),
@@ -296,8 +300,8 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
 internal fun isDuplicateTitle(title: String, projection: com.reader.app.core.RenderedProjection): Boolean {
   if (title.isBlank()) return false
   val first = projection.blocks.firstOrNull() ?: return false
-  if (first.kind != com.reader.app.core.TextKind.HEADING || first.level != 1) return false
-  fun normalize(value: String): String = value.trim().replace(Regex("\\s+"), " ").lowercase()
+  if (first.kind != com.reader.app.core.TextKind.HEADING) return false
+  fun normalize(value: String): String = value.trim().replace(Regex("[\\s\\p{Z}]+"), " ").lowercase(java.util.Locale.ROOT)
   val heading = projection.text.substring(first.bodyStart.coerceIn(0, projection.text.length), first.bodyEnd.coerceIn(0, projection.text.length))
   if (heading.isBlank()) return false
   return normalize(title) == normalize(heading)
