@@ -179,6 +179,16 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     body.isVerticalScrollBarEnabled = true
     body.linksClickable = false
     body.setLineSpacing(0f, 1.35f)
+    // Bidirectional text: first-strong paragraph direction (Arabic/Hebrew
+    // paragraphs align right automatically) with high-quality breaking for
+    // CJK line wraps. Deliberately view-layer only: no projection/text
+    // change, so highlight anchors and offsets are untouched.
+    body.textDirection = android.view.View.TEXT_DIRECTION_FIRST_STRONG_LTR
+    // High-quality breaking is API 29+; older runtimes keep the default
+    // strategy (same rendering as before this change).
+    if (android.os.Build.VERSION.SDK_INT >= 29) {
+      body.breakStrategy = android.graphics.text.LineBreaker.BREAK_STRATEGY_HIGH_QUALITY
+    }
     // Scaffold already places the reading dock outside this viewport. Keep
     // only a small text inset; dock-sized padding clips usable reading space.
     body.setPadding(0, dp(8), 0, dp(8))
@@ -414,6 +424,7 @@ fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableStrin
       TextStyle.STRIKE -> span(StrikethroughSpan(), it.start, it.end)
       TextStyle.CODE -> span(TypefaceSpan("monospace"), it.start, it.end)
       TextStyle.LINK -> { span(ForegroundColorSpan(linkColor), it.start, it.end); span(UnderlineSpan(), it.start, it.end) }
+      TextStyle.FOOTNOTE_REF -> span(RelativeSizeSpan(0.75f), it.start, it.end)
     }
   }
   value.blocks.forEach {

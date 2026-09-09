@@ -298,9 +298,44 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     Column(Modifier.padding(padding).fillMaxSize()) {
       if (showSwipeHint) Surface(color = colors.surface, contentColor = colors.text) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-          Text(if (doc?.list == com.reader.app.ui.Triage.ARCHIVED) "Swipe inside the page: ← Delete · Unarchive →" else "Swipe inside the page: ← Archive · Later →", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+          // Mirror the gesture arrows for right-to-left system layouts.
+          val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+          val hint = if (doc?.list == com.reader.app.ui.Triage.ARCHIVED) {
+            if (rtl) "Swipe inside the page: Delete → · ← Unarchive" else "Swipe inside the page: ← Delete · Unarchive →"
+          } else {
+            if (rtl) "Swipe inside the page: Archive → · ← Later" else "Swipe inside the page: ← Archive · Later →"
+          }
+          Text(hint, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
           IconButton(onClick = { showSwipeHint = false; hints.edit().putBoolean("article_swipe_seen", true).apply() }) {
             Icon(Icons.Default.Close, contentDescription = "Dismiss swipe hint", modifier = Modifier.size(18.dp))
+          }
+        }
+      }
+      // Link-only fallback: honestly labeled, with Open original + Retry +
+      // selected-text guidance. The underlying Markdown already carries the
+      // same notice; this banner makes the actions one tap away.
+      if (doc?.sourceType == "link" && !doc?.sourceUrl.isNullOrBlank()) {
+        Surface(color = colors.surface, contentColor = colors.text) {
+          Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text("Article text is unavailable for this link.", style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              TextButton(onClick = {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(doc!!.sourceUrl))) }
+              }) { Text("Open original") }
+              TextButton(onClick = {
+                val sourceUrl = doc!!.sourceUrl ?: return@TextButton
+                scope.launch {
+                  try {
+                    val repo = com.reader.app.capture.CaptureRepository(db)
+                    val req = repo.getOrCreate(sourceUrl, doc!!.title, "retry")
+                    com.reader.app.capture.CaptureWorker.scheduleById(context, req.requestId)
+                    snackbar.showSnackbar("Link saved — fetching article")
+                  } catch (_: Exception) { snackbar.showSnackbar("Couldn’t retry this link.") }
+                }
+              }) { Text("Retry") }
+            }
+            Text("Tip: for login or JavaScript pages, open the original, select text, then Share to Reader.",
+              style = MaterialTheme.typography.bodySmall)
           }
         }
       }
@@ -319,9 +354,18 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       else if (ready == null || text == null) CircularProgressIndicator(Modifier.padding(24.dp))
       else {
         if (ready.index.sections.size > 1) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-          TextButton(enabled = part > 0 && !transitioning, onClick = { transition { initial = SemanticCursor.start(id); liveCursor = null; part-- } }) { Text("Previous part") }
+          // Per-part positions: leaving a part bookmarks it, returning restores
+          // it, instead of resetting to the part start every time.
+          val partPositions = remember(id) { mutableMapOf<Int, SemanticCursor>() }
+          TextButton(enabled = part > 0 && !transitioning, onClick = { transition {
+            (liveCursor ?: view?.currentCursor())?.let { partPositions[part] = it }
+            initial = partPositions[part - 1] ?: SemanticCursor.start(id); liveCursor = null; part--
+          } }) { Text("Previous part") }
           Text("${part + 1} / ${ready.index.sections.size}", modifier = Modifier.padding(12.dp))
-          TextButton(enabled = part < ready.index.sections.lastIndex && !transitioning, onClick = { transition { initial = SemanticCursor.start(id); liveCursor = null; part++ } }) { Text("Next part") }
+          TextButton(enabled = part < ready.index.sections.lastIndex && !transitioning, onClick = { transition {
+            (liveCursor ?: view?.currentCursor())?.let { partPositions[part] = it }
+            initial = partPositions[part + 1] ?: SemanticCursor.start(id); liveCursor = null; part++
+          } }) { Text("Next part") }
         }
         val nativeMarks = remember(marks, ready, dark) {
           val blocks = ready.projection.blocks.mapTo(hashSetOf()) { it.id }
@@ -352,8 +396,12 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           native.onMark = { actions = it }
           native.onTable = { expandedTable = it }
           native.onLink = { url ->
-            if (Uri.parse(url).scheme in listOf("http", "https")) {
-              runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
+            if (scheme == "http" || scheme == "https") {
+              val opened = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.isSuccess
+              if (!opened) scope.launch { snackbar.showSnackbar("No browser available to open this link.") }
+            } else {
+              scope.launch { snackbar.showSnackbar("Reader opens web links only; this link uses “${scheme ?: "unknown"}”.") }
             }
           }
           native.onSelection = { session, sequence, range ->

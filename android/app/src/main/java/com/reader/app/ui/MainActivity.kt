@@ -316,10 +316,40 @@ class MainActivity : ComponentActivity() {
           onPasteText = { text ->
             lifecycleScope.launch {
               try {
-                val id = Ingest.importPasted(this@MainActivity, text)
-                Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
-                refresh()
-                go(Route.Reader(id))
+                when (val kind = com.reader.app.capture.ShareIntentClassifier.classify(text, null, Ingest::looksLikeMarkdown)) {
+                  is com.reader.app.capture.ShareClassification.SingleUrl,
+                  is com.reader.app.capture.ShareClassification.SubjectPlusUrl -> {
+                    val url = when (kind) {
+                      is com.reader.app.capture.ShareClassification.SingleUrl -> kind.url
+                      is com.reader.app.capture.ShareClassification.SubjectPlusUrl -> kind.url
+                      else -> text.trim()
+                    }
+                    val titleHint = when (kind) {
+                      is com.reader.app.capture.ShareClassification.SingleUrl -> kind.titleHint
+                      is com.reader.app.capture.ShareClassification.SubjectPlusUrl -> kind.titleHint
+                      else -> null
+                    }
+                    val request = try {
+                      com.reader.app.capture.CaptureRepository(db).getOrCreate(url, titleHint, "paste")
+                    } catch (e: IllegalArgumentException) {
+                      val id = Ingest.importPasted(this@MainActivity, text)
+                      Toast.makeText(this@MainActivity, "Link not valid — saved as text instead", Toast.LENGTH_LONG).show()
+                      refresh()
+                      go(Route.Reader(id))
+                      return@launch
+                    }
+                    com.reader.app.capture.CaptureWorker.scheduleById(this@MainActivity, request.requestId)
+                    Toast.makeText(this@MainActivity, "Link saved — fetching article", Toast.LENGTH_SHORT).show()
+                    refresh()
+                    observeCaptureForTruthfulToast(request.requestId)
+                  }
+                  else -> {
+                    val id = Ingest.importPasted(this@MainActivity, text)
+                    Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
+                    refresh()
+                    go(Route.Reader(id))
+                  }
+                }
               } catch (e: Exception) {
                 Toast.makeText(this@MainActivity, "Paste failed: " + (e.message?.take(120) ?: "unknown"), Toast.LENGTH_LONG).show()
               }
@@ -594,19 +624,90 @@ class MainActivity : ComponentActivity() {
 
   private fun handleIncomingIntent(intent: Intent) {
     if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_PROCESS_TEXT) return
+    val sourceType = if (intent.action == Intent.ACTION_PROCESS_TEXT) "android-process-text" else "android-share"
     lifecycleScope.launch {
       try {
         val (text, subject) = Ingest.handleIntentText(intent) ?: return@launch
-        val id = if (text.startsWith("__HTML__")) {
-          Ingest.importHtml(this@MainActivity, text.removePrefix("__HTML__"), "android-share")
-        } else {
-          Ingest.importSharedText(this@MainActivity, text, if (intent.action == Intent.ACTION_PROCESS_TEXT) "android-process-text" else "android-share", subject)
+        if (text.startsWith("__HTML__")) {
+          val id = Ingest.importHtml(this@MainActivity, text.removePrefix("__HTML__"), "android-share")
+          Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
+          refreshTick.value++
+          return@launch
         }
-        Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
-        refreshTick.value++
+        when (val kind = com.reader.app.capture.ShareIntentClassifier.classify(text, subject, Ingest::looksLikeMarkdown)) {
+          is com.reader.app.capture.ShareClassification.SingleUrl,
+          is com.reader.app.capture.ShareClassification.SubjectPlusUrl -> {
+            val url = when (kind) {
+              is com.reader.app.capture.ShareClassification.SingleUrl -> kind.url
+              is com.reader.app.capture.ShareClassification.SubjectPlusUrl -> kind.url
+              else -> text.trim()
+            }
+            val titleHint = when (kind) {
+              is com.reader.app.capture.ShareClassification.SingleUrl -> kind.titleHint
+              is com.reader.app.capture.ShareClassification.SubjectPlusUrl -> kind.titleHint
+              else -> subject
+            }
+            // Durable commit before network and before saying saved.
+            val request = try {
+              com.reader.app.capture.CaptureRepository(com.reader.app.data.ReaderDb.get(this@MainActivity))
+                .getOrCreate(url, titleHint, sourceType)
+            } catch (e: IllegalArgumentException) {
+              // Structurally invalid URL: fall back to existing text import,
+              // and say so — the link was kept as text, not fetched.
+              val id = Ingest.importSharedText(this@MainActivity, text, sourceType, subject)
+              Toast.makeText(this@MainActivity, "Link not valid — saved as text instead", Toast.LENGTH_LONG).show()
+              refreshTick.value++
+              return@launch
+            }
+            com.reader.app.capture.CaptureWorker.scheduleById(this@MainActivity, request.requestId)
+            Toast.makeText(this@MainActivity, "Link saved — fetching article", Toast.LENGTH_SHORT).show()
+            refreshTick.value++
+            observeCaptureForTruthfulToast(request.requestId)
+          }
+          else -> {
+            val id = Ingest.importSharedText(this@MainActivity, text, sourceType, subject)
+            Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
+            refreshTick.value++
+          }
+        }
       } catch (e: Exception) {
         Toast.makeText(this@MainActivity, "Import failed", Toast.LENGTH_LONG).show()
       }
+    }
+  }
+
+  /** Foreground-only truthful completion toast. Never interrupts reading beyond a toast. */
+  private fun observeCaptureForTruthfulToast(requestId: String) {
+    lifecycleScope.launch {
+      try {
+        val db = com.reader.app.data.ReaderDb.get(this@MainActivity)
+        // Poll briefly while foreground; background completions surface as new library rows.
+        repeat(60) {
+          kotlinx.coroutines.delay(2000)
+          val row = withContext(Dispatchers.IO) { db.captureRequests().byId(requestId) } ?: return@launch
+          when (row.state) {
+            "completed" -> {
+              Toast.makeText(this@MainActivity, "Article saved", Toast.LENGTH_SHORT).show()
+              refreshTick.value++
+              return@launch
+            }
+            "link_only" -> {
+              val detail = row.errorMessage?.take(120) ?: "article text unavailable"
+              Toast.makeText(this@MainActivity, "Link saved — $detail", Toast.LENGTH_LONG).show()
+              refreshTick.value++
+              return@launch
+            }
+            "failed" -> {
+              val detail = row.errorMessage?.take(120) ?: row.errorCode ?: "fetch failed"
+              Toast.makeText(this@MainActivity, "Link saved — $detail", Toast.LENGTH_LONG).show()
+              refreshTick.value++
+              return@launch
+            }
+            "cancelled" -> return@launch
+            else -> { /* keep waiting while pending/fetching */ }
+          }
+        }
+      } catch (_: Exception) { /* best-effort toast only */ }
     }
   }
 

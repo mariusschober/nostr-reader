@@ -223,7 +223,7 @@ fun InboxScreen(
       text = {
         Column {
           AddOption("Import file", c) { showAdd = false; onImportFile() }
-          AddOption("Paste text or markdown", c) { showAdd = false; showPaste = true }
+          AddOption("Paste text, markdown, or link", c) { showAdd = false; showPaste = true }
           AddOption("Pair Chrome", c) { showAdd = false; onPair() }
         }
       },
@@ -239,7 +239,7 @@ fun InboxScreen(
       text = {
         OutlinedTextField(
           value = text, onValueChange = { text = it },
-          placeholder = { Text("Paste text or markdown…", fontFamily = ReaderFonts.Ui) },
+          placeholder = { Text("Paste text, markdown, or an article link…", fontFamily = ReaderFonts.Ui) },
           modifier = Modifier.fillMaxWidth().height(220.dp),
           keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         )

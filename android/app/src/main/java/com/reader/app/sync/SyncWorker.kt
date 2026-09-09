@@ -67,7 +67,10 @@ internal fun syncNeedsRetry(pairingPending: Boolean, ackPending: Boolean): Boole
 
 /** Background poll: rolling 10-day window, dedupe, assemble, ACK. No permanent socket. */
 class ReaderSyncSession(private val applicationContext: Context) {
-  companion object { private val syncMutex = Mutex() }
+  companion object {
+    private val syncMutex = Mutex()
+    @Volatile private var lastCapturePurge = 0L
+  }
   suspend fun runOnce(): Boolean = syncMutex.withLock {
     val db = ReaderDb.get(applicationContext)
     val keys = KeystoreWrap(applicationContext)
@@ -88,6 +91,13 @@ class ReaderSyncSession(private val applicationContext: Context) {
       db.manifests().purgeExpired(System.currentTimeMillis() / 1000)
       db.ackIntents().purgeExpired(System.currentTimeMillis() / 1000)
       db.processedEvents().purgeExpired(System.currentTimeMillis() / 1000)
+      // Terminal URL-capture history is bounded (daily at most); active
+      // requests and all documents are never touched by the purge.
+      val now = System.currentTimeMillis()
+      if (now - lastCapturePurge >= 24L * 60L * 60L * 1000L) {
+        lastCapturePurge = now
+        com.reader.app.capture.CaptureRepository(db).purgeHistory(now)
+      }
       val pairingRetryNeeded = PairingCoordinator(applicationContext, db, keys, relays).processDue()
       val channels = db.channels().active()
       Log.i("NostrReaderSync", "activeChannels=${channels.size}")

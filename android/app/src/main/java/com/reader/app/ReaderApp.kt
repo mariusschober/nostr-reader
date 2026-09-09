@@ -4,6 +4,7 @@ import android.app.Application
 import com.reader.app.sync.SyncWorker
 import com.reader.app.nostr.RelayClient
 import android.content.Context
+import kotlinx.coroutines.launch
 
 open class ReaderApp : Application() {
   /** One transport owner. The instrumentation APK can supply its isolated TLS relay. */
@@ -22,6 +23,10 @@ open class ReaderApp : Application() {
     super.onCreate()
     reading // recover journaled selections before a reading session is opened
     SyncWorker.schedule(this)
+    // Offline URL captures survive restart: re-enqueue durable active work.
+    persistenceScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+      runCatching { com.reader.app.capture.CaptureWorker.rescheduleActive(this@ReaderApp) }
+    }
   }
 }
 
