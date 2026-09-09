@@ -8,6 +8,8 @@ const val RENDERED_PROJECTION_VERSION = 2
 
 enum class TextKind { PARAGRAPH, HEADING, CODE, TABLE, FOOTNOTE, DIVIDER }
 enum class TextStyle { BOLD, ITALIC, STRIKE, CODE, LINK }
+data class TableCell(val start: Int, val end: Int)
+data class ProjectedTable(val rows: List<List<TableCell>>)
 data class ProjectedStyle(val start: Int, val end: Int, val style: TextStyle, val value: String? = null)
 data class ProjectedBlock(
   val id: String, val start: Int, val end: Int, val bodyStart: Int, val bodyEnd: Int,
@@ -21,6 +23,7 @@ data class RenderedProjection(
   val blocks: List<ProjectedBlock>,
   val styles: List<ProjectedStyle>,
   val sourceRanges: Map<String, CanonicalRange>,
+  val tables: List<ProjectedTable> = emptyList(),
 ) {
   private val byId = blocks.associateBy { it.id }
   val graphemes by lazy(LazyThreadSafetyMode.NONE) { Graphemes(text) }
@@ -59,6 +62,7 @@ object RenderedText {
     val text = StringBuilder()
     val projected = mutableListOf<ProjectedBlock>()
     val styles = mutableListOf<ProjectedStyle>()
+    val tables = mutableListOf<ProjectedTable>()
     fun inlines(items: List<Inline>) {
       for (item in items) {
         val start = text.length
@@ -89,10 +93,19 @@ object RenderedText {
               is ArticleBlock.Heading -> { inlines(block.inlines); TextKind.HEADING }
               is ArticleBlock.CodeBlock -> { text.append(block.code.trimEnd('\n')); TextKind.CODE }
               is ArticleBlock.Table -> {
-                val headerStart = text.length
-                text.append(block.header.joinToString("  │  "))
-                styles += ProjectedStyle(headerStart, text.length, TextStyle.BOLD)
-                for (row in block.rows) text.append('\n').append(row.joinToString("  │  "))
+                val cells = mutableListOf<List<TableCell>>()
+                for ((rowIndex, row) in (listOf(block.header) + block.rows).withIndex()) {
+                  if (rowIndex > 0) text.append('\n')
+                  val rowStart = text.length
+                  cells += row.mapIndexed { column, cell ->
+                    if (column > 0) text.append("  │  ")
+                    val cellStart = text.length
+                    text.append(cell)
+                    TableCell(cellStart, text.length)
+                  }
+                  if (rowIndex == 0) styles += ProjectedStyle(rowStart, text.length, TextStyle.BOLD)
+                }
+                tables += ProjectedTable(cells)
                 TextKind.TABLE
               }
               is ArticleBlock.Image -> { text.append(block.alt.ifBlank { "Image omitted" }); TextKind.PARAGRAPH }
@@ -109,7 +122,7 @@ object RenderedText {
       }
     }
     walk(blocks)
-    return RenderedProjection(text.toString(), projected, styles.filter { it.end > it.start }, sourceRanges)
+    return RenderedProjection(text.toString(), projected, styles.filter { it.end > it.start }, sourceRanges, tables)
   }
 }
 

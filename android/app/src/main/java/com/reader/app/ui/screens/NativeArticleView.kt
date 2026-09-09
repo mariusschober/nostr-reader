@@ -10,6 +10,9 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.VelocityTracker
+import android.view.ViewConfiguration
+import android.widget.OverScroller
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.content.res.ResourcesCompat
@@ -47,6 +50,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onMark: (List<String>) -> Unit = {}
   var onLink: (String) -> Unit = {}
   var onTap: () -> Unit = {}
+  var onTable: (Int) -> Unit = {}
 
   var onArticleSwipe: (ArticleAction) -> Unit = {}
   var onSwipeProgress: (Float, Boolean) -> Unit = { _, _ -> }
@@ -57,28 +61,58 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var swipeEligible = false
   private var swiping = false
   private var swipeArmed = false
+  private val fling = OverScroller(context)
+  private val touchConfig = ViewConfiguration.get(context)
+  private var velocity: VelocityTracker? = null
+  private var flingEligible = false
+  private val flingFrame = object : Runnable {
+    override fun run() {
+      if (pen || hasSelection() || !isAttachedToWindow) { stopFling(); return }
+      if (fling.computeScrollOffset()) {
+        body.scrollTo(body.scrollX, fling.currY.coerceIn(0, maxScrollY()))
+        postOnAnimation(this)
+      }
+    }
+  }
+
+  private fun hasSelection() = actionMode != null || body.selectionStart != body.selectionEnd
+  private fun maxScrollY() = ((body.layout?.height ?: 0) + body.totalPaddingTop + body.totalPaddingBottom - body.height).coerceAtLeast(0)
+  private fun stopFling() { fling.forceFinished(true); removeCallbacks(flingFrame) }
+  private fun recycleVelocity() { velocity?.recycle(); velocity = null; flingEligible = false }
 
   override fun dispatchTouchEvent(event: MotionEvent): Boolean {
     val dx = event.x - swipeX
     val dy = event.y - swipeY
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
+        stopFling()
+        recycleVelocity()
+        velocity = VelocityTracker.obtain().also { it.addMovement(event) }
+        flingEligible = !pen && !hasSelection()
         swipeX = event.x; swipeY = event.y; swiping = false; swipeArmed = false
         val insets = androidx.core.view.ViewCompat.getRootWindowInsets(this)
           ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemGestures())
         val edge = maxOf(dp(24), insets?.left ?: 0, insets?.right ?: 0)
         val at = body.getOffsetForPosition(event.x - paddingLeft, event.y)
         val link = projection?.styles?.any { it.style == TextStyle.LINK && at >= it.start && at < it.end } == true
+        // A horizontal drag over code or a table is a content gesture, even
+        // when this particular block fits the viewport without horizontal scroll.
+        val horizontalContent = projection?.blocks?.any {
+          it.kind in setOf(TextKind.CODE, TextKind.TABLE) && at >= it.start && at < it.end
+        } == true
         swipeEligible = !pen && actionMode == null && body.selectionStart == body.selectionEnd &&
-          event.x > edge && event.x < width - edge && !link
+          event.x > edge && event.x < width - edge && !link && !horizontalContent
       }
-      MotionEvent.ACTION_POINTER_DOWN -> swipeEligible = false
+      MotionEvent.ACTION_POINTER_DOWN -> { swipeEligible = false; flingEligible = false }
       MotionEvent.ACTION_MOVE -> {
+        velocity?.addMovement(event)
+        if (pen || hasSelection()) flingEligible = false
         if (pen || actionMode != null || body.selectionStart != body.selectionEnd) swipeEligible = false
         if (!swiping && kotlin.math.abs(dy) > dp(12)) swipeEligible = false
         if (!swiping && swipeEligible && kotlin.math.abs(dx) > dp(20) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.7f &&
           (ArticleAction.forArticle(articleList, dx > 0) != null)) {
           swiping = true
+          flingEligible = false
           val cancel = MotionEvent.obtain(event); cancel.action = MotionEvent.ACTION_CANCEL
           super.dispatchTouchEvent(cancel); cancel.recycle()
         }
@@ -113,10 +147,28 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         swipeLabel.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)
         onSwipeProgress(0f, false)
         if (commit) ArticleAction.forArticle(articleList, later)?.let { reportCursor(); onArticleSwipe(it) }
+        recycleVelocity()
         return true
       }
     }
-    return super.dispatchTouchEvent(event)
+    // Android's selectable TextView owns touch scrolling and native handles;
+    // its movement method has no kinetic scroll. Add only post-release motion
+    // to that same viewport, never a surrounding ScrollView or touch interceptor.
+    val handled = super.dispatchTouchEvent(event)
+    if (event.actionMasked == MotionEvent.ACTION_UP) {
+      velocity?.addMovement(event)
+      if (flingEligible && !pen && !hasSelection() && kotlin.math.abs(dy) > touchConfig.scaledTouchSlop &&
+        kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.7f) {
+        velocity?.computeCurrentVelocity(1000, touchConfig.scaledMaximumFlingVelocity.toFloat())
+        val speed = -(velocity?.yVelocity ?: 0f)
+        if (kotlin.math.abs(speed) >= touchConfig.scaledMinimumFlingVelocity) {
+          fling.fling(0, body.scrollY, 0, speed.toInt(), 0, 0, 0, maxScrollY())
+          postOnAnimation(flingFrame)
+        }
+      }
+      recycleVelocity()
+    } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) { stopFling(); recycleVelocity() }
+    return handled
   }
 
   init {
@@ -137,6 +189,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     body.changed = { start, end -> selectionChanged(start, end) }
     body.customSelectionActionModeCallback = object : ActionMode.Callback {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+        stopFling()
         actionMode = mode
         selectionSession = UUID.randomUUID().toString()
         if (pen) menu.clear() else menu.add(0, HIGHLIGHT_ACTION, 0, "Highlight")
@@ -167,14 +220,23 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           val at = body.getOffsetForPosition(event.x, event.y)
           val hits = markRanges.filter { at >= it.start && at < it.end }.sortedByDescending { it.createdAt }
           val link = projection?.styles?.lastOrNull { it.style == TextStyle.LINK && at >= it.start && at < it.end }?.value
+          val table = projection?.tables?.indexOfFirst { rows ->
+            rows.rows.firstOrNull()?.firstOrNull()?.start?.let { first ->
+              at >= first && at < (rows.rows.lastOrNull()?.lastOrNull()?.end ?: first)
+            } == true
+          } ?: -1
           when {
             hits.isNotEmpty() -> onMark(hits.map { it.id })
             !pen && link != null -> onLink(link)
+            !pen && table >= 0 -> onTable(table)
             !pen -> onTap()
           }
         }
       }
       false
+    }
+    body.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+      if (right - left != oldRight - oldLeft) updateTableStyles()
     }
     body.setOnScrollChangeListener { _, _, _, _, _ -> if (!restoring) reportCursor() }
   }
@@ -183,6 +245,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
 
   fun display(id: String, value: RenderedProjection, text: CharSequence, settings: ReaderSettings,
               foreground: Int, background: Int, margin: Int, initial: SemanticCursor) {
+    stopFling()
     val changed = projection !== value || documentId != id
     if (changed) { flushSelection(); clearSelection() }
     val saved = if (!changed) currentCursor() else initial
@@ -229,10 +292,21 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       body.setText(immutableText, TextView.BufferType.SPANNABLE)
       restore()
     } else restore()
+    body.post { updateTableStyles() }
+  }
+
+  private fun updateTableStyles() {
+    val value = projection ?: return
+    if (value.tables.isEmpty()) return
+    val text = body.text as? Spannable ?: return
+    styleNativeTables(text, value, body.paint, body.width - body.totalPaddingLeft - body.totalPaddingRight)
+    body.requestLayout()
+    body.invalidate()
   }
 
   fun setPenMode(enabled: Boolean) {
     if (pen == enabled) return
+    stopFling()
     if (!enabled) flushSelection()
     pen = enabled
     actionMode?.invalidate()
@@ -283,6 +357,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   private fun selectionChanged(start: Int, end: Int) {
+    if (start >= 0 && end > start) stopFling()
     pendingSelection?.let { removeCallbacks(it) }
     if (!pen || start < 0 || end < 0 || end == start) return
     val expectedStart = start; val expectedEnd = end
@@ -292,6 +367,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   fun flushSelection() {
+    stopFling()
     pendingSelection?.let { removeCallbacks(it) }
     pendingSelection = null
     if (pen) emitSelection()
@@ -309,6 +385,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   override fun onDetachedFromWindow() {
+    recycleVelocity()
     flushSelection()
     reportCursor()
     pendingSelection?.let { removeCallbacks(it) }
