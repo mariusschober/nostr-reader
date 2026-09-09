@@ -72,6 +72,7 @@ class ReaderTransitionInstrumentedTest {
           Selection.setSelection(body.text as Spannable, 0, 30)
         }
         try {
+          ui.click("Reading tools")
           ui.click("Speed")
           SystemClock.sleep(150)
           scenario.onActivity { assertNotNull("Reader remains until storage settles", native(it.window.decorView)) }
