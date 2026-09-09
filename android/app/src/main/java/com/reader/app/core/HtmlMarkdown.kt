@@ -27,16 +27,19 @@ object HtmlMarkdown {
   private fun render(node: Node): String {
     if (node is TextNode) return escape(node.text())
     if (node !is Element) return ""
-    val content by lazy { children(node).trim() }
+    val rawContent by lazy { children(node) }
+    val content by lazy { rawContent.trim() }
+    fun marked(marker: String): String = if (content.isEmpty()) rawContent else
+      rawContent.takeWhile { it.isWhitespace() } + marker + content + marker + rawContent.takeLastWhile { it.isWhitespace() }
     return when (node.normalName()) {
       "h1", "h2", "h3", "h4", "h5", "h6" -> "\n\n${"#".repeat(node.normalName()[1].digitToInt())} $content\n\n"
       "p", "div", "article", "section", "main", "figure", "figcaption" -> "\n\n$content\n\n"
       "br" -> "\\\n"
       "hr" -> "\n\n---\n\n"
-      "strong", "b" -> "**$content**"
-      "em", "i" -> "*$content*"
-      "s", "del", "strike" -> "~~$content~~"
-      "a" -> ArticleParser.sanitizeUrl(node.attr("href"))?.let { "[$content](<${it.replace(">", "%3E")}>)" } ?: content
+      "strong", "b" -> marked("**")
+      "em", "i" -> marked("*")
+      "s", "del", "strike" -> marked("~~")
+      "a" -> ArticleParser.sanitizeUrl(node.attr("href"))?.let { "[$rawContent](<${it.replace(">", "%3E")}>)" } ?: rawContent
       "img" -> escape(node.attr("alt")).takeIf { it.isNotBlank() }?.let { "[$it]" }.orEmpty()
       "pre" -> {
         val code = node.wholeText().trimEnd('\n')

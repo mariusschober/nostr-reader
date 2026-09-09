@@ -6,6 +6,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HtmlMarkdownTest {
+  @Test fun inlineHtmlKeepsWordBoundaries() {
+    val markdown = HtmlMarkdown.convert("<p>A<strong> bold </strong>B<em> soft </em>C<a href='https://example.com'> link </a>D</p>")
+    assertEquals("A bold B soft C link D", ArticleParser.readableText(ArticleParser.parse(markdown)).trim())
+  }
+
   @Test fun compactTablesAreMarkdownWithOrWithoutOuterPipes() {
     for (text in listOf("| A | B |\n|---|---|\n|one|two|", "A | B\n--- | ---\none | two")) {
       assertTrue(Ingest.looksLikeMarkdown(text))
