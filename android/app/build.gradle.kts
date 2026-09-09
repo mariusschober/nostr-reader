@@ -95,3 +95,31 @@ dependencies {
   androidTestImplementation("androidx.room:room-testing:2.6.1")
   debugImplementation("androidx.compose.ui:ui-tooling")
 }
+
+// Manual live-web eval (NOT a CI gate): fetches real pages politely and reports.
+// Usage: ./gradlew :app:runCaptureEval -Purls=../../docs/eval/article-urls-v1.txt -Pout=../../docs/eval/report-v1.tsv
+// (paths relative to android/; EvalMain never throws per URL).
+tasks.register<JavaExec>("runCaptureEval") {
+  group = "verification"
+  description = "Run the URL-capture eval over a URL list file."
+  dependsOn("compileDebugKotlin", "compileDebugUnitTestKotlin")
+  classpath = files(
+    layout.buildDirectory.dir("tmp/kotlin-classes/debug"),
+    layout.buildDirectory.dir("tmp/kotlin-classes/debugUnitTest"),
+    configurations.getByName("debugUnitTestRuntimeClasspath"),
+  )
+  mainClass.set("com.reader.app.EvalMain")
+  val urls = providers.gradleProperty("urls").orElse("../../docs/eval/article-urls-v1.txt")
+  val out = providers.gradleProperty("out").orElse("../../docs/eval/report-v1.tsv")
+  args(urls.get(), out.get())
+}
+
+// 16 KiB page-size gate (Play requirement for Android 15+ targetSdk).
+// Fails the build if any .so in the APK loses ELF LOAD alignment.
+// Usage: ./gradlew :app:verify16KbAlignment
+tasks.register<Exec>("verify16KbAlignment") {
+  group = "verification"
+  description = "Fail if any native library in the debug APK is not 16 KiB aligned."
+  dependsOn("assembleDebug")
+  commandLine("python3", "../../scripts/check_elf_alignment.py", "build/outputs/apk/debug/app-debug.apk")
+}
