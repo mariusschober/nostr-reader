@@ -30,9 +30,9 @@ class PasteDetectTest {
   }
 
   @Test
-  fun linksAndTablesNeedBlankLine() {
+  fun linksAndTablesPreserveFormatting() {
     assertTrue(Ingest.looksLikeMarkdown("Read this.\n\nSee [the docs](https://example.com) for more."))
-    assertFalse(Ingest.looksLikeMarkdown("See [the docs](https://example.com) ok"))
+    assertTrue(Ingest.looksLikeMarkdown("See [the docs](https://example.com) ok"))
     assertTrue(Ingest.looksLikeMarkdown("Data:\n\n| A | B |\n|---|---|\n| 1 | 2 |"))
     assertFalse(Ingest.looksLikeMarkdown("a | b"))
   }
