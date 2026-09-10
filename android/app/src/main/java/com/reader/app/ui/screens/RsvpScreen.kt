@@ -41,6 +41,13 @@ fun RsvpScreen(
 ) {
   val c = readerColors(settings.background)
   val font = fontFor(settings.font)
+  // Speed-reading sessions are the most focus-hungry surface: no lock screen.
+  val keepAwakeContext = androidx.compose.ui.platform.LocalContext.current
+  androidx.compose.runtime.DisposableEffect(Unit) {
+    val window = (keepAwakeContext as? android.app.Activity)?.window
+    window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    onDispose { window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+  }
   var index by rememberSaveable { mutableStateOf(startIndex.coerceIn(0, (tokens.size - 1).coerceAtLeast(0))) }
   var playing by rememberSaveable { mutableStateOf(false) }
   var wpm by rememberSaveable { mutableStateOf(settings.rsvpWpm) }

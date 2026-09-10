@@ -54,12 +54,15 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          playerVisible: Boolean = false,
                          // Search landing: open at this cursor with a fading
                          // match tint; null means normal (quote/progress) entry.
-                         at: SemanticCursor? = null,
-                         atEnd: Int? = null,
-                         docLabels: List<String> = emptyList(),
-                         labelSuggestions: List<String> = emptyList(),
-                         onToggleLabel: (String) -> Unit = {},
-                         player: @Composable () -> Unit = {}) {
+                          at: SemanticCursor? = null,
+                          atEnd: Int? = null,
+                          docLabels: List<String> = emptyList(),
+                          labelSuggestions: List<String> = emptyList(),
+                          onToggleLabel: (String) -> Unit = {},
+                          player: @Composable () -> Unit = {},
+                          // Finish-card bridge: pop back to the library so the
+                          // moment of completion leads somewhere.
+                          onReadAnother: () -> Unit = {}) {
   val context = LocalContext.current
   val app = context.applicationContext as ReaderApp
   val hints = remember { context.getSharedPreferences("reader_hints", android.content.Context.MODE_PRIVATE) }
@@ -106,6 +109,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var displayRequest by remember(id) { mutableIntStateOf(0) }
   var view by remember { mutableStateOf<NativeArticleView?>(null) }
   var pen by rememberSaveable(id) { mutableStateOf(false) }
+  // Immersive reading: a clean tap anywhere toggles the chrome. The reader
+  // enters a two-hour state, not an app with bars bolted on.
+  var immersed by rememberSaveable(id) { mutableStateOf(false) }
   var selectedColor by rememberSaveable { mutableStateOf("YELLOW") }
   var menu by remember { mutableStateOf(false) }
   var showLabels by remember { mutableStateOf(false) }
@@ -140,6 +146,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     if (part < 0) return@LaunchedEffect
     prepared = null
     content = null
+    liveFraction = null
     try {
       val ready = app.articles.section(id, part)
       val quote = highlightId?.let { db.highlights().byId(it) }?.takeIf { it.documentId == id }
@@ -197,6 +204,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     transition(onBack)
   }
   BackHandler(enabled = !transitioning) { leave() }
+  // Reading sessions run long: never let the lock screen interrupt
+  // mid-paragraph. Scoped strictly to the reader and speed-read surfaces.
+  DisposableEffect(id) {
+    val window = (context as? android.app.Activity)?.window
+    window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    onDispose { window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+  }
   val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
   DisposableEffect(id, lifecycle) {
     val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -227,6 +241,12 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   BoxWithConstraints(Modifier.fillMaxSize()) {
   val dockMaxHeight = maxHeight * 0.45f
   Scaffold(containerColor = colors.background, contentColor = colors.text, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
+    // Chrome fades in 150ms; pen mode keeps the dock visible by design.
+    androidx.compose.animation.AnimatedVisibility(
+      visible = !immersed || pen,
+      enter = androidx.compose.animation.fadeIn(animationSpec = Motion.Fade),
+      exit = androidx.compose.animation.fadeOut(animationSpec = Motion.Fade),
+    ) {
     Column {
       Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         TextButton(onClick = { leave() }, enabled = !transitioning) { Text("Back") }
@@ -263,12 +283,20 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       }
 
     }
+    }
   }, bottomBar = {
-    Column(Modifier.heightIn(max = dockMaxHeight).verticalScroll(rememberScrollState())) {
-      // Finish card: one calm line, once per visit, never modal.
+    Column {
+      androidx.compose.animation.AnimatedVisibility(
+        visible = !immersed || pen,
+        enter = androidx.compose.animation.fadeIn(animationSpec = Motion.Fade),
+        exit = androidx.compose.animation.fadeOut(animationSpec = Motion.Fade),
+      ) {
+      Column(Modifier.heightIn(max = dockMaxHeight).verticalScroll(rememberScrollState())) {
+      // Finish card: one calm line, once per visit, never modal — and the
+      // moment of completion always has a way forward ("Read another").
       androidx.compose.animation.AnimatedVisibility(
         visible = finishCardVisible,
-        enter = androidx.compose.animation.fadeIn(animationSpec = tween(250)),
+        enter = androidx.compose.animation.fadeIn(animationSpec = Motion.Celebrate),
         exit = androidx.compose.animation.fadeOut(),
       ) {
         Surface(color = colors.surface, contentColor = colors.text) {
@@ -277,11 +305,20 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             Icon(Icons.Default.Check, contentDescription = null, tint = colors.success,
               modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
+            // First-ever finish gets the warmer line — once per install.
+            val firstEver = remember { !hints.getBoolean("first_finish_celebrated", false) }
             Text(
-              "Finished · ${com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)} min",
+              if (firstEver) "First one finished. It's in the Archive."
+              else "Finished · ${com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)} min",
               fontFamily = ReaderFonts.Ui, color = colors.text,
               modifier = Modifier.weight(1f),
             )
+            TextButton(onClick = {
+              finishCardVisible = false
+              onReadAnother()
+            }, colors = ButtonDefaults.textButtonColors(contentColor = colors.link)) {
+              Text("Read another", fontFamily = ReaderFonts.Ui)
+            }
             IconButton(onClick = { finishCardVisible = false }) {
               Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = colors.secondary,
                 modifier = Modifier.size(18.dp))
@@ -289,14 +326,24 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           }
         }
       }
-      // Progress footer: orientation for long sessions, from already-flowing data.
+      LaunchedEffect(finishCardVisible) {
+        if (finishCardVisible) {
+          view?.let { com.reader.app.ui.Haptics.finish(it) }
+          if (!hints.getBoolean("first_finish_celebrated", false)) {
+            hints.edit().putBoolean("first_finish_celebrated", true).apply()
+          }
+        }
+      }
+      // Progress footer: orientation for long sessions, from already-flowing
+      // data. Whole-document numbers only; the "Saved" token was ambient
+      // noise — progress-write failures already surface as "Save failed —
+      // Retry" above the body.
       if (prepared != null) {
         val fraction = (liveFraction ?: doc?.progressFraction ?: 0f).coerceIn(0f, 1f)
         val totalMins = com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)
         val leftMins = ((1f - fraction) * totalMins).toInt().coerceAtLeast(0)
-        val saveText = if (saveError != null) "Save failed" else "Saved"
         Text(
-          "${(fraction * 100).toInt()}% · $leftMins min left · Part ${part + 1} / ${prepared!!.index.sections.size} · $saveText",
+          "${(fraction * 100).toInt()}% · $leftMins min left · Part ${part + 1} / ${prepared!!.index.sections.size}",
           fontFamily = ReaderFonts.Ui, fontSize = 12.sp, color = colors.secondary,
           modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
             .semantics { contentDescription = "${(fraction * 100).toInt()} percent read, $leftMins minutes left" },
@@ -371,6 +418,17 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         TextButton(onClick = { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } }, enabled = prepared != null && !transitioning) {
           Icon(Icons.Default.Speed, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Speed")
         }
+      }
+      }
+      }
+      // Immersed: a single thin line keeps orientation without chrome.
+      if (immersed && !pen && prepared != null) {
+        val fraction = (liveFraction ?: doc?.progressFraction ?: 0f).coerceIn(0f, 1f)
+        LinearProgressIndicator(
+          progress = { fraction },
+          modifier = Modifier.fillMaxWidth().height(2.dp),
+          color = colors.link, trackColor = colors.background,
+        )
       }
     }
   }) { padding ->
@@ -450,8 +508,22 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       else {
         if (ready.index.sections.size > 1) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
           // Per-part positions: leaving a part bookmarks it, returning restores
-          // it, instead of resetting to the part start every time.
-          val partPositions = remember(id) { mutableMapOf<Int, SemanticCursor>() }
+          // it — across rotation AND process death (Saveable, not remember).
+          val partPositions = rememberSaveable(
+            id,
+            saver = androidx.compose.runtime.saveable.listSaver(
+              save = { map -> map.entries.map { listOf(it.key, it.value.documentId, it.value.blockId, it.value.charOffset) } },
+              restore = { list ->
+                @Suppress("UNCHECKED_CAST")
+                buildMap {
+                  for (row in list) {
+                    row as List<Any>
+                    put((row[0] as Number).toInt(), SemanticCursor(row[1] as String, row[2] as String, (row[3] as Number).toInt()))
+                  }
+                }.toMutableMap()
+              },
+            ),
+          ) { mutableMapOf<Int, SemanticCursor>() }
           TextButton(enabled = part > 0 && !transitioning, onClick = { transition {
             (liveCursor ?: view?.currentCursor())?.let { partPositions[part] = it }
             initial = partPositions[part - 1] ?: SemanticCursor.start(id); liveCursor = null; part--
@@ -498,9 +570,20 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           native.onArticleSwipe = { action -> transition { onArticleAction(action) } }
           native.setPenMode(pen)
           native.setMarks(nativeMarks)
+          // Immersive toggle: any clean tap (no pen, no selection) flips the
+          // chrome. Drag physics and selection are untouched.
+          native.onTap = { immersed = !immersed }
           native.onCursor = { cursor, fraction ->
             liveCursor = cursor
-            liveFraction = fraction
+            // Whole-document fraction for the footer: the raw callback value
+            // is part-local and would visibly jump backwards when a new part
+            // starts. One offset computation feeds both the footer and the
+            // durable progress offer.
+            if (native.tag == styleKey) {
+              val whole = ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))
+              liveFraction = whole
+              if (!speechPlaying) app.progress.offer(cursor, whole)
+            }
             // The match tint survives the landing settle (cursor == hit) and
             // clears on the first real scroll away from it.
             if (matchTint) {
@@ -508,11 +591,6 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
               if (a == null || cursor.blockId != a.blockId || kotlin.math.abs(cursor.charOffset - a.charOffset) > 40) {
                 matchTint = false
               }
-            }
-            // Guard stale ready closures after a part switch: only offer
-            // progress for the currently displayed section.
-            if (native.tag == styleKey) {
-              if (!speechPlaying) app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset)))
             }
           }
           native.onViewport = { scrollY, viewportHeight ->
@@ -524,8 +602,15 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           native.onLink = { url ->
             val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
             if (scheme == "http" || scheme == "https") {
-              val opened = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.isSuccess
-              if (!opened) scope.launch { snackbar.showSnackbar("No browser available to open this link.") }
+              // Custom Tabs: a light client surface tinted like the reader.
+              // The library itself falls back to ACTION_VIEW when no
+              // Custom Tabs provider exists; the session returns cleanly.
+              runCatching {
+                androidx.browser.customtabs.CustomTabsIntent.Builder()
+                  .setShowTitle(true)
+                  .build()
+                  .launchUrl(context, Uri.parse(url))
+              }.onFailure { scope.launch { snackbar.showSnackbar("No browser available to open this link.") } }
             } else {
               scope.launch { snackbar.showSnackbar("Reader opens web links only; this link uses “${scheme ?: "unknown"}”.") }
             }

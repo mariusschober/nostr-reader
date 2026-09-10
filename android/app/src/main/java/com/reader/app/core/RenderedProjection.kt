@@ -111,7 +111,19 @@ object RenderedText {
                 tables += ProjectedTable(cells)
                 TextKind.TABLE
               }
-              is ArticleBlock.Image -> { text.append(block.alt.ifBlank { "Image omitted" }); TextKind.PARAGRAPH }
+              is ArticleBlock.Image -> {
+                // Honest offline placeholder: describe the image, and where a
+                // source URL exists make the caption a real link — "tap to
+                // view" routes through the standard link pipeline instead of
+                // reading like an error.
+                text.append(block.alt.ifBlank { "Image" })
+                if (block.url.isNotBlank()) {
+                  val labelStart = text.length
+                  text.append("\n[Image — tap to view]")
+                  styles += ProjectedStyle(labelStart, text.length, TextStyle.LINK, block.url)
+                }
+                TextKind.PARAGRAPH
+              }
               is ArticleBlock.Footnotes -> { text.append(block.items.mapIndexed { i, value -> "[${i + 1}] $value" }.joinToString("\n")); TextKind.FOOTNOTE }
               is ArticleBlock.Divider -> { text.append('—'); TextKind.DIVIDER }
               else -> error("Container handled above")

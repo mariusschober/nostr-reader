@@ -11,7 +11,7 @@ private val Context.store by preferencesDataStore("reader_settings")
 
 enum class ArticleFont { NEWSREADER, CRIMSON_PRO, ASUL, ATKINSON, ABEEZEE }
 enum class ArticleMargin { NARROW, DEFAULT, WIDE }
-enum class ArticleBackground { FOLLOW_APP, PAPER, SOFT, INK, BLACK }
+enum class ArticleBackground { FOLLOW_APP, PAPER, SOFT, SEPIA, INK, BLACK }
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 enum class LineSpacing { COMPACT, COMFORT, AIRY }
 enum class LibrarySort { NEWEST, OLDEST, QUICKEST, LONGEST, TITLE }
@@ -28,6 +28,8 @@ data class ReaderSettings(
   val lineSpacing: LineSpacing = LineSpacing.COMPACT,
   val sort: LibrarySort = LibrarySort.NEWEST,
   val age: AgeFilter = AgeFilter.ANY,
+  /** Bold body text — a low-vision/comfort pairing, real weight not fake. */
+  val bold: Boolean = false,
   /** One-time gestures coach shown on the first Archive visit. */
   val archiveCoachShown: Boolean = false,
 ) {
@@ -50,6 +52,7 @@ class Prefs(private val ctx: Context) {
     val SPACING = stringPreferencesKey("lineSpacing")
     val SORT = stringPreferencesKey("sort")
     val AGE = stringPreferencesKey("age")
+    val BOLD = booleanPreferencesKey("boldText")
     val ARCHIVE_COACH = booleanPreferencesKey("archiveCoachShown")
     val WELCOME = booleanPreferencesKey("welcomeShown")
     val MILESTONES = stringSetPreferencesKey("milestonesDone")
@@ -71,6 +74,7 @@ class Prefs(private val ctx: Context) {
       lineSpacing = runCatching { LineSpacing.valueOf(d[K.SPACING] ?: "COMFORT") }.getOrDefault(LineSpacing.COMFORT),
       sort = runCatching { LibrarySort.valueOf(d[K.SORT] ?: "NEWEST") }.getOrDefault(LibrarySort.NEWEST),
       age = runCatching { AgeFilter.valueOf(d[K.AGE] ?: "ANY") }.getOrDefault(AgeFilter.ANY),
+      bold = d[K.BOLD] == true,
       archiveCoachShown = d[K.ARCHIVE_COACH] == true,
     )
   }
@@ -88,6 +92,7 @@ class Prefs(private val ctx: Context) {
         set(K.SPACING, s.lineSpacing.name)
         set(K.SORT, s.sort.name)
         set(K.AGE, s.age.name)
+        if (s.bold) set(K.BOLD, true)
         if (s.archiveCoachShown) set(K.ARCHIVE_COACH, true)
       }
     }

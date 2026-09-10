@@ -19,8 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -237,7 +239,18 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
           }
         }
         Spacer(Modifier.height(8.dp))
-        Text("Size: ${settings.fontSizeSp.toInt()}", fontFamily = ReaderFonts.Ui, color = c.secondary)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text("Size: ${settings.fontSizeSp.toInt()}", fontFamily = ReaderFonts.Ui, color = c.secondary, modifier = Modifier.weight(1f))
+          // Steppers: the slider is slow for the common "one notch" nudge.
+          IconButton(onClick = { onChange(settings.copy(fontSizeSp = (settings.fontSizeSp - 1f).coerceIn(14f, 32f))) },
+            modifier = Modifier.semantics { contentDescription = "Smaller text" }) {
+            Icon(Icons.Default.Remove, contentDescription = null, tint = c.text)
+          }
+          IconButton(onClick = { onChange(settings.copy(fontSizeSp = (settings.fontSizeSp + 1f).coerceIn(14f, 32f))) },
+            modifier = Modifier.semantics { contentDescription = "Larger text" }) {
+            Icon(Icons.Default.Add, contentDescription = null, tint = c.text)
+          }
+        }
         Slider(
           modifier = Modifier.semantics { contentDescription = "Article text size"; stateDescription = "${settings.fontSizeSp.toInt()}" },
           value = settings.fontSizeSp, onValueChange = { onChange(settings.copy(fontSizeSp = it)) },
@@ -293,7 +306,7 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
           ArticleBackground.entries.forEach { b ->
             FilterChip(
               selected = settings.background == b, onClick = { onChange(settings.copy(background = b)) },
-              label = { Text(when (b) { ArticleBackground.FOLLOW_APP -> "Follow system"; ArticleBackground.PAPER -> "Paper"; ArticleBackground.SOFT -> "Soft"; ArticleBackground.INK -> "Ink"; ArticleBackground.BLACK -> "Black" }, fontFamily = ReaderFonts.Ui, maxLines = 2) },
+              label = { Text(when (b) { ArticleBackground.FOLLOW_APP -> "Follow system"; ArticleBackground.PAPER -> "Paper"; ArticleBackground.SOFT -> "Soft"; ArticleBackground.SEPIA -> "Sepia"; ArticleBackground.INK -> "Ink"; ArticleBackground.BLACK -> "Black" }, fontFamily = ReaderFonts.Ui, maxLines = 2) },
               colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = c.text, selectedLabelColor = c.background,
                 containerColor = c.background, labelColor = c.text,
@@ -304,6 +317,16 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
               ),
             )
           }
+        }
+        Spacer(Modifier.height(8.dp))
+        // Bold body: real variable-font weight; pairs with larger sizes.
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(
+          selected = settings.bold, role = Role.Switch,
+          onClick = { onChange(settings.copy(bold = !settings.bold)) },
+        ), verticalAlignment = Alignment.CenterVertically) {
+          Text("Bold text", fontFamily = ReaderFonts.Ui, color = c.text, modifier = Modifier.weight(1f))
+          Switch(checked = settings.bold, onCheckedChange = { onChange(settings.copy(bold = it)) },
+            colors = SwitchDefaults.colors(checkedTrackColor = c.text, checkedThumbColor = c.background))
         }
       }
     },

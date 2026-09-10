@@ -647,6 +647,7 @@ class MainActivity : ComponentActivity() {
             ttsController?.pause(); ttsState = null; ttsDocId = null
             stack.pop(); tick++
           },
+          onReadAnother = { stack.pop(); tick++ },
           onListen = { projection, cursor -> openTts(r.id, projection, cursor) },
           onSpeedRead = { cursor -> ttsController?.pause(); go(Route.Rsvp(r.id, cursor)) },
           onArticleAction = { action ->

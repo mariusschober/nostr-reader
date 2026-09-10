@@ -288,14 +288,22 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     projection = value
     body.textSize = settings.fontSizeSp
     body.setLineSpacing(0f, settings.lineHeightMultiplier())
-    val font = when (settings.font) {
-      ArticleFont.NEWSREADER -> R.font.newsreader_var
+    val font = when (settings.font) {      ArticleFont.NEWSREADER -> R.font.newsreader_var
       ArticleFont.CRIMSON_PRO -> R.font.crimsonpro_var
       ArticleFont.ASUL -> R.font.asul_regular
       ArticleFont.ATKINSON -> R.font.atkinson_regular
       ArticleFont.ABEEZEE -> R.font.abeezee_regular
     }
-    body.typeface = ResourcesCompat.getFont(context, font)
+    val base = ResourcesCompat.getFont(context, when (settings.font) {
+      ArticleFont.NEWSREADER -> R.font.newsreader_var
+      ArticleFont.CRIMSON_PRO -> R.font.crimsonpro_var
+      ArticleFont.ASUL -> R.font.asul_regular
+      ArticleFont.ATKINSON -> R.font.atkinson_regular
+      ArticleFont.ABEEZEE -> R.font.abeezee_regular
+    })
+    // Bold text is a real weight instance of the variable font, not a
+    // synthetic stroke-widening pass.
+    body.typeface = if (settings.bold) android.graphics.Typeface.create(base, android.graphics.Typeface.BOLD) else base
     body.setTextColor(foreground)
     setBackgroundColor(background)
     body.setBackgroundColor(background)

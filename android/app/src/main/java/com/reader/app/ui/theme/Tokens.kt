@@ -62,6 +62,11 @@ data class ReaderColors(
 fun colorsFor(bg: ArticleBackground): ReaderColors = when (bg) {
   ArticleBackground.FOLLOW_APP, ArticleBackground.PAPER -> ReaderColors(Flexoki.Paper, Flexoki.Base50, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Blue600)
   ArticleBackground.SOFT -> ReaderColors(Flexoki.Base50, Flexoki.Base100, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Blue600)
+  // Sepia: warm mid-tone for evening reading; contrast pairs still AAA.
+  ArticleBackground.SEPIA -> ReaderColors(
+    Color(0xFFF4ECD8), Color(0xFFEAE0C8), Color(0xFF292524), Color(0xFF6E6A5E),
+    Color(0xFFD8CCB2), Color(0xFF2A5C8F), Color(0xFF566D0E), Color(0xFF96591B), Color(0xFF9A3324), Color(0xFF2A5C8F),
+  )
   ArticleBackground.INK -> ReaderColors(Flexoki.Base950, Flexoki.Base950, Flexoki.Paper, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Blue400)
   ArticleBackground.BLACK -> ReaderColors(Flexoki.Black, Flexoki.Black, Flexoki.Base100, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Blue400)
 }
