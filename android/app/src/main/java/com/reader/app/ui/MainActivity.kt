@@ -257,6 +257,18 @@ class MainActivity : ComponentActivity() {
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = windowColors.text == com.reader.app.ui.theme.Flexoki.Black
       }
 
+      suspend fun computeLibraryStats(summaries: List<com.reader.app.data.DocumentSummary>): com.reader.app.ui.screens.LibraryStats =
+        withContext(Dispatchers.IO) {
+          val weekStart = com.reader.app.data.ReadingRun.daysAgo(6)
+          val byDay = db.readingStats().recentDayStats(400).associate { it.day to it }
+          com.reader.app.ui.screens.LibraryStats(
+            total = summaries.size,
+            weekMinutes = db.readingStats().minutesSince(weekStart),
+            weekFinished = db.readingStats().finishedSince(weekStart),
+            runDays = com.reader.app.data.ReadingRun.computeRun(byDay, com.reader.app.data.ReadingRun.today()),
+          )
+        }
+
       suspend fun refresh() {
         val loaded = withContext(Dispatchers.IO) {
           db.documents().observeSummaries().first().groupBy { it.list }
@@ -270,19 +282,13 @@ class MainActivity : ComponentActivity() {
           }
         }
         minutesByList = mins
-        libraryStats = withContext(Dispatchers.IO) {
-          val weekStart = com.reader.app.data.ReadingRun.daysAgo(6)
-          val byDay = db.readingStats().recentDayStats(400).associate { it.day to it }
-          com.reader.app.ui.screens.LibraryStats(
-            total = loaded.values.sumOf { it.size },
-            weekMinutes = db.readingStats().minutesSince(weekStart),
-            weekFinished = db.readingStats().finishedSince(weekStart),
-            runDays = com.reader.app.data.ReadingRun.computeRun(byDay, com.reader.app.data.ReadingRun.today()),
-          )
-        }
+        libraryStats = computeLibraryStats(loaded.values.flatten())
         // First-save warmth: exactly once, only when the library was empty.
         // The sample teaches triage, highlights and offline in 3 minutes.
-        if (loaded.values.all { it.isEmpty() } && !prefs.isWelcomeShown()) {
+        // The .qa package holds destructive fixtures that need a controllable
+        // empty library — the welcome sample stays a real-package behavior.
+        if (loaded.values.all { it.isEmpty() } && !prefs.isWelcomeShown() &&
+          !this@MainActivity.packageName.endsWith(".qa")) {
           try {
             Ingest.importPlainText(this@MainActivity, WELCOME_MARKDOWN, "welcome", "Welcome to Reader")
             prefs.setWelcomeShown()
@@ -301,6 +307,7 @@ class MainActivity : ComponentActivity() {
             lists = summaries.groupBy { it.list }
             minutesByList = lists.mapValues { (_, values) -> ((values.sumOf { it.wordCount.toLong() } + 224) / 225).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
             libraryLoaded = true
+            try { libraryStats = computeLibraryStats(summaries) } catch (_: Exception) { /* stats are decoration */ }
           }
         } else if (route == Route.Settings || route == Route.Pairing) {
           channels = withContext(Dispatchers.IO) { db.channels().active() }
@@ -384,7 +391,8 @@ class MainActivity : ComponentActivity() {
             val changes = articleMoves.move(ids, target)
             if (changes.isNotEmpty()) readerMove = MoveNotice(changes)
           } catch (error: kotlinx.coroutines.CancellationException) { throw error }
-          catch (_: Exception) {
+          catch (error: Exception) {
+            android.util.Log.e("ReaderMove", "batch move failed", error)
             Toast.makeText(this@MainActivity, "Couldn’t move articles. Nothing was moved. Try again.", Toast.LENGTH_LONG).show()
           }
         }

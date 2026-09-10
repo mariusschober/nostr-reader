@@ -197,12 +197,10 @@ fun InboxScreen(
           IconButton(onClick = { selecting = false; selectedIds = emptyList() }) {
             Icon(Icons.Default.Close, contentDescription = "Done selecting", tint = c.text)
           }
-          Text("${selectedIds.size}", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.text,
-            modifier = Modifier.semantics { stateDescription = "${selectedIds.size} selected" })
+          Text("${selectedIds.size} selected", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.text)
           Spacer(Modifier.width(4.dp))
           val targets = if (tab == Triage.ARCHIVED) listOf(Triage.INBOX)
           else listOf(Triage.PRIORITY, Triage.LATER, Triage.INBOX, Triage.ARCHIVED).filter { it != tab }
-          // Labels chip arrives with Batch 3; the filter row hosts it.
           targets.forEach { target ->
             TextButton(
               onClick = {
@@ -212,7 +210,10 @@ fun InboxScreen(
               },
               enabled = selectedIds.isNotEmpty(),
               colors = ButtonDefaults.textButtonColors(contentColor = c.text),
-            ) { Text(Triage.tabLabel(target), fontFamily = ReaderFonts.Ui) }
+            ) {
+              if (tab == Triage.ARCHIVED) Text("Unarchive", fontFamily = ReaderFonts.Ui)
+              else Text(Triage.tabLabel(target), fontFamily = ReaderFonts.Ui)
+            }
           }
           if (selectedIds.size < liveIds.size) {
             TextButton(onClick = { selectedIds = liveIds }) {
@@ -247,7 +248,7 @@ fun InboxScreen(
           Icon(Icons.Default.Search, contentDescription = if (searchActive) "Close search" else "Search library", tint = c.text)
         }
         IconButton(onClick = onSettings) {
-          Icon(Icons.Default.Settings, contentDescription = "Settings and devices", tint = c.text)
+          Icon(Icons.Default.Settings, contentDescription = "Settings", tint = c.text)
         }
       }
     },
@@ -584,7 +585,7 @@ private fun EmptyShelf(
       secondary = "Browse Inbox" to { onBrowse(Triage.INBOX) }
     }
     else -> {
-      title = "Archive is empty."
+      title = "No archived articles."
       body = "Finished pieces land here. They stay searchable, never count toward your reading time."
       secondary = "Browse library" to { onBrowse(Triage.INBOX) }
     }

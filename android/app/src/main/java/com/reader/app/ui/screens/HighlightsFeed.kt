@@ -86,7 +86,7 @@ fun HighlightsFeed(
       }
     } else {
       FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        FilterChip(selected = !newest, onClick = { onNewest(false) }, label = { Text("Surprise me") })
+        FilterChip(selected = !newest, onClick = { onNewest(false) }, label = { Text("Shuffle") })
         FilterChip(selected = newest, onClick = { onNewest(true) }, label = { Text("Newest") })
         Button(enabled = quotes.isNotEmpty(), onClick = { onReview(null) }) { Text("Review") }
       }

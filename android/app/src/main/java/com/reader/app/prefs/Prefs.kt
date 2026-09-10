@@ -25,7 +25,7 @@ data class ReaderSettings(
   val themeMode: ThemeMode = ThemeMode.SYSTEM,
   val ttsSpeed: Float = 1.0f,
   val rsvpWpm: Int = 300,
-  val lineSpacing: LineSpacing = LineSpacing.COMFORT,
+  val lineSpacing: LineSpacing = LineSpacing.COMPACT,
   val sort: LibrarySort = LibrarySort.NEWEST,
   val age: AgeFilter = AgeFilter.ANY,
 ) {
