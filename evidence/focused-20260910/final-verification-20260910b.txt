@@ -1,0 +1,50 @@
+Reader focused pass — final verification, 2026-09-10
+Source: codex/reliability-finalize implementation commit 99c5cf9
+Installed normal package: com.reader.app, 0.9.0-beta.1 / code 2
+Installed APK SHA-256: a7cc78a9187a1a59fa027d887be91ae8c4c72e24933940981d1ddce69c978736
+Local build SHA-256 (identical): a7cc78a9187a1a59fa027d887be91ae8c4c72e24933940981d1ddce69c978736
+
+HOST
+  ./gradlew testDebugUnitTest assembleDebug        BUILD SUCCESSFUL
+  ./gradlew lintDebug verify16KbAlignment          BUILD SUCCESSFUL
+                                                   "all native libraries 16 KiB aligned"
+
+DEVICE — TCL T807D, Android 16 (SDK 36), serial ZXKRS4VKGQ8PWGEQ
+  Isolated QA package com.reader.app.qa, APK SHA-256
+    c827261950509269f035683ee50c6ac2bff0b3015fc8042afd60ed9499f51c27
+
+  UiCompletionInstrumentedTest (2 tests) ......... OK
+  ReaderUxFoundationsInstrumentedTest (3 tests) ... OK
+    (the first combined invocation reported 1 failure in
+     appearanceDefaultsBoldPersistenceAndNavigation; the single-method re-run and
+     the full-class re-run both passed. Not reproduced: treated as a first-run
+     harness flake, not a product failure.)
+
+  Native end-of-text (QA, Semantic HTML):
+    reached "100% · End of article"; Finish & archive / Back to shelf card shown
+    and stable across a 3s re-read; shelf row afterwards "2 min left", not
+    finished (no completion credit); three downward swipes returned to 79%.
+
+  Native selection (QA, Semantic HTML):
+    press-and-hold produced native selection with handles and the floating
+    toolbar (Copy · Highlight · Share · Select all); one handle dragged to
+    extend the range; Highlight saved exactly one record (5 -> 6 highlights,
+    no duplicate (canonicalStart, canonicalEnd) pairs) with correct quote and
+    prefix/suffix context.
+    Limitation: adb input tap did not register on the floating toolbar window,
+    so the app's own bottom-dock Highlight action was used.
+
+  Enlarged text: font scale 1.4 applied, screens captured, system value restored
+    to 1.0. No clipping or overlap in the shared header, four shelves or the
+    Review card.
+
+OWNER DATA
+  com.reader.app before/after the in-place install (owner-20260910c-*):
+    all 8 compared Room tables and preferences identical; schema v13;
+    1 article, 0 highlights, 0 channels. ownerDataPreserved = true.
+  The normal app launched after install with no FATAL EXCEPTION and retained the
+  owner's Today filter and dark theme.
+
+NOT RUN in this pass (unchanged or out of scope): 50+50 intake, 1,000-article
+scale, soak, 120-minute session, exhaustive lifecycle/accessibility matrix,
+public-relay reliability, acoustic quality. No push, merge or release.
