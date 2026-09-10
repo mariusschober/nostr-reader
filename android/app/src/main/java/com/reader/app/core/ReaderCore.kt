@@ -171,7 +171,14 @@ object ReaderCore {
    */
   fun shortDisplaySource(sourceType: String, sourceName: String?, sourceUrl: String?): String {
     val named = sourceName?.trim().orEmpty()
-    if (named.isNotBlank()) return named.take(30)
+    if (named.isNotBlank()) {
+      // Capture stores the bare host as the name. A hostname-shaped name
+      // shortens to its registrable domain (wikipedia.org); real publisher
+      // names ("The Verge") pass through untouched.
+      val hostShaped = !named.contains(' ') && named.contains('.') &&
+        named.matches(Regex("[A-Za-z0-9.-]+"))
+      return (if (hostShaped) registrableHost(named) else named).take(30)
+    }
     val host = runCatching {
       val h = java.net.URI(sourceUrl ?: "").host?.lowercase(java.util.Locale.ROOT).orEmpty()
       h.trimEnd('.')

@@ -87,6 +87,11 @@ class ReaderCoreTest {
     assertEquals("Paste", ReaderCore.shortDisplaySource("paste", null, null))
     assertEquals("Link", ReaderCore.shortDisplaySource("link", null, "not a url"))
     assertEquals("Saved", ReaderCore.shortDisplaySource("", null, null))
+    assertEquals("norvig.com", ReaderCore.shortDisplaySource("url", "www.norvig.com", "https://www.norvig.com/x"))
+    assertEquals("wikipedia.org", ReaderCore.shortDisplaySource("url", "en.wikipedia.org", null))
+    assertEquals("substack.com", ReaderCore.shortDisplaySource("url", "marius.substack.com", null))
+    assertEquals("bbc.co.uk", ReaderCore.shortDisplaySource("url", "bbc.co.uk", null))
+    assertEquals("The Verge", ReaderCore.shortDisplaySource("url", "The Verge", "https://theverge.com/x"))
   }
 
   @Test
