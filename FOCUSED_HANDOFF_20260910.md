@@ -15,6 +15,17 @@ Baseline: clean `15a77ff` on `codex/reliability-finalize`. This is a trial check
 - Useful first-save choices, optional sample, truthful capture states/retry, simpler settings, confirmed disconnection, accurate export/statistics copy and technical diagnostics under Advanced. Removed automatic welcome insertion, tutorial labels, streak/milestone interruptions and article-wide organizational swipes.
 - Observed defects fixed during this pass: repeated Android shares starting competing activities; failed-capture Retry targeting the wrong request; clipped filter actions; opening-header viewport movement; stale search landing after Speed; native restoration before layout; end-card viewport changes. Narrow web.dev publisher-widget cleanup applies only to new captures. Existing canonical text remains unchanged.
 
+## Continuation pass — shared headers, compact search, prominent Review
+
+Commit **`99c5cf9`** executes work packages A–D of `NEXT_AGENT_PLAN.md` on top of `b14f128`. Scope kept: `Shelf · Highlights · Settings`, `Inbox · Priority · Later · Archive`, Newest default, inspection separate from deliberate Review, cycles + Important bonuses with no calendar due dates. No storage, scheduler, capture-security or native-reader rewrite.
+
+- **A — shared headers.** New `ui/DestinationHeader.kt` gives Shelf, Highlights, Settings and Review one 52dp-minimum row, a 20dp leading inset, a common headline token and common vertical alignment, reserving its height with no trailing actions. TCL bounds for the three destination titles are identical (`top 153`, `bottom 256`, `left 57`); the 1.4 font-scale pass showed no overlap. Evidence: `hdr-shelf.png`, `hdr-highlights.png`, `hdr-settings.png`, `font14-*.png`.
+- **B — compact search.** New `ui/ReaderSearchField.kt` replaces the two full-width outlined fields: a quiet 48dp surface, 12dp corners, 20dp decorative icon, 16sp editable text and a clear action only when nonempty. It focuses once per deliberate opening (fixing a `FocusRequester is not initialized` crash found on device during this pass), Back closes search without erasing the query, and the blank state is now a short guidance line plus left-aligned **Recent searches** rows. Evidence: `ux-shelf-search.png`.
+- **C — Review is primary.** `HighlightsFeed` gains a Review entry card directly beneath the title with a read-only state line (`Revisit your saved passages.` / `N remaining in this round` / `Revisiting Important highlights` / `Round complete.`) and one of Start review / Continue review / Review again. It condenses while a search is active. `ReviewRepository.observeSummary()` + `ReviewDao.observeParts()` read persisted state without starting, advancing or repairing a session. Shuffle now shows its own selected state.
+- **D — Review comfort.** `ReviewScreen` gets a compact Back + Review header, truthful phase progress, a Newsreader 22sp measure on a neutral surface with a 3dp saved-colour marker, a distinct **Source** action, and a **Review complete** / **Back to highlights** / **Review again** completion state. Direct manipulation is preserved: no motion while the finger is down, reduced-motion honoured, and Next cannot advance twice for one gesture.
+
+Checks run this pass (all on the QA package `c8272619…`; no intake, scale, soak or matrix campaign repeated): Android unit tests and `assembleDebug`; native end-of-text; native selection with one handle drag; enlarged-text 1.4 pass; the normal `assembleDebug` + in-place install with installed-hash and owner-integrity proof. Remaining focused checks and their exact status are tracked in `NEXT_AGENT_PLAN.md` §9.
+
 ## Intake: 100 actual articles
 
 `evidence/focused-20260910/intake-final.json` records each URL, article identity, capture/delivery status and stored-text hash.
@@ -44,15 +55,15 @@ The current native viewport fix was checked again after these tests: normal scro
 
 ## Installation record
 
-- Branch: `codex/reliability-finalize`. Implementation/source commit: **`b14f128c54996515f45218f8d912ef106c174446`**, based on **`15a77ff647ac39f4e9165e47504d553504a1ac8b`**. Subsequent handover commits contain documentation/evidence only.
-- Normal debug **`com.reader.app`**, version `0.9.0-beta.1` / code `2`, installed in place on TCL T807D / Android 16 / `ZXKRS4VKGQ8PWGEQ`, 2026-09-10 at 20:57:42 UTC.
-- APK: `artifacts/hardening/focused-20260910/reader-debug.apk` (local, ignored by Git).
-- Packaged **and installed** SHA-256: **`ee05b86a1e1024a7d0150742392d5349bef94da4c502fe75887f4081070910ca`**.
+- Branch: `codex/reliability-finalize`. Current implementation/source commit: **`99c5cf9`** (shared headers, compact search, prominent Review), based on **`b14f128c54996515f45218f8d912ef106c174446`** and **`15a77ff647ac39f4e9165e47504d553504a1ac8b`**.
+- Normal debug **`com.reader.app`**, version `0.9.0-beta.1` / code `2`, installed in place on TCL T807D / Android 16 (SDK 36) / `ZXKRS4VKGQ8PWGEQ`, 2026-09-10 at 23:00:29 UTC.
+- APK: `artifacts/hardening/focused-20260910/reader-debug-next.apk` (local, ignored by Git).
+- Packaged **and installed** SHA-256: **`a7cc78a9187a1a59fa027d887be91ae8c4c72e24933940981d1ddce69c978736`**; supersedes `ee05b86a…` (the `b14f128` install, preserved in `installation-20260910a.json`).
 - Debug signing certificate SHA-256: `3af50cab6e0515f478413e79786958671913b2cae67037defe537bb1e7465069`. In-place install succeeded; signing identity was not replaced.
 - Final normal `assembleDebug`, `lintDebug`, and `verify16KbAlignment` **PASS**. App launch **PASS**. See `evidence/focused-20260910/final-normal-build.txt` and `installation.json`.
-- Owner integrity **PASS** immediately after installation, before launch: all eight compared Room tables and preferences identical; schema v13; 1 article, 0 highlights, 0 channels. No normal package data was cleared. These counts do not imply a paired owner setup was tested. `owner-earlier.json` preserves the earlier observation; `owner-before.json` / `owner-after.json` are the actual upgrade pair.
+- Owner integrity **PASS** for the current `99c5cf9` install: all eight compared Room tables and preferences identical; schema v13; 1 article, 0 highlights, 0 channels. No normal package data was cleared. These counts do not imply a paired owner setup was tested. `owner-earlier.json` preserves the first observation; `owner-20260910a-*.json`/`owner-*.json` record the `b14f128` upgrade; `owner-20260910b-*.json` the intermediate candidate; `owner-20260910c-before.json` / `owner-20260910c-after.json` are the actual pair for the installed `99c5cf9` build.
 - QA APK SHA-256: `379e83f0b81b04c502ea445a8f0a7453b3ac5c3768cb109b67d32c184a674835`. QA corpus remains isolated; its local controller/Chrome/relay process was stopped. Later organization/review actions can change current per-shelf counts; `intake-final.json` remains the completed 100-article intake record.
-- The last narrow end-detection change (using the last non-whitespace text line instead of trailing layout space) compiled and passed final lint/build, but was **not re-exercised at the reader end after the user's stop-implementation instruction**. Earlier viewport/Speed/end-card stability checks used the immediately preceding QA build. It remains one targeted check in the plan, not an asserted final-device pass.
+- The narrow end-detection change (using the last non-whitespace text line instead of trailing layout space) is now **re-exercised on TCL**: the QA build reached `100% · End of article` with a stable **Finish & archive** / **Back to shelf** card, wrote no completion credit, and scrolled back to 79%. Native selection was also re-exercised (handle drag → one saved range, no duplicates). See `NEXT_AGENT_PLAN.md` §9 and `ux-end-of-text.png` / `ux-native-select-*.png`.
 
 
 ## Remaining verification context — next agent

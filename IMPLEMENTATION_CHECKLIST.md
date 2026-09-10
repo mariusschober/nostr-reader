@@ -18,4 +18,18 @@ Baseline: 15a77ff, clean codex/reliability-finalize. Work stays local; preserve 
 No 1,000 articles, 10,000 highlights, 120-minute session, broad lifecycle or performance campaign.
 ADB serial: re-identify TCL; expected ZXKRS4VKGQ8PWGEQ. Destructive fixtures use com.reader.app.qa.
 
-The latest user instruction stopped implementation and requested a detailed plan for another agent. Final title/search/Review design refinements are NOT implemented. Focused host/device checks largely passed, but remaining combinations and the final end-detection recheck remain explicit in NEXT_AGENT_PLAN.md.
+## Continuation pass — 2026-09-10 (commit `99c5cf9`)
+
+- [x] Shared `DestinationHeader` for Shelf/Highlights/Settings/Review — identical TCL title bounds
+- [x] Shared compact `ReaderSearchField` (48dp, 20dp inset, focus-once, fixed focus crash)
+- [x] Review promoted to the primary Highlights action with a read-only state card
+- [x] Review typography (Newsreader 22sp), truthful progress, distinct Source action, completion state
+- [x] Quieter highlight previews; Shuffle shows a selected state
+- [x] Native end-of-text re-checked on TCL (card appears, viewport stable, no completion credit)
+- [x] Native selection re-checked on TCL (handle drag → one saved range, no duplicates)
+- [x] Enlarged-text 1.4 pass on QA, system value restored to 1.0
+- [x] Normal `assembleDebug` + in-place install; installed hash `a7cc78a9…`; owner data preserved
+
+Still open (see NEXT_AGENT_PLAN.md §9): multiword `#` autocomplete, >50 paging UI, all active-constraint
+combinations, one expanded table and one captured local footnote when the corpus supplies them, and
+overlapping-highlight reachability / multi-remove confirmation.
