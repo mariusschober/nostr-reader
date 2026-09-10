@@ -269,6 +269,25 @@ class MainActivity : ComponentActivity() {
           )
         }
 
+      // First-save warmth: exactly once, only when the library was empty.
+      // The sample teaches triage, highlights and offline in 3 minutes.
+      // The .qa package holds destructive fixtures that need a controllable
+      // empty library — the welcome sample stays a real-package behavior.
+      suspend fun seedWelcomeIfEmpty(summaries: List<com.reader.app.data.DocumentSummary>) {
+        if (!summaries.isEmpty() || prefs.isWelcomeShown() ||
+          this@MainActivity.packageName.endsWith(".qa")) return
+        try {
+          Ingest.importPasted(this@MainActivity, WELCOME_MARKDOWN)
+          prefs.setWelcomeShown()
+          Toast.makeText(this@MainActivity, "First save — welcome in. It’s yours, offline.", Toast.LENGTH_LONG).show()
+          val reloaded = withContext(Dispatchers.IO) {
+            db.documents().observeSummaries().first().groupBy { it.list }
+          }
+          lists = reloaded
+          libraryLoaded = true
+        } catch (_: Exception) { /* next refresh retries; never block startup */ }
+      }
+
       suspend fun refresh() {
         val loaded = withContext(Dispatchers.IO) {
           db.documents().observeSummaries().first().groupBy { it.list }
@@ -283,23 +302,7 @@ class MainActivity : ComponentActivity() {
         }
         minutesByList = mins
         libraryStats = computeLibraryStats(loaded.values.flatten())
-        // First-save warmth: exactly once, only when the library was empty.
-        // The sample teaches triage, highlights and offline in 3 minutes.
-        // The .qa package holds destructive fixtures that need a controllable
-        // empty library — the welcome sample stays a real-package behavior.
-        if (loaded.values.all { it.isEmpty() } && !prefs.isWelcomeShown() &&
-          !this@MainActivity.packageName.endsWith(".qa")) {
-          try {
-            Ingest.importPasted(this@MainActivity, WELCOME_MARKDOWN)
-            prefs.setWelcomeShown()
-            Toast.makeText(this@MainActivity, "First save — welcome in. It’s yours, offline.", Toast.LENGTH_LONG).show()
-            val reloaded = withContext(Dispatchers.IO) {
-              db.documents().observeSummaries().first().groupBy { it.list }
-            }
-            lists = reloaded
-            libraryLoaded = true
-          } catch (_: Exception) { /* next refresh retries; never block startup */ }
-        }
+        seedWelcomeIfEmpty(loaded.values.flatten())
       }
       LaunchedEffect(refreshTick.value, route) {
         if (route == Route.Inbox || route == Route.Archive) {
@@ -308,6 +311,7 @@ class MainActivity : ComponentActivity() {
             minutesByList = lists.mapValues { (_, values) -> ((values.sumOf { it.wordCount.toLong() } + 224) / 225).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
             libraryLoaded = true
             try { libraryStats = computeLibraryStats(summaries) } catch (_: Exception) { /* stats are decoration */ }
+            seedWelcomeIfEmpty(summaries)
           }
         } else if (route == Route.Settings || route == Route.Pairing) {
           channels = withContext(Dispatchers.IO) { db.channels().active() }
