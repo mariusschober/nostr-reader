@@ -70,4 +70,85 @@ class ReviewSchedulerTest {
     val start = ReviewScheduler.start(listOf("one"), 1)
     assertNull(ReviewScheduler.advance(start, listOf("one"), setOf("one")).currentId)
   }
+
+  // --- Focused Review: present a tapped quote without losing the round ---
+
+  @Test fun focusWithNoUnfinishedRoundStartsAtChosen() {
+    val state = ReviewScheduler.focus(null, ids, 5, emptySet(), "quote-7")
+    assertEquals("quote-7", ReviewScheduler.presentedId(state))
+    assertNull(state.focusedId)
+    assertEquals("base", state.phase)
+  }
+
+  @Test fun focusOnCurrentQuoteIsAPlainResume() {
+    val start = ReviewScheduler.start(ids, 9)
+    val focused = ReviewScheduler.focus(start, ids, 9, emptySet(), start.currentId!!)
+    assertNull(focused.focusedId)
+    assertEquals(start.currentId, ReviewScheduler.presentedId(focused))
+  }
+
+  @Test fun focusPreservesUnfinishedRoundAndRecordsNothing() {
+    val start = ReviewScheduler.start(ids, 21)
+    val round = ReviewScheduler.advance(start, ids, emptySet())
+    val chosen = round.baseRemaining.first()
+    val focused = ReviewScheduler.focus(round, ids, 21, emptySet(), chosen)
+    assertEquals(chosen, focused.focusedId)
+    assertEquals(chosen, ReviewScheduler.presentedId(focused))
+    // The round's own cursor, queue and phase are untouched.
+    assertEquals(round.currentId, focused.currentId)
+    assertEquals(round.baseRemaining, focused.baseRemaining)
+    assertEquals(round.phase, focused.phase)
+    assertFalse(focused.focusedReviewed)
+  }
+
+  @Test fun advanceFromFocusedConsumesItAndResumesThePreservedCurrent() {
+    val start = ReviewScheduler.start(ids, 33)
+    val round = ReviewScheduler.advance(start, ids, emptySet())
+    val preservedCurrent = round.currentId!!
+    val chosen = round.baseRemaining.first()
+    val focused = ReviewScheduler.focus(round, ids, 33, emptySet(), chosen)
+    val next = ReviewScheduler.advance(focused, ids, emptySet())
+    assertNull(next.focusedId)
+    assertEquals(preservedCurrent, ReviewScheduler.presentedId(next))
+    assertFalse(chosen in next.baseRemaining)
+  }
+
+  @Test fun reviewingFocusedDoesNotRemoveItsLaterImportantBonus() {
+    val state = ReviewState(
+      seed = 1, randomState = 1, members = ids, baseRemaining = emptyList(),
+      bonusRemaining = listOf("quote-3"), currentId = "quote-1", phase = "bonus", focusedId = "quote-3",
+    )
+    val next = ReviewScheduler.advance(state, ids, setOf("quote-3"))
+    assertNull(next.focusedId)
+    assertTrue("quote-3" in next.bonusRemaining)
+  }
+
+  @Test fun refreshDropsAFocusedQuoteThatIsNoLongerEligible() {
+    val start = ReviewScheduler.start(ids, 44)
+    val round = ReviewScheduler.advance(start, ids, emptySet())
+    val chosen = round.baseRemaining.first()
+    val focused = ReviewScheduler.focus(round, ids, 44, emptySet(), chosen)
+    val remaining = ids.filter { it != chosen }
+    assertNull(ReviewScheduler.refresh(focused, remaining, emptySet()).focusedId)
+  }
+
+  @Test fun focusOnAMissingQuoteKeepsTheRoundUnchanged() {
+    val start = ReviewScheduler.start(ids, 55)
+    assertEquals(start, ReviewScheduler.focus(start, ids, 55, emptySet(), "not-a-quote"))
+  }
+
+  @Test fun focusedPresentationSurvivesSerializationAndLegacyDataStillReads() {
+    val start = ReviewScheduler.start(ids, 66)
+    val round = ReviewScheduler.advance(start, ids, emptySet())
+    val focused = ReviewScheduler.focus(round, ids, 66, emptySet(), round.baseRemaining.first())
+    val restored = Json.decodeFromString<ReviewState>(Json.encodeToString(focused))
+    assertEquals(focused.focusedId, restored.focusedId)
+    assertEquals(ReviewScheduler.presentedId(focused), ReviewScheduler.presentedId(restored))
+
+    // Older persisted state without the focused fields must still decode.
+    val legacy = """{"format":1,"seed":1,"randomState":1,"members":["a","b"],"baseRemaining":["b"],"currentId":"a"}"""
+    val old = Json.decodeFromString<ReviewState>(legacy)
+    assertNull(old.focusedId)
+    assertEquals("a", ReviewScheduler.presentedId(old))
+  }
 }

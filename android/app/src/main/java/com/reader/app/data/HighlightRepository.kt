@@ -145,13 +145,15 @@ class ReviewRepository(private val db: ReaderDb) {
   private fun summarize(state: ReviewState?): ReviewSummary {
     state ?: return ReviewSummary()
     if (state.members.isEmpty()) return ReviewSummary()
-    val phase = if (state.currentId != null) state.phase else "done"
-    val remaining = when (phase) {
-      "base" -> 1 + state.baseRemaining.size
-      "bonus" -> 1 + state.bonusRemaining.size
+    val presented = ReviewScheduler.presentedId(state)
+    val phase = if (presented != null) state.phase else "done"
+    val queue = when (phase) {
+      "base" -> state.baseRemaining.size
+      "bonus" -> state.bonusRemaining.size
       else -> 0
     }
-    return ReviewSummary(exists = true, phase = phase, remaining = remaining)
+    val presentedCount = (if (state.focusedId != null) 1 else 0) + (if (state.currentId != null) 1 else 0)
+    return ReviewSummary(exists = true, phase = phase, remaining = presentedCount + queue)
   }
 
   private suspend fun read(): ReviewState? {
@@ -175,19 +177,37 @@ class ReviewRepository(private val db: ReaderDb) {
     ) else ReviewScheduler.refresh(old, eligible.map { it.id }, eligible.filter { it.important }.mapTo(mutableSetOf()) { it.id })
     write(state); state
   }
+
+  /**
+   * Present `chosen` without discarding an unfinished round. Used by the
+   * quote-tap path; entering Review records nothing.
+   */
+  suspend fun focus(chosen: String): ReviewState = db.withTransaction {
+    val eligible = candidates()
+    val state = ReviewScheduler.focus(
+      read(), eligible.map { it.id }, java.security.SecureRandom().nextLong(),
+      eligible.filter { it.important }.mapTo(mutableSetOf()) { it.id }, chosen,
+    )
+    write(state); state
+  }
+
   suspend fun advance(expectedId: String): ReviewState? = db.withTransaction {
     val old = read() ?: return@withTransaction null
-    if (old.currentId != expectedId) return@withTransaction old
-    if (!old.currentReviewed) db.highlights().recordReview(expectedId, System.currentTimeMillis())
+    if (ReviewScheduler.presentedId(old) != expectedId) return@withTransaction old
+    val credited = if (old.focusedId != null) old.focusedReviewed else old.currentReviewed
+    if (!credited) db.highlights().recordReview(expectedId, System.currentTimeMillis())
     val eligible = candidates()
-    val next = ReviewScheduler.advance(old, eligible.map { it.id }, eligible.filter { it.important }.mapTo(mutableSetOf()) { it.id })
+    val marked = if (old.focusedId != null) old.copy(focusedReviewed = true) else old.copy(currentReviewed = true)
+    val next = ReviewScheduler.advance(marked, eligible.map { it.id }, eligible.filter { it.important }.mapTo(mutableSetOf()) { it.id })
     write(next); next
   }
   suspend fun openedSource(expectedId: String) = db.withTransaction {
     val old = read() ?: return@withTransaction
-    if (old.currentId == expectedId && !old.currentReviewed) {
+    if (ReviewScheduler.presentedId(old) != expectedId) return@withTransaction
+    val credited = if (old.focusedId != null) old.focusedReviewed else old.currentReviewed
+    if (!credited) {
       db.highlights().recordReview(expectedId, System.currentTimeMillis())
-      write(old.copy(currentReviewed = true))
+      write(if (old.focusedId != null) old.copy(focusedReviewed = true) else old.copy(currentReviewed = true))
     }
   }
   suspend fun toggleImportant(id: String): HighlightEntity? = db.withTransaction {

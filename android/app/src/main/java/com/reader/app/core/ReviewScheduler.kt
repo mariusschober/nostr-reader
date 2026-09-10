@@ -9,10 +9,30 @@ data class ReviewState(
   val bonusRemaining: List<String> = emptyList(), val bonusConsumed: Set<String> = emptySet(),
   val currentId: String? = null, val phase: String = "base", val currentReviewed: Boolean = false,
   val lastPresentedId: String? = null,
+  /** A quote presented from the feed without consuming the unfinished round. */
+  val focusedId: String? = null,
+  val focusedReviewed: Boolean = false,
 )
 
 /** Seeded base coverage, then at most one importance bonus per ID and cycle. */
 object ReviewScheduler {
+  /** The quote currently on screen: a focused presentation wins over the round. */
+  fun presentedId(state: ReviewState): String? = state.focusedId ?: state.currentId
+
+  /**
+   * Present `chosen` without discarding an unfinished round. With no unfinished
+   * round this starts a normal cycle at `chosen`; when `chosen` is already the
+   * current quote it simply resumes. Entering does not record a review.
+   */
+  fun focus(state: ReviewState?, ids: Collection<String>, seed: Long, important: Set<String>, chosen: String): ReviewState {
+    if (state == null || state.currentId == null) return start(ids, seed, state?.lastPresentedId, chosen)
+    if (chosen == state.currentId) return state.copy(focusedId = null, focusedReviewed = false)
+    if (chosen !in ids.toSet()) return state
+    val refreshed = refresh(state, ids, important)
+    if (chosen !in ids.toSet()) return refreshed
+    return refreshed.copy(focusedId = chosen, focusedReviewed = false)
+  }
+
   private class Rng(var state: Long) {
     fun next(bound: Int): Int {
       require(bound > 0)
@@ -58,12 +78,22 @@ object ReviewScheduler {
       baseRemaining = base, currentId = current,
       bonusRemaining = state.bonusRemaining.filter { it in eligible && it in important && it !in state.bonusConsumed && it != current }.distinct(),
       bonusConsumed = state.bonusConsumed.intersect(eligible),
+      focusedId = state.focusedId?.takeIf { it in eligible },
     )
     if (current == null) updated = choose(updated, important)
     return updated
   }
 
   fun advance(state: ReviewState, ids: Collection<String>, important: Set<String>): ReviewState {
+    // A focused presentation is reviewed first, then the preserved round resumes
+    // from its untouched current quote.
+    if (state.focusedId != null) {
+      val focused = state.focusedId
+      val base = state.baseRemaining.filter { it != focused }
+      var resumed = state.copy(focusedId = null, focusedReviewed = false, baseRemaining = base)
+      if (resumed.currentId == null) resumed = choose(resumed.copy(lastPresentedId = focused), important)
+      return refresh(resumed, ids, important)
+    }
     if (state.currentId !in ids) return refresh(state, ids, important)
     val ready = refresh(state, ids, important)
     if (ready.currentId == null) return ready

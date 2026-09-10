@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.reader.app.core.ReviewScheduler
 import com.reader.app.data.HighlightSummary
 import com.reader.app.data.ReviewSummary
@@ -69,11 +70,14 @@ fun HighlightsFeed(
   onRemoveHighlights: (Set<String>) -> Unit = {},
   onOpenLatest: (() -> Unit)? = null,
   onOpenSource: (String) -> Unit = {},
-  onInspect: (String) -> Unit = {},
+  /** Tapping a card enters Review at that quote without losing the round. */
+  onReviewFromQuote: (String) -> Unit = {},
   query: String = "", onQuery: (String) -> Unit = {},
   importantOnly: Boolean = false, onImportantOnly: (Boolean) -> Unit = {},
   matchingIds: Set<String>? = null,
   listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
+  quoteFont: com.reader.app.prefs.ArticleFont = com.reader.app.prefs.ArticleFont.NEWSREADER,
+  quoteBaseSp: Float = 19f,
 ) {
   val sorted = remember(quotes, newest, seed, matchingIds) {
     val quotes = if (matchingIds == null) quotes else quotes.filter { it.id in matchingIds }
@@ -107,6 +111,8 @@ fun HighlightsFeed(
   val hasHighlights = quotes.isNotEmpty()
   var bannerVisible by rememberSaveable { mutableStateOf(true) }
   val bannerSuppressed = selecting || menuId != null || confirmRemoveIds != null || query.isNotBlank()
+  // Full quote text is loaded only for composed (visible/nearby) cards.
+  val loadFullQuote: suspend (String) -> String? = { id -> runCatching { db.highlights().byId(id)?.quote }.getOrNull() }
   val bannerThreshold = with(LocalDensity.current) { 16.dp.toPx() }
   LaunchedEffect(listState, bannerSuppressed) {
     if (bannerSuppressed) return@LaunchedEffect
@@ -183,7 +189,7 @@ fun HighlightsFeed(
             selecting = selecting,
             selected = quote.id in selectedIds,
             haptics = haptics,
-            onOpen = { if (selecting) toggle(quote.id) else onInspect(quote.id) },
+            onOpen = { if (selecting) toggle(quote.id) else onReviewFromQuote(quote.id) },
             onOpenSource = { onOpenSource(quote.id) },
             onLongPress = {
               Haptics.select(haptics)
@@ -198,6 +204,9 @@ fun HighlightsFeed(
                 HighlightAction.Remove -> onRemoveHighlights(setOf(quote.id))
               }
             },
+            loadFullQuote = loadFullQuote,
+            quoteFont = quoteFont,
+            quoteBaseSp = quoteBaseSp,
           )
           HorizontalDivider()
         }
@@ -291,6 +300,9 @@ private fun HighlightSwipeRow(
   onToggle: () -> Unit,
   onMenu: () -> Unit,
   onSwiped: (HighlightAction) -> Unit,
+  loadFullQuote: suspend (String) -> String?,
+  quoteFont: com.reader.app.prefs.ArticleFont,
+  quoteBaseSp: Float,
 ) {
   // Same tap-vs-swipe arbitration as the article rows: the click owns taps
   // (long-press enters selection), the drag detector owns horizontal swipes
@@ -373,48 +385,74 @@ private fun HighlightSwipeRow(
       }
       Column(Modifier.weight(1f).semantics { if (selecting) stateDescription = if (selected) "Selected" else "Not selected" }) {
         val dark = com.reader.app.ui.theme.LocalReaderDark.current
-        Text(quote.sourceTitle, style = MaterialTheme.typography.labelMedium, maxLines = 2,
-          modifier = Modifier.padding(bottom = 8.dp).clickable(onClickLabel = "Open source article") { onOpenSource() })
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-          // Quieter preview: a restrained tint with a thin saved-colour marker
-          // instead of a saturated full block, still six readable lines.
-          val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
+        // Full quote for this visible card; the lightweight summary stands in
+        // while it loads. Lazy composition is what bounds the work to on-screen
+        // and nearby cards.
+        val full by produceState(initialValue = quote.preview, quote.id) {
+          value = loadFullQuote(quote.id) ?: quote.preview
+        }
+        val characters = remember(full) { graphemeCount(full) }
+        // Named `quoteSp`, not `size`, so `DrawScope.size` stays in scope below.
+        val quoteSp = quoteBaseSp + when {
+          characters <= 160 -> 6f
+          characters <= 450 -> 3f
+          else -> 0f
+        }
+        val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
+        // Reserve space above so the badge and the text never overlap.
+        Box(Modifier.fillMaxWidth().padding(top = if (quote.important) 12.dp else 0.dp)) {
           Box(
-            Modifier.weight(1f)
+            Modifier.fillMaxWidth()
               .clip(RoundedCornerShape(8.dp))
               .background(saved.background(dark).copy(alpha = if (dark) .32f else .55f))
               .drawBehind { drawRect(color = saved.background(dark), size = Size(3.dp.toPx(), size.height)) },
           ) {
             Text(
-              quote.preview,
-              maxLines = 6, overflow = TextOverflow.Ellipsis,
-              style = MaterialTheme.typography.bodyLarge,
-              fontFamily = com.reader.app.ui.theme.ReaderFonts.Newsreader,
+              full,
+              style = MaterialTheme.typography.bodyLarge.copy(
+                fontFamily = com.reader.app.ui.theme.fontFor(quoteFont),
+                fontSize = quoteSp.sp,
+                lineHeight = (quoteSp * 1.5f).sp,
+              ),
               color = com.reader.app.ui.theme.HighlightColor.text(dark),
-              modifier = Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp),
+              modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
             )
           }
-          // Important mark: yellow star badge, top right. The dark badge
-          // keeps #ECCB60 legible on both light fills and dark surfaces.
           if (quote.important) {
             Box(
-              Modifier.padding(start = 8.dp).size(28.dp).background(Flexoki.Base800, CircleShape),
+              Modifier.align(Alignment.TopEnd).offset(y = (-12).dp).size(24.dp).background(Flexoki.Base800, CircleShape)
+                .semantics { contentDescription = "Important highlight" },
               contentAlignment = Alignment.Center,
             ) {
-              Icon(Icons.Default.Star, contentDescription = "Marked important", tint = Flexoki.StarYellow, modifier = Modifier.size(18.dp))
+              Icon(Icons.Default.Star, contentDescription = null, tint = Flexoki.StarYellow, modifier = Modifier.size(15.dp))
             }
           }
         }
-        Spacer(Modifier.height(8.dp))
-        // The way back: a quote is a door to the essay it came from.
-        Text(
-          "Read full highlight", style = MaterialTheme.typography.labelMedium,
-          modifier = Modifier.clickable(onClickLabel = "Read full highlight") { onOpen() },
-        )
-      }
-      if (!selecting) IconButton(onClick = onMenu) {
-        Icon(Icons.Default.MoreVert, contentDescription = "Highlight options")
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Text(
+            quote.sourceTitle,
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).clickable(onClickLabel = "Open source article") { onOpenSource() },
+          )
+          TextButton(onClick = onOpenSource, contentPadding = PaddingValues(horizontal = 8.dp)) {
+            Text("Open source", style = MaterialTheme.typography.labelMedium)
+          }
+          if (!selecting) IconButton(onClick = onMenu, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Highlight options")
+          }
+        }
       }
     }
   }
+}
+
+/** Visible-character count in grapheme clusters, not UTF-16 units. */
+private fun graphemeCount(text: String): Int {
+  val iterator = java.text.BreakIterator.getCharacterInstance(java.util.Locale.ROOT)
+  iterator.setText(text)
+  var count = 0
+  while (iterator.next() != java.text.BreakIterator.DONE) count++
+  return count
 }

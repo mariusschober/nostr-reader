@@ -59,8 +59,9 @@ fun ReviewScreen(
   BackHandler(onBack = onBack)
   val c = appColors()
   val reduceMotion = rememberReduceMotion()
+  val presented = state?.let { com.reader.app.core.ReviewScheduler.presentedId(it) }
   val progress: String? = when {
-    loading || state?.currentId == null -> null
+    loading || presented == null -> null
     inBonus -> "Revisiting Important highlights"
     else -> "$remaining remaining in this round"
   }
@@ -87,7 +88,7 @@ fun ReviewScreen(
           TextButton(onClick = onRestart) { Text("Start a new review") }
         }
         loading || state == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        state.currentId == null -> Column(Modifier.fillMaxSize().padding(24.dp)) {
+        presented == null -> Column(Modifier.fillMaxSize().padding(24.dp)) {
           if (state.members.isEmpty()) {
             Text("No highlights yet", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(8.dp))

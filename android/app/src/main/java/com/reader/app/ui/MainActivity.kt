@@ -420,9 +420,15 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch { highlightsScrollState.scrollToItem(0) }
           },
             listState = highlightsScrollState,
-            onInspect = { go(Route.Highlight(it)) }, query = highlightQuery, onQuery = { highlightQuery = it },
+            // A quote tap enters Review at that quote without losing the round.
+            onReviewFromQuote = { id -> lifecycleScope.launch {
+              try { com.reader.app.data.ReviewRepository(db).focus(id); go(Route.Review) }
+              catch (e: Exception) { feedback("Couldn’t open review: ${e.message?.take(100)}") }
+            } },
+            query = highlightQuery, onQuery = { highlightQuery = it },
             importantOnly = importantOnly, onImportantOnly = { importantOnly = it },
             matchingIds = if (highlightQuery.isNotBlank() || importantOnly) matchedHighlights.toSet() else null,
+            quoteFont = settings.font, quoteBaseSp = settings.fontSizeSp,
             onOpenLatest = lists.values.flatten().filter { it.lastOpenedAt > 0 }.maxByOrNull { it.lastOpenedAt }?.let { d -> ({ go(Route.Reader(d.documentId)) }) },
             onOpenSource = { quoteId -> lifecycleScope.launch {
               // The quote is a door back to the essay. TOCTOU-guarded like
@@ -550,7 +556,7 @@ class MainActivity : ComponentActivity() {
             busy = true
             try {
               reviewState = review.resume(restart = restart)
-              quote = reviewState?.currentId?.let { db.highlights().byId(it) }
+              quote = reviewState?.let { st -> com.reader.app.core.ReviewScheduler.presentedId(st)?.let { db.highlights().byId(it) } }
               reviewError = null
             } catch (e: Exception) { reviewError = "Couldn’t load review: ${e.message?.take(100)}" }
             finally { busy = false }
@@ -565,13 +571,15 @@ class MainActivity : ComponentActivity() {
           ReviewScreen(rs, quote, busy, reviewError, sourceAvailable = sourceDocument != null,
             scrollState = reviewScrollState,
             remaining = rs?.let { st ->
-              if (st.currentId == null) 0 else when (st.phase) {
-                "base" -> 1 + st.baseRemaining.size
-                "bonus" -> 1 + st.bonusRemaining.size
+              val presentedCount = (if (st.focusedId != null) 1 else 0) + (if (st.currentId != null) 1 else 0)
+              val queue = when (st.phase) {
+                "base" -> st.baseRemaining.size
+                "bonus" -> st.bonusRemaining.size
                 else -> 0
               }
+              presentedCount + queue
             } ?: 0,
-            inBonus = rs?.phase == "bonus" && rs.currentId != null,
+            inBonus = rs?.phase == "bonus" && (rs.currentId != null || rs.focusedId != null),
             quoteFont = settings.font,
             onBack = { stack.pop(); tick++ },
             onNext = {
@@ -589,7 +597,7 @@ class MainActivity : ComponentActivity() {
                     // Next intends to move, so a stale response is discarded.
                     if (quote?.id == issued) {
                       reviewState = next
-                      quote = next?.currentId?.let { db.highlights().byId(it) }
+                      quote = next?.let { st -> com.reader.app.core.ReviewScheduler.presentedId(st)?.let { db.highlights().byId(it) } }
                     }
                   } catch (e: Exception) { reviewError = "Couldn’t save review: ${e.message?.take(100)}" }
                   finally { reviewMutex.unlock(); busy = false }
