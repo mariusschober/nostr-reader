@@ -2,10 +2,27 @@ package com.reader.app.data
 
 import androidx.room.withTransaction
 import com.reader.app.core.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 data class HighlightMutation(val before: HighlightEntity?, val after: HighlightEntity?)
+
+/**
+ * Read-only view of the persisted review cycle for the Highlights entry card.
+ * It never starts, advances or repairs a session. [phase] is the scheduler's
+ * own "base"/"bonus"/"done" phase and [remaining] counts the current quote plus
+ * its queued peers in that phase, so no fabricated "X of Y" is shown while
+ * Important bonus items may still follow.
+ */
+data class ReviewSummary(
+  val exists: Boolean = false,
+  val phase: String = "done",
+  val remaining: Int = 0,
+) {
+  val finished: Boolean get() = !exists || phase == "done"
+}
 
 object HighlightAnchors {
   fun create(id: String, doc: DocumentEntity, projection: RenderedProjection, first: Int, last: Int, now: Long): HighlightEntity {
@@ -113,6 +130,30 @@ class HighlightRepository(private val db: ReaderDb) {
 }
 
 class ReviewRepository(private val db: ReaderDb) {
+  /** Live, read-only summary for the Highlights entry. Never writes. */
+  fun observeSummary(): Flow<ReviewSummary> = db.review().observeParts().map { parts -> summarizeParts(parts) }
+
+  private fun summarizeParts(parts: List<ReviewStatePartEntity>): ReviewSummary {
+    if (parts.isEmpty()) return ReviewSummary()
+    return runCatching {
+      check(parts.map { it.part } == parts.indices.toList()) { "Review state is incomplete" }
+      val state: ReviewState? = Json.decodeFromString(parts.joinToString("") { it.json })
+      summarize(state)
+    }.getOrDefault(ReviewSummary())
+  }
+
+  private fun summarize(state: ReviewState?): ReviewSummary {
+    state ?: return ReviewSummary()
+    if (state.members.isEmpty()) return ReviewSummary()
+    val phase = if (state.currentId != null) state.phase else "done"
+    val remaining = when (phase) {
+      "base" -> 1 + state.baseRemaining.size
+      "bonus" -> 1 + state.bonusRemaining.size
+      else -> 0
+    }
+    return ReviewSummary(exists = true, phase = phase, remaining = remaining)
+  }
+
   private suspend fun read(): ReviewState? {
     val parts = db.review().parts()
     if (parts.isEmpty()) return null

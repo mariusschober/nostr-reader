@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.reader.app.data.ChannelEntity
 import com.reader.app.prefs.ReaderSettings
+import com.reader.app.ui.DestinationHeader
 import com.reader.app.ui.theme.appColors
 
 data class LibraryStats(val total: Int = 0, val weekMinutes: Int = 0, val weekFinished: Int = 0, val runDays: Int = 0)
@@ -30,8 +31,9 @@ data class LibraryStats(val total: Int = 0, val weekMinutes: Int = 0, val weekFi
   var appearance by remember { mutableStateOf(false) }
   var disconnect by remember { mutableStateOf<String?>(null) }
   Surface(color = c.background, contentColor = c.text, modifier = Modifier.fillMaxSize()) {
-    Column(Modifier.statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+      DestinationHeader(title = "Settings")
+      Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       TextButton(onClick = { appearance = true }) { Text("Reading appearance", style = MaterialTheme.typography.titleMedium) }
       Text("App theme", style = MaterialTheme.typography.labelMedium, color = c.secondary)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -70,6 +72,7 @@ data class LibraryStats(val total: Int = 0, val weekMinutes: Int = 0, val weekFi
         Text(signerLabel, color = c.secondary)
         channels.forEach { Text("Device ${it.trustedSenderPubkey.take(12)}…", style = MaterialTheme.typography.bodySmall) }
         TextButton(onClick = onSignerInfo) { Text("About device keys") }
+      }
       }
     }
   }

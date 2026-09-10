@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -69,6 +70,8 @@ import androidx.compose.ui.unit.sp
 import com.reader.app.core.ReaderCore
 import com.reader.app.data.DocumentSummary
 import com.reader.app.prefs.ReaderSettings
+import com.reader.app.ui.DestinationHeader
+import com.reader.app.ui.ReaderSearchField
 import com.reader.app.ui.Triage
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
@@ -154,6 +157,12 @@ fun InboxScreen(
   var pasted by rememberSaveable { mutableStateOf("") }
   val notice = remember { SnackbarHostState() }
   val focus = LocalFocusManager.current
+  // Search receives focus exactly once, on the deliberate header opening.
+  // `armed` is saveable so returning from an article (which recreates this
+  // composable) neither refocuses nor reopens the keyboard.
+  val searchFocus = remember { FocusRequester() }
+  var searchFocusArmed by rememberSaveable { mutableStateOf(false) }
+  LaunchedEffect(searchActive) { if (!searchActive) searchFocusArmed = false }
   LaunchedEffect(readerMove?.id) {
     val move = readerMove ?: return@LaunchedEffect
     try {
@@ -162,7 +171,9 @@ fun InboxScreen(
     } finally { onReaderMoveConsumed(move.id) }
   }
   BackHandler(enabled = archiveMode, onBack = onArchiveBack)
-  BackHandler(enabled = searchActive) { if (searchText.isNotBlank()) onSearchText("") else onToggleSearch() }
+  // The IME consumes Back while it is open, so this runs once the keyboard is
+  // already gone: it closes the search UI and keeps the query for return.
+  BackHandler(enabled = searchActive) { onToggleSearch() }
   BackHandler(enabled = selecting) { selectedIds = emptyList() }
   val all = lists.values.flatten()
   val constrained = settings.age != com.reader.app.prefs.AgeFilter.ANY || settings.labelIds.isNotEmpty() || settings.unlabeled
@@ -182,10 +193,12 @@ fun InboxScreen(
     snackbarHost = { SnackbarHost(notice) },
     topBar = {
       Column(Modifier.statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-          Text(if (tab == "highlights") "Highlights" else "Shelf", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+        DestinationHeader(title = if (tab == "highlights") "Highlights" else "Shelf") {
           if (tab != "highlights") {
-            IconButton(onClick = onToggleSearch) { Icon(if (searchActive) Icons.Default.Close else Icons.Default.Search, if (searchActive) "Close search" else "Search saved articles") }
+            IconButton(onClick = {
+              if (!searchActive) searchFocusArmed = true
+              onToggleSearch()
+            }) { Icon(if (searchActive) Icons.Default.Close else Icons.Default.Search, if (searchActive) "Close search" else "Search saved articles") }
             IconButton(onClick = { sheet = "add" }) { Icon(Icons.Default.Add, "Add article") }
           }
         }
@@ -210,25 +223,36 @@ fun InboxScreen(
     if (tab == "highlights") Box(Modifier.padding(pad).fillMaxSize()) { highlights() }
     else Column(Modifier.padding(pad).fillMaxSize().imePadding()) {
       if (searchActive) {
-        OutlinedTextField(searchText, onSearchText, Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-          placeholder = { Text("Search articles or #label") }, singleLine = true,
-          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        ReaderSearchField(
+          value = searchText, onValueChange = onSearchText,
+          placeholder = "Search articles", clearLabel = "Clear article search",
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
           keyboardActions = KeyboardActions(onSearch = { onSubmitSearch(); focus.clearFocus() }),
-          trailingIcon = { if (searchText.isNotEmpty()) IconButton(onClick = { onSearchText("") }) { Icon(Icons.Default.Close, "Clear search") } })
+          focusRequester = searchFocus,
+          autoFocus = searchFocusArmed,
+          onAutoFocused = { searchFocusArmed = false },
+        )
         val labelTerm = Regex("(?:^|\\s)#([^#]*)$").find(searchText)
         if (labelTerm != null) {
-          labelCounts.filter { it.name.contains(labelTerm.groupValues[1], true) }.take(4).forEach { label ->
-            TextButton(onClick = {
-              onLibrarySettings(settings.copy(labelIds = settings.labelIds + label.labelId, unlabeled = false))
-              onSearchText(searchText.substring(0, labelTerm.range.first).trimEnd())
-            }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("#${label.name}") }
+          FlowRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            labelCounts.filter { it.name.contains(labelTerm.groupValues[1], true) }.take(4).forEach { label ->
+              AssistChip(onClick = {
+                onLibrarySettings(settings.copy(labelIds = settings.labelIds + label.labelId, unlabeled = false))
+                onSearchText(searchText.substring(0, labelTerm.range.first).trimEnd())
+              }, label = { Text("#${label.name}") })
+            }
           }
         }
       }
-      Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(if (searchActive) (if (settings.searchCurrentShelf) "In ${Triage.tabLabel(tab)}" else "All saved articles") else
-          "${displayed.size} article${if (displayed.size == 1) "" else "s"}",
-          color = c.secondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+      Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          if (searchActive) {
+            val location = if (settings.searchCurrentShelf) "In ${Triage.tabLabel(tab)}" else "All saved articles"
+            val fields = if (settings.searchTitlesOnly) "Titles only" else "Title and text"
+            "$location · $fields"
+          } else "${displayed.size} article${if (displayed.size == 1) "" else "s"}",
+          color = c.secondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
+        )
         if (!searchActive) TextButton(onClick = { sheet = "sort" }) { Text("Sort") }
         TextButton(onClick = { sheet = "filter" }) { Text("Filter${if (constrained) " •" else ""}") }
       }
@@ -272,12 +296,25 @@ fun InboxScreen(
         }
         if (!loaded) item { Text("Loading your shelf…", Modifier.padding(vertical = 24.dp), color = c.secondary) }
         else if (searchActive && searchText.isBlank() && !constrained) item {
-          Column(Modifier.padding(vertical = 12.dp)) {
-            Text("Search locally across your saved articles. Use quotes for a phrase or # to choose a label.", color = c.secondary)
-            searchRecents.forEach { q -> Row(verticalAlignment = Alignment.CenterVertically) {
-              TextButton(onClick = { onRecentTap(q) }, modifier = Modifier.weight(1f)) { Text(q, maxLines = 2) }
-              IconButton(onClick = { onRecentRemove(q) }) { Icon(Icons.Default.Close, "Remove recent search $q") }
-            } }
+          Column(Modifier.padding(top = 4.dp, bottom = 12.dp)) {
+            Text("Use “quotes” for a phrase or # to choose a label.", color = c.secondary, style = MaterialTheme.typography.bodyMedium)
+            if (searchRecents.isNotEmpty()) {
+              Spacer(Modifier.height(16.dp))
+              Text("Recent searches", style = MaterialTheme.typography.labelLarge, color = c.secondary)
+              searchRecents.forEach { q ->
+                Row(
+                  Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(onClickLabel = "Search $q") { onRecentTap(q) },
+                  verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  Icon(Icons.Default.History, contentDescription = null, tint = c.secondary, modifier = Modifier.size(18.dp))
+                  Spacer(Modifier.width(12.dp))
+                  Text(q, maxLines = 1, overflow = TextOverflow.Ellipsis, color = c.text, modifier = Modifier.weight(1f))
+                  IconButton(onClick = { onRecentRemove(q) }) {
+                    Icon(Icons.Default.Close, contentDescription = "Remove recent search $q", tint = c.secondary, modifier = Modifier.size(18.dp))
+                  }
+                }
+              }
+            }
           }
         }
         else if (searchActive && librarySearch.status != com.reader.app.data.SearchStatus.READY) item {

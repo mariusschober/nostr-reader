@@ -7,8 +7,12 @@ import subprocess
 import sys
 import tempfile
 
-serial, phase = sys.argv[1:]
+serial = sys.argv[1]
+phase = sys.argv[2]
 assert phase in ('before', 'after')
+# Optional label so a later upgrade can record its own pair without
+# overwriting the historical pre-upgrade snapshot.
+label = sys.argv[3] if len(sys.argv) > 3 else ''
 adb = ['/Users/schober/Library/Android/sdk/platform-tools/adb', '-s', serial]
 def read(path):
     return subprocess.run(adb + ['exec-out', 'run-as', 'com.reader.app', 'cat', path], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout
@@ -35,10 +39,10 @@ with tempfile.TemporaryDirectory(prefix='reader-owner-integrity-') as folder:
         result['tables'][table] = {'rows': count, 'sha256': digest.hexdigest()}
     db.close()
 result['preferencesSha256'] = hashlib.sha256(read('files/datastore/reader_settings.preferences_pb')).hexdigest()
-path = pathlib.Path('evidence/focused-20260910') / f'owner-{phase}.json'
+path = pathlib.Path('evidence/focused-20260910') / f'owner-{label}{phase}.json'
 path.write_text(json.dumps(result, indent=2)+'\n')
 if phase == 'after':
-    before = json.loads(path.with_name('owner-before.json').read_text())
+    before = json.loads(path.with_name(f'owner-{label}before.json').read_text())
     result['preserved'] = result == before
     path.write_text(json.dumps(result, indent=2)+'\n')
     print(json.dumps({'ownerDataPreserved': result['preserved'], 'tablesCompared': len(result['tables'])}))

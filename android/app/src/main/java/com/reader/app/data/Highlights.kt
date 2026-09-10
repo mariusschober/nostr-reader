@@ -84,6 +84,8 @@ interface HighlightDao {
 @Dao
 interface ReviewDao {
   @Query("SELECT * FROM review_state ORDER BY part") suspend fun parts(): List<ReviewStatePartEntity>
+  /** Read-only live stream for the Highlights entry card; never writes. */
+  @Query("SELECT * FROM review_state ORDER BY part") fun observeParts(): Flow<List<ReviewStatePartEntity>>
   @Query("DELETE FROM review_state") suspend fun clear()
   @Insert suspend fun insert(parts: List<ReviewStatePartEntity>)
 }

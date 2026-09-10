@@ -141,6 +141,9 @@ class MainActivity : ComponentActivity() {
       var importantOnly by rememberSaveable { mutableStateOf(false) }
       val matchedHighlights by remember(highlightQuery, importantOnly) { db.highlights().matchingIds(highlightQuery.trim(), importantOnly) }.collectAsState(initial = emptyList())
       val highlightSummaries by remember { db.highlights().observeSummaries() }.collectAsState(initial = emptyList())
+      // Read-only review cycle state for the Highlights entry; never writes.
+      val reviewSummary by remember { com.reader.app.data.ReviewRepository(db).observeSummary() }
+        .collectAsState(initial = com.reader.app.data.ReviewSummary())
       var channels by remember { mutableStateOf(listOf<com.reader.app.data.ChannelEntity>()) }
       var minutesByList by remember { mutableStateOf(mapOf<String, Int>()) }
       var pairingError by remember { mutableStateOf<String?>(null) }
@@ -428,10 +431,11 @@ class MainActivity : ComponentActivity() {
               if (entity != null && db.documents().exists(entity.documentId)) go(Route.Reader(entity.documentId, entity.id))
               else feedback("Source article was deleted. Your quote is still saved.")
             } },
-            onReview = { chosen -> lifecycleScope.launch {
-              try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
+            onStartReview = { restart -> lifecycleScope.launch {
+              try { com.reader.app.data.ReviewRepository(db).resume(restart = restart); go(Route.Review) }
               catch (e: Exception) { feedback("Couldn’t open review: ${e.message?.take(100)}") }
             } },
+            reviewSummary = reviewSummary,
             onToggleImportant = { id -> lifecycleScope.launch {
               try {
                 val repo = com.reader.app.data.HighlightRepository(db)
@@ -515,8 +519,9 @@ class MainActivity : ComponentActivity() {
           onToggleLabel = { ids, label -> toggleLabel(ids, label) },
           searchActive = searchActive,
           onToggleSearch = {
+            // Exiting keeps the query/results for deliberate re-entry; an
+            // inactive Shelf simply ignores it. Back never silently erases it.
             searchActive = !searchActive
-            if (!searchActive) searchText = ""
           },
           searchText = searchText,
           onSearchText = { searchText = it },
@@ -556,8 +561,18 @@ class MainActivity : ComponentActivity() {
             val current = quote?.id ?: return@LaunchedEffect
             if (reviewScrollId != current) { reviewScrollState.scrollTo(0); reviewScrollId = current }
           }
-          ReviewScreen(reviewState, quote, busy, reviewError, sourceAvailable = sourceDocument != null,
+          val rs = reviewState
+          ReviewScreen(rs, quote, busy, reviewError, sourceAvailable = sourceDocument != null,
             scrollState = reviewScrollState,
+            remaining = rs?.let { st ->
+              if (st.currentId == null) 0 else when (st.phase) {
+                "base" -> 1 + st.baseRemaining.size
+                "bonus" -> 1 + st.bonusRemaining.size
+                else -> 0
+              }
+            } ?: 0,
+            inBonus = rs?.phase == "bonus" && rs.currentId != null,
+            quoteFont = settings.font,
             onBack = { stack.pop(); tick++ },
             onNext = {
               val id = quote?.id

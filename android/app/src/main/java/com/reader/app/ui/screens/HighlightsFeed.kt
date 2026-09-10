@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
@@ -24,11 +26,16 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -36,8 +43,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.reader.app.core.ReviewScheduler
 import com.reader.app.data.HighlightSummary
+import com.reader.app.data.ReviewSummary
 import com.reader.app.ui.Haptics
 import com.reader.app.ui.HighlightAction
+import com.reader.app.ui.ReaderSearchField
+import com.reader.app.ui.theme.appColors
 import com.reader.app.ui.theme.Flexoki
 import com.reader.app.ui.theme.Motion
 import kotlin.math.roundToInt
@@ -50,7 +60,10 @@ fun HighlightsFeed(
   seed: Long,
   newest: Boolean,
   onNewest: (Boolean) -> Unit,
-  onReview: (String?) -> Unit,
+  /** Deliberate Review entry. `restart` starts a fresh round after completion. */
+  onStartReview: (restart: Boolean) -> Unit = {},
+  /** Read-only cycle summary for the entry card; never written by this screen. */
+  reviewSummary: ReviewSummary = ReviewSummary(),
   onToggleImportant: (String) -> Unit = {},
   onRecolor: (String, String) -> Unit = { _, _ -> },
   onRemoveHighlights: (Set<String>) -> Unit = {},
@@ -99,12 +112,33 @@ fun HighlightsFeed(
         TextButton(onClick = { selecting = false; selectedIds = emptyList() }) { Text("Done") }
       }
     } else {
-      OutlinedTextField(query, onQuery, singleLine = true, placeholder = { Text("Find a quote or source title") }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp))
-      FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      val focusManager = LocalFocusManager.current
+      val hasHighlights = quotes.isNotEmpty()
+      // Review is the page's primary action until a search is active; then it
+      // condenses so results keep the room.
+      val condensed = hasHighlights && (query.isNotBlank() || importantOnly)
+      if (!condensed) {
+        ReviewEntryCard(reviewSummary, hasHighlights, onOpenLatest) { onStartReview(reviewSummary.finished) }
+        Spacer(Modifier.height(12.dp))
+      }
+      ReaderSearchField(
+        value = query, onValueChange = onQuery,
+        placeholder = "Search highlights", clearLabel = "Clear highlight search",
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+      )
+      FlowRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(selected = newest, onClick = { onNewest(true) }, label = { Text("Newest") })
         FilterChip(selected = importantOnly, onClick = { onImportantOnly(!importantOnly) }, label = { Text("Important") })
-        TextButton(onClick = { onNewest(false) }) { Text("Shuffle") }
-        TextButton(enabled = quotes.isNotEmpty(), onClick = { onReview(null) }) { Text("Review") }
+        // Order is explicit: Shuffle shows its own selected state, so it is
+        // never mistaken for an unselected secondary action.
+        FilterChip(selected = !newest, onClick = { onNewest(false) }, label = { Text("Shuffle") })
+      }
+      if (condensed) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+          Text("Review highlights", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+          TextButton(onClick = { onStartReview(reviewSummary.finished) }) { Text(reviewActionLabel(reviewSummary)) }
+        }
       }
     }
     if (quotes.isEmpty()) {
@@ -117,10 +151,6 @@ fun HighlightsFeed(
             "While reading, press-and-hold any passage to keep it.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
-          if (onOpenLatest != null) {
-            Spacer(Modifier.height(16.dp))
-            TextButton(onClick = onOpenLatest) { Text("Open your latest read") }
-          }
         }
       }
     }
@@ -180,6 +210,55 @@ fun HighlightsFeed(
       },
       dismissButton = { TextButton(onClick = { confirmRemoveIds = null }) { Text("Cancel") } },
     )
+  }
+}
+
+private fun reviewActionLabel(summary: ReviewSummary): String = when {
+  !summary.exists -> "Start review"
+  summary.phase == "done" -> "Review again"
+  else -> "Continue review"
+}
+
+private fun reviewStateLine(summary: ReviewSummary, hasHighlights: Boolean): String = when {
+  !hasHighlights -> "Save a passage while reading to start a review."
+  !summary.exists -> "Revisit your saved passages."
+  summary.phase == "bonus" -> "Revisiting Important highlights"
+  summary.phase == "done" -> "Round complete."
+  else -> "${summary.remaining} remaining in this round"
+}
+
+/**
+ * The page's single primary action. It reads persisted review state but never
+ * writes it; only the button calls the deliberate start/continue/restart path.
+ */
+@Composable
+private fun ReviewEntryCard(summary: ReviewSummary, hasHighlights: Boolean, onOpenLatest: (() -> Unit)?, onStart: () -> Unit) {
+  val c = appColors()
+  Surface(
+    color = c.divider.copy(alpha = .35f),
+    shape = RoundedCornerShape(12.dp),
+    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+  ) {
+    Row(
+      Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Column(Modifier.weight(1f)) {
+        Text("Review highlights", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(2.dp))
+        Text(
+          reviewStateLine(summary, hasHighlights),
+          style = MaterialTheme.typography.bodySmall, color = c.secondary,
+          maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+      }
+      Spacer(Modifier.width(12.dp))
+      if (hasHighlights) {
+        FilledTonalButton(onClick = onStart) { Text(reviewActionLabel(summary)) }
+      } else if (onOpenLatest != null) {
+        TextButton(onClick = onOpenLatest) { Text("Open your latest read") }
+      }
+    }
   }
 }
 
@@ -281,16 +360,24 @@ private fun HighlightSwipeRow(
         Text(quote.sourceTitle, style = MaterialTheme.typography.labelMedium, maxLines = 2,
           modifier = Modifier.padding(bottom = 8.dp).clickable(onClickLabel = "Open source article") { onOpenSource() })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-          Text(
-            quote.preview,
-            maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyLarge,
-            fontFamily = com.reader.app.ui.theme.ReaderFonts.Newsreader,
-            color = com.reader.app.ui.theme.HighlightColor.text(dark),
-            modifier = Modifier.weight(1f)
-              .background(com.reader.app.ui.theme.HighlightColor.parse(quote.color).background(dark))
-              .padding(12.dp),
-          )
+          // Quieter preview: a restrained tint with a thin saved-colour marker
+          // instead of a saturated full block, still six readable lines.
+          val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
+          Box(
+            Modifier.weight(1f)
+              .clip(RoundedCornerShape(8.dp))
+              .background(saved.background(dark).copy(alpha = if (dark) .32f else .55f))
+              .drawBehind { drawRect(color = saved.background(dark), size = Size(3.dp.toPx(), size.height)) },
+          ) {
+            Text(
+              quote.preview,
+              maxLines = 6, overflow = TextOverflow.Ellipsis,
+              style = MaterialTheme.typography.bodyLarge,
+              fontFamily = com.reader.app.ui.theme.ReaderFonts.Newsreader,
+              color = com.reader.app.ui.theme.HighlightColor.text(dark),
+              modifier = Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp),
+            )
+          }
           // Important mark: yellow star badge, top right. The dark badge
           // keeps #ECCB60 legible on both light fills and dark surfaces.
           if (quote.important) {

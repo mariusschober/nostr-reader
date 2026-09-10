@@ -322,7 +322,10 @@ class ReaderFlowInstrumentedTest {
         screenshot("reader-review-right-swipe")
         swipeReview(false)
       } else tap("Next")
-      waitFor("next review card") { node(title) == null && (node("Share") != null || node("You’re caught up") != null) }
+      // The deliberate completion state now reads "Review complete" (see
+      // docs/COPY_DECK.md); the old "You’re caught up" wording was replaced
+      // when Review gained its own prominent entry and completion card.
+      waitFor("next review card") { node(title) == null && (node("Share") != null || node("Review complete") != null) }
       waitFor("review counted") { runBlocking { (db.highlights().byId(saved.id)?.reviewCount ?: 0) > 0 } }
       val reviewed = db.highlights().byId(saved.id)!!
       db.highlights().deleteAtRevision(saved.id, reviewed.revision)
