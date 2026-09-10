@@ -111,7 +111,7 @@ object Ingest {
       ?: canonical.lineSequence().firstOrNull { Regex("^#{1,6}\\s+").containsMatchIn(it) }?.replaceFirst(Regex("^#{1,6}\\s+"), "")?.trim()?.take(500)
       ?: "Untitled"
     val now = System.currentTimeMillis()
-    db.documents().insert(
+    db.insertDocumentIndexed(
       DocumentEntity(
         documentId = id, title = resolvedTitle, sourceType = sourceType,
         sourceName = null, sourceUrl = null, author = null, publishedAt = null,

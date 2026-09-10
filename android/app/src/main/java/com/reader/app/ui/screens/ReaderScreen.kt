@@ -1,6 +1,7 @@
 package com.reader.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.selection.selectable
@@ -102,7 +103,7 @@ fun ReaderScreen(
   Scaffold(
     containerColor = c.background,
     topBar = {
-      AnimatedVisibility(visible = controlsVisible, enter = fadeIn(), exit = fadeOut()) {
+      AnimatedVisibility(visible = controlsVisible, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150))) {
         Row(Modifier.fillMaxWidth().padding(8.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
           IconButton(onClick = onBack) {
             Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = c.text)
@@ -243,6 +244,30 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
           valueRange = 14f..32f,
           colors = SliderDefaults.colors(thumbColor = c.text, activeTrackColor = c.text, inactiveTrackColor = c.divider),
         )
+        Spacer(Modifier.height(8.dp))
+        Text("Line spacing", fontFamily = ReaderFonts.Ui, color = c.secondary)
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          com.reader.app.prefs.LineSpacing.entries.forEach { spacing ->
+            val label = when (spacing) {
+              com.reader.app.prefs.LineSpacing.COMPACT -> "Compact"
+              com.reader.app.prefs.LineSpacing.COMFORT -> "Comfort"
+              com.reader.app.prefs.LineSpacing.AIRY -> "Airy"
+            }
+            FilterChip(
+              selected = settings.lineSpacing == spacing, onClick = { onChange(settings.copy(lineSpacing = spacing)) },
+              label = { Text(label, fontFamily = ReaderFonts.Ui) },
+              colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = c.text, selectedLabelColor = c.background,
+                containerColor = c.background, labelColor = c.text,
+              ),
+              border = FilterChipDefaults.filterChipBorder(
+                borderColor = c.divider, selectedBorderColor = c.text,
+                enabled = true, selected = settings.lineSpacing == spacing,
+              ),
+            )
+          }
+        }
+        Spacer(Modifier.height(8.dp))
         Text("Margins", fontFamily = ReaderFonts.Ui, color = c.secondary)
         // Wrapping row: every choice stays reachable on narrow screens and
         // large text. No horizontal clipping; no new settings.

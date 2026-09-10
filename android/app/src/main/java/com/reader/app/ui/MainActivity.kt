@@ -50,6 +50,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.mapLatest
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -132,10 +139,111 @@ class MainActivity : ComponentActivity() {
       val articleMoves = remember { ArticleMoves(db) }
       var readerMoving by remember { mutableStateOf(false) }
       var ttsDocId by remember { mutableStateOf<String?>(null) }
+      // Library search: text + scope survive rotation; results re-query.
+      // Blank query always means "no search" (never MATCH '').
+      var searchActive by rememberSaveable { mutableStateOf(false) }
+      var searchText by rememberSaveable { mutableStateOf("") }
+      // Scope persisted as a name (enums need explicit savers to survive process death).
+      var searchScopeName by rememberSaveable { mutableStateOf(com.reader.app.data.SearchScope.ALL.name) }
+      val searchScope = com.reader.app.data.SearchScope.valueOf(searchScopeName)
+      var recentsTick by remember { mutableIntStateOf(0) }
+      val recentsStore = remember { com.reader.app.data.RecentsStore(this@MainActivity) }
+      // Labels: counts stream live; the doc→norms map reloads on library or
+      // assignment change. Selection is session state (a persisted label that
+      // later empties out simply shows an empty state, never an error).
+      val labelCounts by remember { db.labels().observeLabels() }.collectAsState(initial = emptyList())
+      var selectedLabelNorm by rememberSaveable { mutableStateOf<String?>(null) }
+      var labelsTick by remember { mutableIntStateOf(0) }
+      var labelsByDoc by remember { mutableStateOf(mapOf<String, Set<String>>()) }
+      LaunchedEffect(lists, labelsTick) {
+        labelsByDoc = withContext(Dispatchers.IO) {
+          val normById = db.labels().allLabels().associate { it.labelId to it.normalized }
+          db.labels().allPairs().groupBy({ it.documentId }, { normById[it.labelId] ?: "?" })
+            .mapValues { (_, norms) -> norms.toSet() }
+        }
+      }
+      fun toggleLabel(ids: Set<String>, raw: String) {
+        val norm = com.reader.app.data.LabelNorm.normalize(raw) ?: return
+        val have = ids.associateWith { id -> labelsByDoc[id]?.contains(norm) == true }
+        lifecycleScope.launch {
+          withContext(Dispatchers.IO) {
+            if (have.values.all { it }) {
+              val labelId = db.labels().idForNormalized(norm) ?: return@withContext
+              ids.forEach { id -> db.labels().unassign(id, labelId) }
+            } else {
+              val now = System.currentTimeMillis()
+              ids.forEach { id -> db.labels().assignNorm(id, raw, now) }
+            }
+          }
+          labelsTick++
+        }
+      }
+      val searchRepo = remember { com.reader.app.data.SearchRepository(db, (application as com.reader.app.ReaderApp).articles, recentsStore) }
+      // Debounced, conflated: every input restarts the collection, stale
+      // queries cancel when typing advances, and the previous results stay
+      // visible until the next set lands (no flicker, no reset).
+      var searchResults by remember { mutableStateOf(com.reader.app.data.SearchResults(emptyList(), 0)) }
+      LaunchedEffect(searchActive, searchText, searchScopeName, selectedTab, route) {
+        snapshotFlow {
+          listOf(
+            searchActive.toString(),
+            searchText,
+            searchScopeName,
+            if (route == Route.Archive) Triage.ARCHIVED else selectedTab,
+          )
+        }
+          .debounce(150)
+          .distinctUntilChanged()
+          .mapLatest { (active, text, scopeName, list) ->
+            val scope = com.reader.app.data.SearchScope.valueOf(scopeName)
+            if (active != "true" || text.isBlank()) com.reader.app.data.SearchResults(emptyList(), 0)
+            else searchRepo.observeResults(text, scope, list).first()
+          }
+          .flowOn(Dispatchers.Default)
+          .catch { emit(com.reader.app.data.SearchResults(emptyList(), 0)) }
+          .collect { searchResults = it }
+      }
+      fun openSearchResult(documentId: String, query: String = searchText) {
+        lifecycleScope.launch {
+          recentsStore.record(query)
+          recentsTick++
+          val hit = withContext(Dispatchers.IO) {
+            runCatching { searchRepo.matchOffset(documentId, query) }.getOrNull()
+          }
+          if (hit != null) go(Route.Reader(documentId, at = hit.cursor, atEnd = hit.endRendered))
+          else go(Route.Reader(documentId))
+        }
+      }
       // Room invalidation keeps a visible inbox truthful when a background
       // relay sync commits a document after onResume's initial refresh.
       val syncHealth by remember { db.syncHealth().observe() }.collectAsState(initial = null)
       var syncing by remember { mutableStateOf(false) }
+      var libraryStats by remember { mutableStateOf<com.reader.app.ui.screens.LibraryStats?>(null) }
+      var finishNotice by remember { mutableStateOf<String?>(null) }
+      // Finishes surface once, quietly, and only in the library — never in
+      // the reader (the inline card covers that) and never twice.
+      LaunchedEffect(Unit) {
+        (application as com.reader.app.ReaderApp).progress.finished.collect { docId ->
+          try {
+            if (route !is Route.Inbox && route !is Route.Archive) return@collect
+            val doc = withContext(Dispatchers.IO) { db.documents().metadataById(docId) } ?: return@collect
+            val mins = com.reader.app.core.ReaderCore.readingMinutes(doc.wordCount)
+            val total = withContext(Dispatchers.IO) { db.readingStats().finishedTotal() }
+            val byDay = withContext(Dispatchers.IO) {
+              db.readingStats().recentDayStats(400).associate { it.day to it }
+            }
+            val run = com.reader.app.data.ReadingRun.computeRun(byDay, com.reader.app.data.ReadingRun.today())
+            val milestone = when {
+              total >= 100 && prefs.takeMilestone("m100") -> "Quiet milestone — 100 articles finished. Remarkable."
+              total >= 50 && prefs.takeMilestone("m50") -> "Quiet milestone — 50 articles finished."
+              total >= 10 && prefs.takeMilestone("m10") -> "Quiet milestone — 10 articles finished. Your shelf is working."
+              run >= 7 && prefs.takeMilestone("run7") -> "A week of steady reading. No streak to protect — just a nice rhythm."
+              else -> null
+            }
+            finishNotice = milestone ?: "Finished “${doc.title.take(60)}” · $mins min"
+          } catch (_: Exception) { /* best-effort celebration only */ }
+        }
+      }
 
 
       val windowColors = if (route is Route.Reader || route is Route.Rsvp) com.reader.app.ui.theme.readerColors(settings.background) else com.reader.app.ui.theme.appColors()
@@ -162,6 +270,30 @@ class MainActivity : ComponentActivity() {
           }
         }
         minutesByList = mins
+        libraryStats = withContext(Dispatchers.IO) {
+          val weekStart = com.reader.app.data.ReadingRun.daysAgo(6)
+          val byDay = db.readingStats().recentDayStats(400).associate { it.day to it }
+          com.reader.app.ui.screens.LibraryStats(
+            total = loaded.values.sumOf { it.size },
+            weekMinutes = db.readingStats().minutesSince(weekStart),
+            weekFinished = db.readingStats().finishedSince(weekStart),
+            runDays = com.reader.app.data.ReadingRun.computeRun(byDay, com.reader.app.data.ReadingRun.today()),
+          )
+        }
+        // First-save warmth: exactly once, only when the library was empty.
+        // The sample teaches triage, highlights and offline in 3 minutes.
+        if (loaded.values.all { it.isEmpty() } && !prefs.isWelcomeShown()) {
+          try {
+            Ingest.importPlainText(this@MainActivity, WELCOME_MARKDOWN, "welcome", "Welcome to Reader")
+            prefs.setWelcomeShown()
+            Toast.makeText(this@MainActivity, "First save — welcome in. It’s yours, offline.", Toast.LENGTH_LONG).show()
+            val reloaded = withContext(Dispatchers.IO) {
+              db.documents().observeSummaries().first().groupBy { it.list }
+            }
+            lists = reloaded
+            libraryLoaded = true
+          } catch (_: Exception) { /* next refresh retries; never block startup */ }
+        }
       }
       LaunchedEffect(refreshTick.value, route) {
         if (route == Route.Inbox || route == Route.Archive) {
@@ -228,7 +360,7 @@ class MainActivity : ComponentActivity() {
             ttsController?.pause(); ttsState = null; ttsDocId = null
             refresh(); stack.pop(); tick++
           } catch (_: Exception) {
-            Toast.makeText(this@MainActivity, "Couldn’t move article. Try again.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this@MainActivity, "Couldn’t move that just now. Nothing was moved — try again.", Toast.LENGTH_LONG).show()
           } finally { readerMoving = false }
         }
       }
@@ -333,7 +465,7 @@ class MainActivity : ComponentActivity() {
                       com.reader.app.capture.CaptureRepository(db).getOrCreate(url, titleHint, "paste")
                     } catch (e: IllegalArgumentException) {
                       val id = Ingest.importPasted(this@MainActivity, text)
-                      Toast.makeText(this@MainActivity, "Link not valid — saved as text instead", Toast.LENGTH_LONG).show()
+              Toast.makeText(this@MainActivity, "That link didn’t open, so we kept the text.", Toast.LENGTH_LONG).show()
                       refresh()
                       go(Route.Reader(id))
                       return@launch
@@ -357,6 +489,47 @@ class MainActivity : ComponentActivity() {
           },
           onPair = { go(Route.Pairing) },
           onSettings = { go(Route.Settings) },
+          highlightCount = highlightSummaries.size,
+          sort = settings.sort,
+          onSort = { s -> lifecycleScope.launch { prefs.save(prefs.load().copy(sort = s)) } },
+          age = settings.age,
+          onAge = { a -> lifecycleScope.launch { prefs.save(prefs.load().copy(age = a)) } },
+          labelCounts = labelCounts,
+          selectedLabelNorm = selectedLabelNorm,
+          onLabelSelect = { selectedLabelNorm = it },
+          labelsByDoc = labelsByDoc,
+          onToggleLabel = { ids, label -> toggleLabel(ids, label) },
+          searchActive = searchActive,
+          onToggleSearch = {
+            searchActive = !searchActive
+            if (!searchActive) searchText = ""
+          },
+          searchText = searchText,
+          onSearchText = { searchText = it },
+          onSubmitSearch = {
+            if (searchText.isNotBlank()) {
+              recentsStore.record(searchText)
+              recentsTick++
+            }
+          },
+          searchScope = searchScope,
+          onSearchScope = { searchScopeName = it.name },
+          searchResults = searchResults.takeIf { searchActive && searchText.isNotBlank() }?.let { results ->
+            // Labels AND age AND search text AND list scope: one predicate.
+            val norm = selectedLabelNorm
+            val withLabels = if (norm == null) results.rows
+            else results.rows.filter { labelsByDoc[it.documentId]?.contains(norm) == true }
+            val withAge = withLabels.filter { Triage.ageMatches(it.createdAt, settings.age) }
+            results.copy(rows = withAge)
+          },
+          searchRecents = remember(searchActive, recentsTick) { recentsStore.recents() },
+          onRecentTap = { tapped -> searchText = tapped },
+          onRecentRemove = { removed -> recentsStore.remove(removed); recentsTick++ },
+          onRecentsClear = { recentsStore.clear(); recentsTick++ },
+          onOpenResult = { id -> openSearchResult(id) },
+          finishNotice = finishNotice,
+          onFinishNoticeConsumed = { finishNotice = null },
+          onFinishNoticeAction = { go(Route.Archive) },
         )
         is Route.Review -> {
           val review = remember { com.reader.app.data.ReviewRepository(db) }
@@ -427,9 +600,10 @@ class MainActivity : ComponentActivity() {
             },
             onShare = {
               quote?.let { selected ->
+                val source = selected.sourceUrl?.takeIf { it.isNotBlank() }?.let { " (${it.take(200)})" }.orEmpty()
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                   type = "text/plain"
-                  putExtra(Intent.EXTRA_TEXT, selected.quote)
+                  putExtra(Intent.EXTRA_TEXT, "“${selected.quote}”\n— ${selected.sourceTitle}$source")
                 }, "Share quote"))
               }
             },
@@ -441,6 +615,12 @@ class MainActivity : ComponentActivity() {
         }
         is Route.Reader -> PreparedReaderScreen(
           id = r.id, highlightId = r.highlightId, settings = settings,
+          at = r.at, atEnd = r.atEnd,
+          docLabels = labelsByDoc[r.id]?.mapNotNull { norm ->
+            labelCounts.firstOrNull { it.normalized == norm }?.name
+          }.orEmpty(),
+          labelSuggestions = labelCounts.map { it.name },
+          onToggleLabel = { label -> toggleLabel(setOf(r.id), label) },
           onSettingsChange = { lifecycleScope.launch { prefs.save(it) } },
           onBack = {
             ttsController?.pause(); ttsState = null; ttsDocId = null
@@ -581,6 +761,7 @@ class MainActivity : ComponentActivity() {
         }
         is Route.Settings -> SettingsScreen(
           settings = settings, channels = channels,
+          libraryStats = libraryStats,
           syncHealth = syncHealth, syncing = syncing, onSync = {
             if (!syncing) { syncing = true; lifecycleScope.launch {
               try { withContext(Dispatchers.IO) { ReaderSyncSession(applicationContext).runOnce() } }
@@ -630,7 +811,7 @@ class MainActivity : ComponentActivity() {
         val (text, subject) = Ingest.handleIntentText(intent) ?: return@launch
         if (text.startsWith("__HTML__")) {
           val id = Ingest.importHtml(this@MainActivity, text.removePrefix("__HTML__"), "android-share")
-          Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
+          Toast.makeText(this@MainActivity, "Saved. Find it in Inbox.", Toast.LENGTH_SHORT).show()
           refreshTick.value++
           return@launch
         }
@@ -687,7 +868,7 @@ class MainActivity : ComponentActivity() {
           val row = withContext(Dispatchers.IO) { db.captureRequests().byId(requestId) } ?: return@launch
           when (row.state) {
             "completed" -> {
-              Toast.makeText(this@MainActivity, "Article saved", Toast.LENGTH_SHORT).show()
+              Toast.makeText(this@MainActivity, "Ready to read.", Toast.LENGTH_SHORT).show()
               refreshTick.value++
               return@launch
             }
@@ -748,7 +929,7 @@ class MainActivity : ComponentActivity() {
         }
         check(hash(archive.inputStream()).contentEquals(hash(checkNotNull(contentResolver.openInputStream(destination))))) { "Destination verification failed" }
       }
-      Toast.makeText(this, "Export verified. Contains plaintext articles and quotes; not a restorable backup.", Toast.LENGTH_LONG).show()
+      Toast.makeText(this, "Export checked and complete. It holds plain text — keep it somewhere safe.", Toast.LENGTH_LONG).show()
     } catch (error: Exception) {
       if (error is kotlinx.coroutines.CancellationException) {
         withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
@@ -833,3 +1014,17 @@ private fun ReaderWithTts(
     }
   }
 }
+
+/** First-run sample: teaches triage, highlights and offline in 3 minutes. */
+private const val WELCOME_MARKDOWN = """# Welcome to Reader
+
+This is your quiet shelf. Everything you save lives on this phone, readable offline, with no account and no cloud.
+
+- **Inbox** collects everything. Swipe right to prioritize, left to save for later.
+- **Listen** reads aloud; **Speed** flies through at your pace.
+- Turn on **Highlight**, drag the handles, and keep what matters. Star passages to meet them again in Review.
+
+Try it now: highlight the sentence above, then find it under Highlights.
+
+To save the web: share any page to Reader from your browser, or paste a link with the + button.
+"""

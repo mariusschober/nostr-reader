@@ -39,7 +39,13 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
         error != null -> { Text(error); TextButton(onClick = onRestart) { Text("Start a new review") } }
         loading || state == null -> CircularProgressIndicator()
         state.currentId == null -> {
-          Text(if (state.members.isEmpty()) "No highlights yet" else "You’re caught up", style = MaterialTheme.typography.headlineSmall)
+          if (state.members.isEmpty()) {
+            Text("No highlights yet", style = MaterialTheme.typography.headlineSmall)
+          } else {
+            Text("All caught up.", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(4.dp))
+            Text("Nice steady reading.", style = MaterialTheme.typography.bodyMedium)
+          }
           Spacer(Modifier.height(16.dp))
           if (state.members.isNotEmpty()) Button(onClick = onRestart) { Text("Review again") }
         }
@@ -53,7 +59,7 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
           val important by rememberUpdatedState(onImportant)
           val translation by animateFloatAsState(
             targetValue = distance,
-            animationSpec = if (dragging) snap() else tween(220),
+            animationSpec = if (dragging) snap() else tween(220, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
             label = "Review card",
             finishedListener = { if (exiting) next() },
           )
@@ -97,7 +103,11 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalArrangement = Arrangement.spacedBy(4.dp),
           ) {
-            TextButton(enabled = !exiting, onClick = onImportant) { Text(if (quote.important) "★ Important" else "☆ Important") }
+            val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+            TextButton(enabled = !exiting, onClick = {
+              haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+              onImportant()
+            }) { Text(if (quote.important) "★ Important" else "☆ Important") }
             TextButton(enabled = !exiting, onClick = onShare) { Text("Share") }
             Button(enabled = !exiting, onClick = { advance() }) { Text("Next") }
           }

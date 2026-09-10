@@ -167,7 +167,7 @@ class CaptureRepository(
         createdAt = now,
         updatedAt = now,
       )
-      val row = db.documents().insert(doc)
+      val row = db.insertDocumentIndexed(doc)
       if (row == -1L && !db.documents().exists(documentId)) {
         throw IllegalStateException("article commit failed")
       }
@@ -244,7 +244,7 @@ class CaptureRepository(
         createdAt = now,
         updatedAt = now,
       )
-      val row = db.documents().insert(doc)
+      val row = db.insertDocumentIndexed(doc)
       if (row == -1L && !db.documents().exists(documentId)) throw IllegalStateException("link commit failed")
     }
     val updated = db.captureRequests().completeIfGeneration(

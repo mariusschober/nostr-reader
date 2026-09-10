@@ -121,6 +121,84 @@ object ReaderCore {
 
   fun readingMinutes(words: Int): Int = maxOf(1, (words + 224) / 225)
 
+  /** Relative age for library rows. Clock-skew futures read as Just now. */
+  fun formatAge(addedAtMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+    val delta = nowMillis - addedAtMillis
+    if (delta < 60_000L) return "Just now"
+    val minutes = delta / 60_000L
+    if (minutes < 60) return "${minutes}m ago"
+    val hours = minutes / 60
+    if (hours < 24) return "${hours}h ago"
+    val days = hours / 24
+    if (days < 7) return "${days}d ago"
+    val zone = java.time.ZoneId.systemDefault()
+    val date = java.time.Instant.ofEpochMilli(addedAtMillis).atZone(zone).toLocalDate()
+    val locale = java.util.Locale.getDefault()
+    return if (days < 365) {
+      date.format(java.time.format.DateTimeFormatter.ofPattern("MMM d", locale))
+    } else {
+      date.format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", locale))
+    }
+  }
+
+  /**
+   * Short display host: the registrable domain, so rows read `wikipedia.org`
+   * instead of `en.wikipedia.org`. Last-two-labels with a small exception set
+   * for two-level public suffixes (no bundled PSL — wrong cuts would
+   * misattribute sources, so unknown deep hosts keep one extra label rather
+   * than guessing). IP literals pass through untouched.
+   */
+  fun registrableHost(host: String): String {
+    var h = host.trim().trimEnd('.').lowercase(java.util.Locale.ROOT)
+    if (h.isBlank() || '.' !in h) return h
+    if (h.matches(Regex("^[0-9.]+$")) || ':' in h) return h
+    val twoLevel = setOf(
+      "co.uk", "org.uk", "me.uk", "ac.uk", "gov.uk", "net.uk",
+      "com.au", "net.au", "org.au", "co.jp", "ne.jp", "or.jp",
+      "com.br", "com.mx", "com.ar", "com.co", "com.pe",
+      "co.nz", "co.in", "co.za", "com.cn", "com.tw", "com.hk", "co.kr", "com.sg",
+    )
+    val labels = h.split('.')
+    val keep = if (twoLevel.any { h == it || h.endsWith(".$it") }) 3 else 2
+    if (labels.size <= keep) return h
+    return labels.takeLast(keep).joinToString(".")
+  }
+
+  /**
+   * Human source label. Prefers the stored publisher name, then the short
+   * link host, then a pretty intake type — never blank, never raw developer
+   * vocabulary like "android-share".
+   */
+  fun shortDisplaySource(sourceType: String, sourceName: String?, sourceUrl: String?): String {
+    val named = sourceName?.trim().orEmpty()
+    if (named.isNotBlank()) return named.take(30)
+    val host = runCatching {
+      val h = java.net.URI(sourceUrl ?: "").host?.lowercase(java.util.Locale.ROOT).orEmpty()
+      h.trimEnd('.')
+    }.getOrDefault("")
+    if (host.isNotBlank() && '.' in host) return registrableHost(host).take(30)
+    return when (sourceType.lowercase(java.util.Locale.ROOT)) {
+      "web", "url" -> "Web"
+      "link" -> "Link"
+      "file" -> "File"
+      "paste" -> "Paste"
+      "selection", "android-process-text" -> "Selection"
+      "android-share" -> "Shared"
+      "mac-share", "mac-quick-action" -> "Mac"
+      "chatgpt" -> "ChatGPT"
+      "claude" -> "Claude"
+      "gemini" -> "Gemini"
+      "perplexity" -> "Perplexity"
+      "notebook" -> "Notebook"
+      "grok" -> "Grok"
+      "substack" -> "Substack"
+      "x" -> "X"
+      else -> sourceType.ifBlank { "Saved" }.replaceFirstChar {
+        if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString()
+      }.take(30)
+    }
+  }
+
   fun formatAttention(totalMinutes: Int): String = when {
     totalMinutes < 60 -> "${totalMinutes}m"
     else -> "${totalMinutes / 60}h ${totalMinutes % 60}m"

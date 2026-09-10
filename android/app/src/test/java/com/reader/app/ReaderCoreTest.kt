@@ -63,4 +63,43 @@ class ReaderCoreTest {
     val out = ReaderCore.escapePlainText("# not a heading *x*")
     assertTrue(out.startsWith("\\#"))
   }
+
+  @Test
+  fun formatAgeBands() {
+    val now = 1_700_000_000_000L
+    assertEquals("Just now", ReaderCore.formatAge(now, now))
+    assertEquals("Just now", ReaderCore.formatAge(now + 60_000L, now))
+    assertEquals("Just now", ReaderCore.formatAge(now - 30_000L, now))
+    assertEquals("5m ago", ReaderCore.formatAge(now - 5 * 60_000L, now))
+    assertEquals("1m ago", ReaderCore.formatAge(now - 60_000L, now))
+    assertEquals("3h ago", ReaderCore.formatAge(now - 3 * 3_600_000L, now))
+    assertEquals("3d ago", ReaderCore.formatAge(now - 3 * 86_400_000L, now))
+    assertTrue(ReaderCore.formatAge(now - 40 * 86_400_000L, now).matches(Regex("[A-Z][a-z]{2} \\d{1,2}")))
+    assertTrue(ReaderCore.formatAge(now - 400 * 86_400_000L, now).matches(Regex("[A-Z][a-z]{2} \\d{1,2}, \\d{4}")))
+  }
+
+  @Test
+  fun shortDisplaySourcePrefersNameThenHost() {    assertEquals("Example", ReaderCore.shortDisplaySource("url", "Example", "https://example.com/x"))
+    assertEquals("wikipedia.org", ReaderCore.shortDisplaySource("url", null, "https://en.wikipedia.org/wiki/X"))
+    assertEquals("wikipedia.org", ReaderCore.shortDisplaySource("url", "  ", "https://www.wikipedia.org/"))
+    assertEquals("ChatGPT", ReaderCore.shortDisplaySource("chatgpt", null, null))
+    assertEquals("Shared", ReaderCore.shortDisplaySource("android-share", null, null))
+    assertEquals("Paste", ReaderCore.shortDisplaySource("paste", null, null))
+    assertEquals("Link", ReaderCore.shortDisplaySource("link", null, "not a url"))
+    assertEquals("Saved", ReaderCore.shortDisplaySource("", null, null))
+  }
+
+  @Test
+  fun registrableHostShortensKnownPrefixesOnly() {
+    assertEquals("wikipedia.org", ReaderCore.registrableHost("en.wikipedia.org"))
+    assertEquals("wikipedia.org", ReaderCore.registrableHost("m.wikipedia.org"))
+    assertEquals("x.com", ReaderCore.registrableHost("www.x.com"))
+    assertEquals("substack.com", ReaderCore.registrableHost("marius.substack.com"))
+    assertEquals("bbc.co.uk", ReaderCore.registrableHost("bbc.co.uk"))
+    assertEquals("example.co.uk", ReaderCore.registrableHost("example.co.uk"))
+    assertEquals("example.com", ReaderCore.registrableHost("example.com"))
+    assertEquals("1.2.3.4", ReaderCore.registrableHost("1.2.3.4"))
+    assertEquals("localhost", ReaderCore.registrableHost("localhost"))
+    assertEquals("", ReaderCore.registrableHost(""))
+  }
 }

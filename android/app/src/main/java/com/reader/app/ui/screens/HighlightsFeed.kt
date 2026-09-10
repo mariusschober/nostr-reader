@@ -2,6 +2,7 @@ package com.reader.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -67,6 +68,11 @@ fun HighlightsFeed(
   fun toggle(id: String) {
     selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
   }
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+  fun star(id: String) {
+    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+    onToggleImportant(id)
+  }
 
   Column(Modifier.fillMaxSize()) {
     if (selecting) {
@@ -80,7 +86,7 @@ fun HighlightsFeed(
       }
     } else {
       FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        FilterChip(selected = !newest, onClick = { onNewest(false) }, label = { Text("Shuffle") })
+        FilterChip(selected = !newest, onClick = { onNewest(false) }, label = { Text("Surprise me") })
         FilterChip(selected = newest, onClick = { onNewest(true) }, label = { Text("Newest") })
         Button(enabled = quotes.isNotEmpty(), onClick = { onReview(null) }) { Text("Review") }
       }
@@ -101,6 +107,7 @@ fun HighlightsFeed(
           selected = quote.id in selectedIds,
           onOpen = { if (selecting) toggle(quote.id) else onReview(quote.id) },
           onLongPress = {
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
             if (!selecting) { selecting = true; selectedIds = listOf(quote.id) }
             else toggle(quote.id)
           },
@@ -108,7 +115,7 @@ fun HighlightsFeed(
           onMenu = { menuId = quote.id },
           onSwiped = { action ->
             when (action) {
-              HighlightAction.Important -> onToggleImportant(quote.id)
+              HighlightAction.Important -> star(quote.id)
               HighlightAction.Remove -> onRemoveHighlights(setOf(quote.id))
             }
           },
@@ -123,7 +130,7 @@ fun HighlightsFeed(
       title = { Text("Highlight actions") },
       text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
-          TextButton(onClick = { menuId = null; onToggleImportant(quote.id) }) {
+          TextButton(onClick = { menuId = null; star(quote.id) }) {
             Text(if (quote.important) "Remove importance" else "Mark important")
           }
           TextButton(onClick = { menuId = null; selecting = true; selectedIds = listOf(quote.id) }) { Text("Select") }
@@ -175,7 +182,7 @@ private fun HighlightSwipeRow(
   // and sets a guard so the up ending a swipe can't double-fire onClick.
   var offset by remember(quote.id) { mutableFloatStateOf(0f) }
   var gestureDrag by remember { mutableStateOf(false) }
-  val displayedOffset by animateFloatAsState(offset, if (gestureDrag) snap() else tween(160), label = "Highlight swipe")
+  val displayedOffset by animateFloatAsState(offset, if (gestureDrag) snap() else tween(160, easing = FastOutSlowInEasing), label = "Highlight swipe")
 
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val density = LocalDensity.current

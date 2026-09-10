@@ -17,6 +17,13 @@ import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
 
 /** Minimal normal settings. Nostr details stay under Advanced. */
+data class LibraryStats(
+  val total: Int = 0,
+  val weekMinutes: Int = 0,
+  val weekFinished: Int = 0,
+  val runDays: Int = 0,
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
@@ -32,6 +39,7 @@ fun SettingsScreen(
   syncHealth: com.reader.app.data.SyncHealthEntity?,
   syncing: Boolean,
   onSync: () -> Unit,
+  libraryStats: LibraryStats? = null,
 ) {
   BackHandler { onBack() }
   val c = appColors()
@@ -49,6 +57,16 @@ fun SettingsScreen(
     },
   ) { pad ->
     Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+      libraryStats?.let { stats ->
+        Text("Library", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
+        Text("${stats.total} articles on this device", fontFamily = ReaderFonts.Ui, color = c.text)
+        val runText = if (stats.runDays >= 2) " · ${stats.runDays}-day run" else ""
+        Text("This week — ${stats.weekFinished} finished · ${stats.weekMinutes}m$runText",
+          fontFamily = ReaderFonts.Ui, color = c.text)
+        Text("Days start at midnight where you are.", fontFamily = ReaderFonts.Ui, fontSize = 12.sp, color = c.secondary)
+        TextButton(onClick = onExport) { Text("Export archive (ZIP)", fontFamily = ReaderFonts.Ui, color = c.text) }
+        Spacer(Modifier.height(16.dp))
+      }
       Text("Appearance", color = c.secondary)
       // Wrapping row so System/Light/Dark stay reachable on narrow screens
       // and large text. No new settings.
@@ -106,8 +124,6 @@ fun SettingsScreen(
           "Channel keys are wrapped by the Android Keystore and excluded from backups. Export never includes keys.",
           fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.text,
         )
-        Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onExport) { Text("Export archive (ZIP)", fontFamily = ReaderFonts.Ui, color = c.text) }
       }
     }
   }

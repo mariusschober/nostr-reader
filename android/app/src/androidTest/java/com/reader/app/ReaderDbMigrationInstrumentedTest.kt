@@ -15,6 +15,8 @@ import com.reader.app.data.MIGRATION_6_7
 import com.reader.app.data.MIGRATION_8_9
 import com.reader.app.data.MIGRATION_9_10
 import com.reader.app.data.MIGRATION_10_11
+import com.reader.app.data.MIGRATION_11_12
+import com.reader.app.data.MIGRATION_12_13
 import com.reader.app.data.MIGRATION_7_8
 import com.reader.app.data.MIGRATION_4_5
 import com.reader.app.data.ChannelEntity
@@ -23,6 +25,7 @@ import com.reader.app.data.ReaderDb
 import com.reader.app.security.KeystoreWrap
 import com.reader.app.sync.PairingCoordinator
 import com.reader.app.sync.openActiveChannelKeyOrRevoke
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -72,6 +75,53 @@ class ReaderDbMigrationInstrumentedTest {
       migrated.query("SELECT name FROM sqlite_master WHERE type='index' AND name='index_transfer_outcomes_documentId'").use {
         assertTrue(it.moveToFirst())
       }
+    }
+  }
+
+  @Test fun versionTwelveToThirteenAddsLabelsFinishesAndDays() {
+    val name = "library-v12-v13"
+    migrationHelper.createDatabase(name, 12).apply {
+      execSQL("""INSERT INTO documents(documentId, title, sourceType, capturedAt, canonicalMarkdown,
+        wordCount, parserVersion, state, list, progressCharOffset, progressFraction, lastOpenedAt, createdAt, updatedAt)
+        VALUES ('doc-a','Alpha','web',1,'Alpha\n',1,2,'unread','inbox',0,0.0,0,1,1)""")
+      close()
+    }
+    migrationHelper.runMigrationsAndValidate(name, 13, true, MIGRATION_12_13).use { migrated ->
+      migrated.query("SELECT finishedAt FROM documents WHERE documentId = 'doc-a'").use {
+        assertTrue(it.moveToFirst())
+        assertTrue(it.isNull(0))
+      }
+      for (table in listOf("labels", "document_labels", "reading_days")) {
+        migrated.query("SELECT name FROM sqlite_master WHERE type='table' AND name='$table'").use {
+          assertTrue("$table missing", it.moveToFirst())
+        }
+      }
+      migrated.query("SELECT name FROM sqlite_master WHERE type='index' AND name='index_document_labels_labelId_documentId'").use {
+        assertTrue(it.moveToFirst())
+      }
+    }
+    // Functional pass on the migrated database: assign, rename-merge,
+    // cascade on document delete, finish credit counted once.
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = Room.databaseBuilder(context, ReaderDb::class.java, name)
+      .addMigrations(MIGRATION_12_13)
+      .build()
+    try {
+      runBlocking {
+        assertTrue(db.labels().assignNorm("doc-a", "Climate", 1))
+        assertTrue(db.labels().assignNorm("doc-a", "  climate  ", 2))
+        assertEquals(listOf("Climate"), db.labels().labelsFor("doc-a"))
+        assertEquals(1, db.labels().observeLabels().first().single().count)
+        assertTrue(db.readingStats().recordFinish("doc-a", 5, "2026-09-10", 3))
+        assertFalse(db.readingStats().recordFinish("doc-a", 5, "2026-09-10", 4))
+        assertEquals(5, db.readingStats().minutesSince("2026-09-10"))
+        assertEquals(1, db.readingStats().finishedSince("2026-09-10"))
+        db.documents().deleteById("doc-a")
+        assertTrue(db.labels().observeLabels().first().isEmpty())
+      }
+    } finally {
+      db.close()
+      context.deleteDatabase(name)
     }
   }
 
@@ -176,7 +226,7 @@ class ReaderDbMigrationInstrumentedTest {
     helper.close()
 
     val migrated = Room.databaseBuilder(context, ReaderDb::class.java, name)
-      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
       .build()
     try {
       migrated.openHelper.writableDatabase

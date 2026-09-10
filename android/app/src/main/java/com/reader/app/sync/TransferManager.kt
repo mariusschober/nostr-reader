@@ -461,7 +461,7 @@ class TransferManager(
       updatedAt = nowMillis,
     )
     db.withTransaction {
-      val inserted = db.documents().insert(document)
+      val inserted = db.insertDocumentIndexed(document)
       require(inserted != -1L || db.documents().exists(manifest.documentId)) { "document commit failed" }
       db.chunks().clearTransfer(manifest.transferId)
       db.manifests().clearTransfer(manifest.transferId)

@@ -55,7 +55,16 @@ class ArchiveExporter(private val db: ReaderDb) {
                 put("state", d.state); put("list", d.list); put("progressBlockId", d.progressBlockId)
                 put("progressCharOffset", d.progressCharOffset); put("progressFraction", d.progressFraction)
                 put("lastOpenedAt", d.lastOpenedAt); put("createdAt", d.createdAt); put("updatedAt", d.updatedAt)
+                put("labels", buildJsonArray { db.labels().labelsFor(d.documentId).forEach { add(it) } })
               }.toString().toByteArray(Charsets.UTF_8))
+            }
+          }
+          entry("labels.jsonl") { write ->
+            db.labels().allLabels().forEach { label ->
+              write(buildJsonObject {
+                put("labelId", label.labelId); put("name", label.name)
+                put("normalized", label.normalized); put("createdAt", label.createdAt)
+              }.toString().toByteArray(Charsets.UTF_8) + "\n".toByteArray(Charsets.UTF_8))
             }
           }
           entry("highlights.jsonl") { write ->

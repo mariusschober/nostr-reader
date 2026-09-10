@@ -29,9 +29,14 @@ import com.reader.app.ui.Triage
 class NativeArticleView(context: Context) : FrameLayout(context) {
   private class SelectionText(context: Context) : TextView(context) {
     var changed: ((Int, Int) -> Unit)? = null
+    var scrolled: ((scrollY: Int, viewportHeight: Int) -> Unit)? = null
     override fun onSelectionChanged(start: Int, end: Int) {
       super.onSelectionChanged(start, end)
       changed?.invoke(start, end)
+    }
+    override fun onScrollChanged(x: Int, y: Int, oldX: Int, oldY: Int) {
+      super.onScrollChanged(x, y, oldX, oldY)
+      if (y != oldY) scrolled?.invoke(y, height)
     }
   }
   private val body = SelectionText(context)
@@ -51,6 +56,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onLink: (String) -> Unit = {}
   var onTap: () -> Unit = {}
   var onTable: (Int) -> Unit = {}
+  /** Viewport position for overlay affordances (e.g. back-to-top). */
+  var onViewport: (scrollY: Int, viewportHeight: Int) -> Unit = { _, _ -> }
 
   var onArticleSwipe: (ArticleAction) -> Unit = {}
   var onSwipeProgress: (Float, Boolean) -> Unit = { _, _ -> }
@@ -78,6 +85,17 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private fun hasSelection() = actionMode != null || body.selectionStart != body.selectionEnd
   private fun maxScrollY() = ((body.layout?.height ?: 0) + body.totalPaddingTop + body.totalPaddingBottom - body.height).coerceAtLeast(0)
   private fun stopFling() { fling.forceFinished(true); removeCallbacks(flingFrame) }
+
+  /** Animated return to the article start (back-to-top bubble). */
+  fun smoothScrollToTop() {
+    stopFling()
+    if (body.scrollY <= 0 || maxScrollY() <= 0) {
+      body.scrollTo(0, 0)
+      return
+    }
+    fling.fling(0, body.scrollY, 0, -12000, 0, 0, 0, maxScrollY())
+    postOnAnimation(flingFrame)
+  }
   private fun recycleVelocity() { velocity?.recycle(); velocity = null; flingEligible = false }
 
   override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -197,17 +215,18 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // from Android's handle controller and prevents edge autoscrolling.
     addView(body, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     body.changed = { start, end -> selectionChanged(start, end) }
+    body.scrolled = { y, h -> onViewport(y, h) }
     body.customSelectionActionModeCallback = object : ActionMode.Callback {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
         stopFling()
         actionMode = mode
         selectionSession = UUID.randomUUID().toString()
-        if (pen) menu.clear() else menu.add(0, HIGHLIGHT_ACTION, 0, "Highlight")
+        // Highlight rides first; Copy/Define/Share stay available. Clearing
+        // the menu surrendered the platform dictionary for no gain.
+        menu.add(0, HIGHLIGHT_ACTION, 0, "Highlight")
         return true
       }
-      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
-        if (pen) { menu.clear(); return true }; return false
-      }
+      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
       override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
         if (item.itemId != HIGHLIGHT_ACTION) return false
         emitSelection()
@@ -262,6 +281,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     documentId = id
     projection = value
     body.textSize = settings.fontSizeSp
+    body.setLineSpacing(0f, settings.lineHeightMultiplier())
     val font = when (settings.font) {
       ArticleFont.NEWSREADER -> R.font.newsreader_var
       ArticleFont.CRIMSON_PRO -> R.font.crimsonpro_var

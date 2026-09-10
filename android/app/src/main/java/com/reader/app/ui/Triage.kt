@@ -35,4 +35,21 @@ object Triage {
     ARCHIVED -> "Archived"
     else -> "Moved"
   }
+
+  /** Start-of-today millis in device zone, shared by every age computation. */
+  fun startOfTodayMillis(nowMillis: Long = System.currentTimeMillis()): Long {
+    val zone = java.time.ZoneId.systemDefault()
+    return java.time.Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
+      .atStartOfDay(zone).toInstant().toEpochMilli()
+  }
+
+  /** Single source of truth for the age predicate (lists, search, badges). */
+  fun ageMatches(createdAt: Long, age: com.reader.app.prefs.AgeFilter, nowMillis: Long = System.currentTimeMillis()): Boolean =
+    when (age) {
+      com.reader.app.prefs.AgeFilter.ANY -> true
+      com.reader.app.prefs.AgeFilter.TODAY -> createdAt >= startOfTodayMillis(nowMillis)
+      com.reader.app.prefs.AgeFilter.WEEK -> createdAt >= nowMillis - 7L * 86_400_000L
+      com.reader.app.prefs.AgeFilter.MONTH -> createdAt >= nowMillis - 30L * 86_400_000L
+      com.reader.app.prefs.AgeFilter.OLDER -> createdAt < nowMillis - 30L * 86_400_000L
+    }
 }

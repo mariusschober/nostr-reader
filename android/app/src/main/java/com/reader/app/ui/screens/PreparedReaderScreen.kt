@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.viewinterop.AndroidView
 import com.reader.app.ui.ArticleAction
 import com.reader.app.ReaderApp
@@ -50,6 +52,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          onPauseAudio: () -> Unit = {},
                          speechPlaying: Boolean = false,
                          playerVisible: Boolean = false,
+                         // Search landing: open at this cursor with a fading
+                         // match tint; null means normal (quote/progress) entry.
+                         at: SemanticCursor? = null,
+                         atEnd: Int? = null,
+                         docLabels: List<String> = emptyList(),
+                         labelSuggestions: List<String> = emptyList(),
+                         onToggleLabel: (String) -> Unit = {},
                          player: @Composable () -> Unit = {}) {
   val context = LocalContext.current
   val app = context.applicationContext as ReaderApp
@@ -78,26 +87,53 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   // churn. The Saveable `initial` is only written on transition/dispose and
   // part changes, keeping recreation coherent without per-scroll overhead.
   var liveCursor by remember { mutableStateOf<SemanticCursor?>(null) }
+  // Live reading fraction for the progress footer (also offered to storage).
+  var liveFraction by remember { mutableStateOf<Float?>(null) }
+  // Finish celebration: once per visit, silent, dismissible, never modal.
+  var finishCelebrated by remember(id) { mutableStateOf(false) }
+  var finishCardVisible by remember(id) { mutableStateOf(false) }
+  LaunchedEffect(doc?.finishedAt) {
+    if (doc?.finishedAt != null && !finishCelebrated) {
+      finishCelebrated = true
+      finishCardVisible = true
+    }
+  }
+  // Search-landing bookkeeping: re-entry into the same article with a new
+  // match must re-resolve even when the part is already loaded, and force a
+  // re-display when the part doesn't change (otherwise the new cursor and
+  // tint are silently swallowed by the up-to-date display).
+  var lastAt by remember(id) { mutableStateOf<SemanticCursor?>(null) }
+  var displayRequest by remember(id) { mutableIntStateOf(0) }
   var view by remember { mutableStateOf<NativeArticleView?>(null) }
   var pen by rememberSaveable(id) { mutableStateOf(false) }
   var selectedColor by rememberSaveable { mutableStateOf("YELLOW") }
   var menu by remember { mutableStateOf(false) }
+  var showLabels by remember { mutableStateOf(false) }
   var appearance by remember { mutableStateOf(false) }
   var expandedTable by remember(id, part) { mutableStateOf<Int?>(null) }
   var actions by remember { mutableStateOf<List<String>>(emptyList()) }
   var activeQuote by remember { mutableStateOf<HighlightEntity?>(null) }
+  // Search-landing tint: visible until the user scrolls away from the hit.
+  var matchTint by remember(id, at) { mutableStateOf(at != null) }
+  // "Back to top" bubble: a single boolean flipped on threshold crossings,
+  // so scroll frames never recompose the screen — only showing/hiding does.
+  var showTopBubbleRaw by remember { mutableStateOf(false) }
   var undo by remember { mutableStateOf<HighlightMutation?>(null) }
   val sessions = remember(id) { mutableMapOf<String, Pair<Long, HighlightMutation>>() }
   val snackbar = remember { SnackbarHostState() }
 
-  LaunchedEffect(id, doc?.documentId) {
+  LaunchedEffect(id, doc?.documentId, at) {
     val source = doc ?: return@LaunchedEffect
-    if (part >= 0) return@LaunchedEffect
+    if (part >= 0 && at == lastAt) return@LaunchedEffect
+    val hadPart = part >= 0
+    lastAt = at
     try {
       val quote = highlightId?.let { db.highlights().byId(it) }?.takeIf { it.documentId == id }
-      initial = SemanticCursor(id, quote?.startBlockId ?: source.progressBlockId ?: "b0", quote?.startOffset ?: source.progressCharOffset)
+      initial = at ?: SemanticCursor(id, quote?.startBlockId ?: source.progressBlockId ?: "b0", quote?.startOffset ?: source.progressCharOffset)
       val index = app.articles.index(id)
-      part = index.sectionFor(initial.blockId, source.progressFraction)
+      val newPart = if (at != null) index.sectionFor(at.blockId, 0f) else index.sectionFor(initial.blockId, source.progressFraction)
+      if (hadPart && newPart == part) displayRequest++
+      part = newPart
     } catch (e: Exception) { failure = e.message ?: "Couldn’t open article" }
   }
   LaunchedEffect(id, part) {
@@ -179,8 +215,11 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }
   }
   fun share(value: HighlightEntity) {
+    // Quotes travel with their source: a shared passage stays attributed
+    // even outside the library.
+    val source = value.sourceUrl?.takeIf { it.isNotBlank() }?.let { " (${it.take(200)})" }.orEmpty()
     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-      type = "text/plain"; putExtra(Intent.EXTRA_TEXT, value.quote)
+      type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "“${value.quote}”\n— ${value.sourceTitle}$source")
     }, "Share quote"))
   }
 
@@ -206,6 +245,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             if (prepared?.projection?.tables?.isNotEmpty() == true) DropdownMenuItem(
               text = { Text("View tables", color = colors.text) },
               onClick = { menu = false; expandedTable = 0 })
+            DropdownMenuItem(
+              text = { Text("Labels…", color = colors.text) },
+              onClick = { menu = false; showLabels = true })
             if (undo != null) DropdownMenuItem(text = { Text("Undo highlight change") }, onClick = {
               menu = false
               transition {
@@ -223,6 +265,43 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }
   }, bottomBar = {
     Column(Modifier.heightIn(max = dockMaxHeight).verticalScroll(rememberScrollState())) {
+      // Finish card: one calm line, once per visit, never modal.
+      androidx.compose.animation.AnimatedVisibility(
+        visible = finishCardVisible,
+        enter = androidx.compose.animation.fadeIn(animationSpec = tween(250)),
+        exit = androidx.compose.animation.fadeOut(),
+      ) {
+        Surface(color = colors.surface, contentColor = colors.text) {
+          Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Check, contentDescription = null, tint = colors.success,
+              modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+              "Finished · ${com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)} min",
+              fontFamily = ReaderFonts.Ui, color = colors.text,
+              modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { finishCardVisible = false }) {
+              Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = colors.secondary,
+                modifier = Modifier.size(18.dp))
+            }
+          }
+        }
+      }
+      // Progress footer: orientation for long sessions, from already-flowing data.
+      if (prepared != null) {
+        val fraction = (liveFraction ?: doc?.progressFraction ?: 0f).coerceIn(0f, 1f)
+        val totalMins = com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)
+        val leftMins = ((1f - fraction) * totalMins).toInt().coerceAtLeast(0)
+        val saveText = if (saveError != null) "Save failed" else "Saved"
+        Text(
+          "${(fraction * 100).toInt()}% · $leftMins min left · Part ${part + 1} / ${prepared!!.index.sections.size} · $saveText",
+          fontFamily = ReaderFonts.Ui, fontSize = 12.sp, color = colors.secondary,
+          modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+            .semantics { contentDescription = "${(fraction * 100).toInt()} percent read, $leftMins minutes left" },
+        )
+      }
       player()
       if (pen) {
         var toolsOpen by remember { mutableStateOf(false) }
@@ -280,7 +359,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           pen = !pen
           if (pen && !hints.getBoolean("highlight_seen", false)) {
             hints.edit().putBoolean("highlight_seen", true).apply()
-            scope.launch { snackbar.showSnackbar("Select text to highlight. Drag the handles to adjust.") }
+            scope.launch { snackbar.showSnackbar("Drag the handles to keep a passage. It stays on this device.") }
           }
         }, modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (pen) "Highlighting on" else "Highlighting off" },
           leadingIcon = { Icon(Icons.Default.BorderColor, null, Modifier.size(20.dp)) },
@@ -295,7 +374,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       }
     }
   }) { padding ->
-    Column(Modifier.padding(padding).fillMaxSize()) {
+    // "Back to top" bubble: scrolled down at least a viewport with no
+    // selection gesture in flight. One predictable rule, useful beyond
+    // search landings for every long article.
+    val showTopBubble = showTopBubbleRaw &&
+      !pen && actions.isEmpty() && !transitioning
+    Box(Modifier.padding(padding).fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
       if (showSwipeHint) Surface(color = colors.surface, contentColor = colors.text) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
           // Mirror the gesture arrows for right-to-left system layouts.
@@ -367,17 +452,35 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             initial = partPositions[part + 1] ?: SemanticCursor.start(id); liveCursor = null; part++
           } }) { Text("Next part") }
         }
-        val nativeMarks = remember(marks, ready, dark) {
+        val nativeMarks = remember(marks, ready, dark, at, atEnd) {
           val blocks = ready.projection.blocks.mapTo(hashSetOf()) { it.id }
-          marks.filter { it.projectionVersion == RENDERED_PROJECTION_VERSION && it.startBlockId in blocks && it.endBlockId in blocks }.map {
-            NativeMark(it.id, ready.projection.offset(it.startBlockId, it.startOffset), ready.projection.offset(it.endBlockId, it.endOffset),
-              it.createdAt, HighlightColor.parse(it.color).background(dark).toArgb(), HighlightColor.text(dark).toArgb())
+          buildList {
+            addAll(marks.filter { it.projectionVersion == RENDERED_PROJECTION_VERSION && it.startBlockId in blocks && it.endBlockId in blocks }.map {
+              NativeMark(it.id, ready.projection.offset(it.startBlockId, it.startOffset), ready.projection.offset(it.endBlockId, it.endOffset),
+                it.createdAt, HighlightColor.parse(it.color).background(dark).toArgb(), HighlightColor.text(dark).toArgb())
+            })
+            // Search-landing tint: one fading span over the matched text.
+            // Cleared on the first real scroll (see onCursor below).
+            if (matchTint && at != null && atEnd != null) {
+              val start = ready.projection.offset(at.blockId, at.charOffset)
+              if (atEnd > start) add(NativeMark("search-hit", start, atEnd.coerceAtMost(ready.projection.text.length),
+                System.currentTimeMillis(), colors.link.copy(alpha = 0.28f).toArgb(), colors.text.toArgb()))
+            }
           }
         }
-        val styleKey = listOf(ready, text, settings.font, settings.fontSizeSp, settings.margin, colors)
-        AndroidView(factory = { NativeArticleView(it).also { view = it } }, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(), update = { native ->
+        // displayRequest forces a re-display (and scroll restore) when a new
+        // match lands on the already-loaded part.
+        val styleKey = listOf(ready, text, settings.font, settings.fontSizeSp, settings.margin, colors, displayRequest)
+        // Wide screens cap the measure for comfortable line lengths.
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+          val wide = maxWidth > 700.dp
+          val capWidth = if (wide) 680.dp else maxWidth
+          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            AndroidView(factory = { NativeArticleView(it).also { view = it } },
+              modifier = Modifier.widthIn(max = capWidth).fillMaxHeight().clipToBounds(),
+              update = { native ->
           if (native.tag != styleKey) {
-            native.display(id, ready.projection, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, false), initial)
+            native.display(id, ready.projection, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, wide), initial)
             native.tag = styleKey
           }
           native.deleteTint = colors.error.toArgb()
@@ -385,13 +488,26 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           native.onArticleSwipe = { action -> transition { onArticleAction(action) } }
           native.setPenMode(pen)
           native.setMarks(nativeMarks)
-          native.onCursor = { cursor, _ ->
+          native.onCursor = { cursor, fraction ->
             liveCursor = cursor
+            liveFraction = fraction
+            // The match tint survives the landing settle (cursor == hit) and
+            // clears on the first real scroll away from it.
+            if (matchTint) {
+              val a = at
+              if (a == null || cursor.blockId != a.blockId || kotlin.math.abs(cursor.charOffset - a.charOffset) > 40) {
+                matchTint = false
+              }
+            }
             // Guard stale ready closures after a part switch: only offer
             // progress for the currently displayed section.
             if (native.tag == styleKey) {
               if (!speechPlaying) app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset)))
             }
+          }
+          native.onViewport = { scrollY, viewportHeight ->
+            val show = viewportHeight > 0 && scrollY > viewportHeight
+            if (show != showTopBubbleRaw) showTopBubbleRaw = show
           }
           native.onMark = { actions = it }
           native.onTable = { expandedTable = it }
@@ -419,12 +535,43 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                     sessions[session] = sequence to aggregate
                     while (sessions.size > 16) sessions.remove(sessions.keys.first())
                     undo = aggregate.takeIf { it.before != null || it.after != null }
+                    if (undo != null) scope.launch {
+                      snackbar.currentSnackbarData?.dismiss()
+                      if (snackbar.showSnackbar("Highlight saved", "Undo", withDismissAction = true,
+                          duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed
+                      ) {
+                        transition {
+                          view?.clearSelection()
+                          val saved = undo ?: return@transition
+                          try {
+                            if (highlights.undo(saved)) undo = null
+                            else scope.launch { snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.") }
+                          } catch (_: Exception) { scope.launch { snackbar.showSnackbar("Couldn’t undo highlight change. Try again.") } }
+                        }
+                      }
+                    }
                   }
                 }
               } catch (error: Exception) { scope.launch { snackbar.showSnackbar(error.message ?: "Couldn’t prepare highlight") } }
             }
           }
         })
+          } // inner centering Box
+        } // BoxWithConstraints
+      }
+    }
+      if (showTopBubble) {
+        SmallFloatingActionButton(
+          onClick = {
+            matchTint = false
+            view?.smoothScrollToTop()
+          },
+          modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(16.dp),
+          containerColor = colors.surface,
+          contentColor = colors.text,
+        ) {
+          Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Back to top")
+        }
       }
     }
   }
@@ -435,6 +582,18 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }
   }
   if (appearance) AppearanceSheet(settings, onSettingsChange) { appearance = false }
+  if (showLabels) {
+    val assigned = remember(docLabels) { docLabels.map { it to 1 }.toMap() }
+    LabelsDialog(
+      title = "Labels",
+      assignedCounts = assigned,
+      totalDocs = 1,
+      suggestions = labelSuggestions,
+      onToggle = onToggleLabel,
+      onDismiss = { showLabels = false },
+      colors = colors,
+    )
+  }
   activeQuote?.let { quote ->
     AlertDialog(onDismissRequest = { actions = emptyList(); activeQuote = null }, title = { Text("Highlight") }, text = {
       Column(Modifier.verticalScroll(rememberScrollState())) {

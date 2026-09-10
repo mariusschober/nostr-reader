@@ -3,6 +3,7 @@ package com.reader.app.data
 import android.content.Context
 import androidx.room.*
 import androidx.room.migration.Migration
+import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
@@ -28,14 +29,19 @@ data class DocumentEntity(
   val lastOpenedAt: Long,
   val createdAt: Long,
   val updatedAt: Long,
+  /** First finish millis wall time, sticky; null means never finished. */
+  val finishedAt: Long? = null,
 )
 
 /** List rows never contain article bodies or parser trees. */
 data class DocumentSummary(
   val documentId: String, val title: String, val sourceType: String, val sourceName: String?,
-  val wordCount: Int, val state: String, val list: String, val progressFraction: Float,
+  val sourceUrl: String?, val wordCount: Int, val state: String, val list: String, val progressFraction: Float,
   val createdAt: Long, val updatedAt: Long,
 )
+
+/** Minimal row for search-index backfill (never bodies at this layer). */
+data class DocumentIdTitle(val documentId: String, val title: String)
 
 /** Bounded rows avoid Android CursorWindow limits, while preserving Room atomicity. */
 @Entity(
@@ -182,8 +188,11 @@ abstract class DocumentDao {
   @Query("SELECT CAST(COUNT(*) AS TEXT) || ':' || CAST(COALESCE(MAX(updatedAt), 0) AS TEXT) FROM documents")
   abstract fun observeRevision(): Flow<String>
 
-  @Query("SELECT documentId, title, sourceType, sourceName, wordCount, state, list, progressFraction, createdAt, updatedAt FROM documents ORDER BY createdAt DESC, documentId ASC")
+  @Query("SELECT documentId, title, sourceType, sourceName, sourceUrl, wordCount, state, list, progressFraction, createdAt, updatedAt FROM documents ORDER BY createdAt DESC, documentId ASC")
   abstract fun observeSummaries(): Flow<List<DocumentSummary>>
+
+  @Query("SELECT documentId, title FROM documents ORDER BY createdAt")
+  abstract suspend fun allIdTitles(): List<DocumentIdTitle>
 
   @Query("SELECT * FROM documents WHERE documentId = :id LIMIT 1")
   abstract fun observeMetadata(id: String): Flow<DocumentEntity?>
@@ -677,6 +686,54 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
   }
 }
 
+/**
+ * Stage Search: offline full-text index. The FTS5 table is created from one
+ * exact DDL string ([SearchSchema]) both here and on fresh installs, because
+ * Room annotations cannot express per-column UNINDEXED. Content backfill runs
+ * in Kotlin on first search (see SearchRepository.ensureIndexed) so Arabic
+ * normalization applies uniformly; the migration itself stays pure SQL.
+ */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    // Best-effort: devices without the FTS5 module keep a working database
+    // and the LIKE fallback path; nothing here may throw the upgrade.
+    com.reader.app.data.SearchFtsSupport.ensureTable(db)
+  }
+}
+
+/**
+ * Library organization + memory systems (labels, finishes, reading days).
+ * One migration, no backfill: labels are a new facet, finishes accrue from
+ * here on, and reading-day rows are ephemeral encouragement (never exported).
+ * FTS table untouched.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("ALTER TABLE documents ADD COLUMN finishedAt INTEGER")
+    db.execSQL(
+      """CREATE TABLE IF NOT EXISTS labels (
+        labelId TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL,
+        normalized TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+      )""".trimIndent(),
+    )
+    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_labels_normalized ON labels(normalized)")
+    db.execSQL(
+      """CREATE TABLE IF NOT EXISTS document_labels (
+        documentId TEXT NOT NULL REFERENCES documents(documentId) ON DELETE CASCADE,
+        labelId TEXT NOT NULL REFERENCES labels(labelId) ON DELETE CASCADE,
+        createdAt INTEGER NOT NULL, PRIMARY KEY(documentId, labelId)
+      )""".trimIndent(),
+    )
+    db.execSQL("CREATE INDEX IF NOT EXISTS index_document_labels_labelId_documentId ON document_labels(labelId, documentId)")
+    db.execSQL("CREATE INDEX IF NOT EXISTS index_document_labels_documentId ON document_labels(documentId)")
+    db.execSQL(
+      """CREATE TABLE IF NOT EXISTS reading_days (
+        day TEXT NOT NULL PRIMARY KEY, minutes INTEGER NOT NULL, finished INTEGER NOT NULL
+      )""".trimIndent(),
+    )
+  }
+}
+
 @Database(
   entities = [
     DocumentEntity::class,
@@ -692,8 +749,11 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     ReviewStatePartEntity::class,
     SyncHealthEntity::class,
     com.reader.app.capture.CaptureRequestEntity::class,
+    LabelEntity::class,
+    DocumentLabelEntity::class,
+    ReadingDayEntity::class,
   ],
-  version = 11,
+  version = 13,
   exportSchema = true,
 )
 abstract class ReaderDb : RoomDatabase() {
@@ -709,13 +769,45 @@ abstract class ReaderDb : RoomDatabase() {
   abstract fun review(): ReviewDao
   abstract fun syncHealth(): SyncHealthDao
   abstract fun captureRequests(): com.reader.app.capture.CaptureRequestDao
+  abstract fun search(): SearchDao
+  abstract fun labels(): LabelDao
+  abstract fun readingStats(): ReadingStatsDao
+
+  /**
+   * Document insert that also maintains the FTS index in the same transaction.
+   * All production intake paths must use this instead of `documents().insert`
+   * so the search index can never silently fall behind the library.
+   *
+   * The index write is best-effort by design: on devices without the FTS5
+   * module it is skipped (the LIKE fallback serves search), and an index
+   * failure must never abort the document commit itself.
+   */
+  suspend fun insertDocumentIndexed(doc: DocumentEntity): Long = withTransaction {
+    val row = documents().insert(doc)
+    if (row != -1L && com.reader.app.data.SearchFtsSupport.ensureTable(openHelper.writableDatabase)) {
+      runCatching {
+        search().execFts(
+          SimpleSQLiteQuery(
+            "INSERT INTO documents_fts(documentId, title, body) VALUES (?, ?, ?)",
+            arrayOf<Any?>(doc.documentId, com.reader.app.core.SearchQuery.ftsNormalize(doc.title), com.reader.app.core.SearchQuery.ftsNormalize(doc.canonicalMarkdown)),
+          ),
+        )
+      }
+    }
+    row
+  }
 
   companion object {
     @Volatile
     private var instance: ReaderDb? = null
     fun get(ctx: Context): ReaderDb = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(ctx.applicationContext, ReaderDb::class.java, "reader.db")
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+        .addCallback(object : Callback() {
+          override fun onCreate(db: SupportSQLiteDatabase) {
+            com.reader.app.data.SearchFtsSupport.ensureTable(db)
+          }
+        })
         .build()
         .also { instance = it }
     }

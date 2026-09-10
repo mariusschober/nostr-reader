@@ -13,6 +13,9 @@ enum class ArticleFont { NEWSREADER, CRIMSON_PRO, ASUL, ATKINSON, ABEEZEE }
 enum class ArticleMargin { NARROW, DEFAULT, WIDE }
 enum class ArticleBackground { FOLLOW_APP, PAPER, SOFT, INK, BLACK }
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class LineSpacing { COMPACT, COMFORT, AIRY }
+enum class LibrarySort { NEWEST, OLDEST, QUICKEST, LONGEST, TITLE }
+enum class AgeFilter { ANY, TODAY, WEEK, MONTH, OLDER }
 
 data class ReaderSettings(
   val font: ArticleFont = ArticleFont.NEWSREADER,
@@ -22,7 +25,16 @@ data class ReaderSettings(
   val themeMode: ThemeMode = ThemeMode.SYSTEM,
   val ttsSpeed: Float = 1.0f,
   val rsvpWpm: Int = 300,
-)
+  val lineSpacing: LineSpacing = LineSpacing.COMFORT,
+  val sort: LibrarySort = LibrarySort.NEWEST,
+  val age: AgeFilter = AgeFilter.ANY,
+) {
+  fun lineHeightMultiplier(): Float = when (lineSpacing) {
+    LineSpacing.COMPACT -> 1.35f
+    LineSpacing.COMFORT -> 1.50f
+    LineSpacing.AIRY -> 1.65f
+  }
+}
 
 class Prefs(private val ctx: Context) {
   private object K {
@@ -33,6 +45,11 @@ class Prefs(private val ctx: Context) {
     val TTS = floatPreferencesKey("tts")
     val WPM = intPreferencesKey("wpm")
     val THEME = stringPreferencesKey("themeMode")
+    val SPACING = stringPreferencesKey("lineSpacing")
+    val SORT = stringPreferencesKey("sort")
+    val AGE = stringPreferencesKey("age")
+    val WELCOME = booleanPreferencesKey("welcomeShown")
+    val MILESTONES = stringSetPreferencesKey("milestonesDone")
   }
 
   val flow = ctx.store.data.map(::decode).distinctUntilChanged()
@@ -48,6 +65,9 @@ class Prefs(private val ctx: Context) {
       themeMode = runCatching { ThemeMode.valueOf(d[K.THEME] ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM),
       ttsSpeed = (d[K.TTS] ?: 1f).coerceIn(0.75f, 2.5f),
       rsvpWpm = (d[K.WPM] ?: 300).coerceIn(100, 1200),
+      lineSpacing = runCatching { LineSpacing.valueOf(d[K.SPACING] ?: "COMFORT") }.getOrDefault(LineSpacing.COMFORT),
+      sort = runCatching { LibrarySort.valueOf(d[K.SORT] ?: "NEWEST") }.getOrDefault(LibrarySort.NEWEST),
+      age = runCatching { AgeFilter.valueOf(d[K.AGE] ?: "ANY") }.getOrDefault(AgeFilter.ANY),
     )
   }
 
@@ -61,7 +81,28 @@ class Prefs(private val ctx: Context) {
         set(K.TTS, s.ttsSpeed)
         set(K.WPM, s.rsvpWpm)
         set(K.THEME, s.themeMode.name)
+        set(K.SPACING, s.lineSpacing.name)
+        set(K.SORT, s.sort.name)
+        set(K.AGE, s.age.name)
       }
     }
+  }
+
+  suspend fun isWelcomeShown(): Boolean = ctx.store.data.map { it[K.WELCOME] == true }.first()
+  suspend fun setWelcomeShown() {
+    ctx.store.updateData { it.toMutablePreferences().apply { set(K.WELCOME, true) } }
+  }
+
+  /** Milestone keys already celebrated (each fires once per install). */
+  suspend fun takeMilestone(key: String): Boolean {
+    var took = false
+    ctx.store.updateData {
+      val done = it[K.MILESTONES].orEmpty()
+      if (key !in done) {
+        took = true
+        it.toMutablePreferences().apply { set(K.MILESTONES, done + key) }
+      } else it.toMutablePreferences()
+    }
+    return took
   }
 }
