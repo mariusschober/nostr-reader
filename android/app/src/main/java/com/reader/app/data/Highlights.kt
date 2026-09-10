@@ -50,6 +50,9 @@ interface HighlightDao {
   @Query("SELECT id, documentId, substr(quote, 1, 800) AS preview, length(quote) AS quoteLength, sourceTitle, createdAt, color, important FROM highlights ORDER BY createdAt DESC, id")
   fun observeSummaries(): Flow<List<HighlightSummary>>
 
+  @Query("SELECT id FROM highlights WHERE (:importantOnly = 0 OR important = 1) AND (instr(lower(quote), lower(:query)) > 0 OR instr(lower(sourceTitle), lower(:query)) > 0) ORDER BY createdAt DESC, id")
+  fun matchingIds(query: String, importantOnly: Boolean): Flow<List<String>>
+
   @Query("SELECT * FROM highlights WHERE documentId = :id ORDER BY createdAt, id")
   fun observeForDocument(id: String): Flow<List<HighlightEntity>>
 

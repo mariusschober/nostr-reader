@@ -11,8 +11,7 @@ import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Topic facets — explicitly NOT folders or lists. A label with no articles
- * simply stops existing (no tombstones, no empty-label persistence).
+ * Topic facets with stable identities. Unused labels remain manageable.
  */
 object LabelNorm {
   const val MAX_LEN = 50
@@ -76,13 +75,16 @@ data class DocLabelPair(val documentId: String, val labelId: String)
 
 @Dao
 interface LabelDao {
-  @Query("SELECT l.labelId AS labelId, l.name AS name, l.normalized AS normalized, COUNT(a.documentId) AS count FROM labels l JOIN document_labels a ON a.labelId = l.labelId GROUP BY l.labelId ORDER BY count DESC, name COLLATE NOCASE")
+  @Query("SELECT l.labelId AS labelId, l.name AS name, l.normalized AS normalized, COUNT(a.documentId) AS count FROM labels l LEFT JOIN document_labels a ON a.labelId = l.labelId GROUP BY l.labelId ORDER BY count DESC, name COLLATE NOCASE")
   fun observeLabels(): Flow<List<LabelCount>>
   @Query("SELECT l.name FROM labels l JOIN document_labels a ON a.labelId = l.labelId WHERE a.documentId = :documentId ORDER BY l.name COLLATE NOCASE")
   suspend fun labelsFor(documentId: String): List<String>
 
   @Query("SELECT labelId FROM labels WHERE normalized = :normalized LIMIT 1")
   suspend fun idForNormalized(normalized: String): String?
+
+  @Query("SELECT documentId, labelId FROM document_labels")
+  fun observePairs(): Flow<List<DocLabelPair>>
 
   @Query("SELECT documentId, labelId FROM document_labels")
   suspend fun allPairs(): List<DocLabelPair>
@@ -170,6 +172,9 @@ interface ReadingStatsDao {
 
   @Query("UPDATE documents SET finishedAt = :now, updatedAt = :now WHERE documentId = :id AND finishedAt IS NULL")
   suspend fun markFinished(id: String, now: Long): Int
+
+  @Query("UPDATE documents SET finishedAt = :finishedAt, list = :list, updatedAt = :now WHERE documentId = :id")
+  suspend fun restoreFinish(id: String, finishedAt: Long?, list: String, now: Long)
 
   @Query("SELECT wordCount FROM documents WHERE documentId = :id")
   suspend fun wordCountOf(id: String): Int?

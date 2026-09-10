@@ -121,6 +121,10 @@ object ArticleExtractor {
     ".post-navigation", ".nav-links",
     "#respond", ".comment-respond", "#comments", ".comments-area",
     ".author-box", ".author-bio", ".author-info",
+    // Observed on web.dev: publisher controls nested inside the article/H1.
+    // Remove these identified widgets before extracting the title and prose.
+    ".devsite-banner", ".devsite-article-meta", ".devsite-page-title-meta",
+    "devsite-actions", "devsite-toc", "devsite-feedback",
   )
 
   /**
@@ -399,7 +403,7 @@ object ArticleExtractor {
     // is the article title: preferring it avoids a duplicated
     // "# Reading - Wikipedia" heading above the body's own "# Reading".
     if (og.isNotBlank() && h1.isNotBlank()) {
-      val suffix = Regex("""\s+[-—–|:]\s+[^-—–|:]+$""").find(og)?.value.orEmpty()
+      val suffix = Regex("""[\s\p{Z}]+[-—–|:][\s\p{Z}]+[^-—–|:]+$""").find(og)?.value.orEmpty()
       if (suffix.isNotEmpty() && og.removeSuffix(suffix).trim().equals(h1, ignoreCase = true)) {
         return h1.take(500)
       }

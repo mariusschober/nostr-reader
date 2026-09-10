@@ -42,7 +42,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Loads metadata independently from the library and parses only the visible bounded part. */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSettings,
                          onSettingsChange: (ReaderSettings) -> Unit, onBack: () -> Unit,
@@ -50,6 +50,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          onSpeedRead: (SemanticCursor) -> Unit,
                          onArticleAction: (ArticleAction) -> Unit,
                          onPauseAudio: () -> Unit = {},
+                         onHighlightRemoved: ((HighlightMutation) -> Unit)? = null,
                          speechPlaying: Boolean = false,
                          playerVisible: Boolean = false,
                          // Search landing: open at this cursor with a fading
@@ -65,8 +66,6 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                           onReadAnother: () -> Unit = {}) {
   val context = LocalContext.current
   val app = context.applicationContext as ReaderApp
-  val hints = remember { context.getSharedPreferences("reader_hints", android.content.Context.MODE_PRIVATE) }
-  var showSwipeHint by remember { mutableStateOf(!hints.getBoolean("article_swipe_seen", false)) }
   val db = remember { ReaderDb.get(context) }
   val highlights = remember { HighlightRepository(db) }
   val review = remember { ReviewRepository(db) }
@@ -92,14 +91,41 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var liveCursor by remember { mutableStateOf<SemanticCursor?>(null) }
   // Live reading fraction for the progress footer (also offered to storage).
   var liveFraction by remember { mutableStateOf<Float?>(null) }
-  // Finish celebration: once per visit, silent, dismissible, never modal.
-  var finishCelebrated by remember(id) { mutableStateOf(false) }
-  var finishCardVisible by remember(id) { mutableStateOf(false) }
-  LaunchedEffect(doc?.finishedAt) {
-    if (doc?.finishedAt != null && !finishCelebrated) {
-      finishCelebrated = true
-      finishCardVisible = true
-    }
+  var atEndOfPart by remember(id, part) { mutableStateOf(false) }
+  var openingVisible by remember(id) { mutableStateOf(true) }
+  val completion = remember { ArticleCompletion(db) }
+  var finishReceipt by remember(id) { mutableStateOf<FinishReceipt?>(null) }
+  val navigation = remember { ArticleNavigation(app.articles, db) }
+  var contents by remember(id) { mutableStateOf<List<ArticleLocation>>(emptyList()) }
+  var navigationError by remember(id) { mutableStateOf<String?>(null) }
+  var navigationSheet by remember { mutableStateOf<String?>(null) }
+  var findText by rememberSaveable(id) { mutableStateOf("") }
+  var findResults by remember(id) { mutableStateOf<List<ArticleLocation>>(emptyList()) }
+  var findBusy by remember { mutableStateOf(false) }
+  var findIndex by rememberSaveable(id) { mutableIntStateOf(0) }
+  var inspectionOrigin by rememberSaveable(id, stateSaver = androidx.compose.runtime.saveable.Saver<SemanticCursor?, List<Any>>(
+    save = { if (it == null) emptyList() else listOf(it.documentId, it.blockId, it.charOffset) },
+    restore = { if (it.isEmpty()) null else SemanticCursor(it[0] as String, it[1] as String, (it[2] as Number).toInt()) }
+  )) { mutableStateOf<SemanticCursor?>(null) }
+  var inspectionFraction by rememberSaveable(id) { mutableFloatStateOf(0f) }
+  var jumpMatch by remember(id) { mutableStateOf<ArticleLocation?>(null) }
+  var confirmDelete by remember { mutableStateOf(false) }
+  var highlightHelp by remember { mutableStateOf(false) }
+  LaunchedEffect(id, navigationSheet) {
+    if (navigationSheet != "contents") return@LaunchedEffect
+    try { contents = navigation.contents(id); navigationError = null }
+    catch (e: CancellationException) { throw e }
+    catch (_: Exception) { navigationError = "Contents couldn’t load. Try again." }
+  }
+  LaunchedEffect(id, findText) {
+    findResults = emptyList(); findIndex = 0
+    if (findText.isBlank()) { findBusy = false; return@LaunchedEffect }
+    findBusy = true
+    delay(150)
+    try { findResults = navigation.find(id, findText); navigationError = null }
+    catch (e: CancellationException) { throw e }
+    catch (_: Exception) { navigationError = "Search couldn’t load. Try again." }
+    finally { findBusy = false }
   }
   // Search-landing bookkeeping: re-entry into the same article with a new
   // match must re-resolve even when the part is already loaded, and force a
@@ -135,6 +161,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     lastAt = at
     try {
       val quote = highlightId?.let { db.highlights().byId(it) }?.takeIf { it.documentId == id }
+      if (!hadPart && (at != null || quote != null)) {
+        inspectionOrigin = SemanticCursor(id, source.progressBlockId ?: "b0", source.progressCharOffset)
+        inspectionFraction = source.progressFraction
+      }
       initial = at ?: SemanticCursor(id, quote?.startBlockId ?: source.progressBlockId ?: "b0", quote?.startOffset ?: source.progressCharOffset)
       val index = app.articles.index(id)
       val newPart = if (at != null) index.sectionFor(at.blockId, 0f) else index.sectionFor(initial.blockId, source.progressFraction)
@@ -150,7 +180,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     try {
       val ready = app.articles.section(id, part)
       val quote = highlightId?.let { db.highlights().byId(it) }?.takeIf { it.documentId == id }
-      if (quote != null && ready.index.sectionFor(quote.startBlockId) == part) {
+      if (quote != null && displayRequest == 0 && ready.index.sectionFor(quote.startBlockId) == part) {
         val range = withContext(Dispatchers.Default) { HighlightAnchors.resolve(quote, ready.projection) }
         if (range != null) initial = ready.projection.cursor(id, range.first)
         else {
@@ -172,7 +202,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   val saveError by app.reading.error.collectAsState()
   // Survives rotation: a transition in-flight across recreation stays guarded
   // so its action() cannot run twice. UI is disabled while true.
-  var transitioning by rememberSaveable { mutableStateOf(false) }
+  var transitioning by remember(id) { mutableStateOf(false) }
   fun transition(action: suspend () -> Unit) {
     if (transitioning) {
       scope.launch { snackbar.showSnackbar("Saving… please wait.") }
@@ -180,10 +210,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }
     view?.flushSelection()
     onPauseAudio()
-    val cursor = liveCursor ?: view?.currentCursor() ?: initial
-    initial = cursor
+    val cursor = inspectionOrigin ?: liveCursor ?: view?.currentCursor() ?: initial
+    if (inspectionOrigin == null) initial = cursor
     prepared?.let {
-      try { app.progress.offer(cursor, it.fraction(it.projection.offset(cursor.blockId, cursor.charOffset))) }
+      try { app.progress.offer(cursor, if (inspectionOrigin != null) inspectionFraction else it.fraction(it.projection.offset(cursor.blockId, cursor.charOffset))) }
       catch (_: Exception) { /* offer is coalesced; flush below surfaces failures */ }
     }
     transitioning = true
@@ -199,6 +229,12 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }
   }
   fun leave() {
+    if (menu) { menu = false; return }
+    if (navigationSheet != null) { navigationSheet = null; return }
+    if (appearance) { appearance = false; return }
+    if (highlightHelp) { highlightHelp = false; return }
+    if (showLabels) { showLabels = false; return }
+    if (activeQuote != null) { actions = emptyList(); activeQuote = null; return }
     view?.flushSelection()
     if (view?.clearSelection() == true) return
     transition(onBack)
@@ -216,14 +252,14 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
       if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
         view?.flushSelection()
-        (liveCursor ?: view?.currentCursor())?.let { initial = it }
+        (inspectionOrigin ?: liveCursor ?: view?.currentCursor())?.let { initial = it }
         view?.reportCursor()
       }
     }
     lifecycle.addObserver(observer)
     onDispose {
       view?.flushSelection()
-      (liveCursor ?: view?.currentCursor())?.let { initial = it }
+      (inspectionOrigin ?: liveCursor ?: view?.currentCursor())?.let { initial = it }
       view?.reportCursor()
       lifecycle.removeObserver(observer)
     }
@@ -237,198 +273,136 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }, "Share quote"))
   }
 
+  fun jump(location: ArticleLocation, temporary: Boolean = true) {
+    val origin = liveCursor ?: view?.currentCursor() ?: initial
+    transition {
+      if (temporary && inspectionOrigin == null) { inspectionOrigin = origin; inspectionFraction = liveFraction ?: doc?.progressFraction ?: 0f }
+      view?.clearSelection()
+      initial = location.cursor; liveCursor = location.cursor; jumpMatch = location
+      displayRequest++
+      navigationSheet = null
+      if (part == location.part) view?.jumpTo(location.cursor) else part = location.part
+    }
+  }
+  fun returnToReading() {
+    val origin = inspectionOrigin ?: return
+    transition {
+      val index = app.articles.index(id)
+      val destination = index.sectionFor(origin.blockId)
+      initial = origin; liveCursor = origin; liveFraction = inspectionFraction
+      inspectionOrigin = null; jumpMatch = null; findText = ""; navigationSheet = null
+      displayRequest++
+      if (part == destination) view?.jumpTo(origin) else part = destination
+    }
+  }
+  fun finish() { transition { finishReceipt = completion.finish(id) } }
+  fun undoFinish() {
+    val receipt = finishReceipt ?: return
+    transition {
+      if (!completion.undo(receipt)) scope.launch { snackbar.showSnackbar("Later changes were kept. This finish can no longer be undone.") }
+      finishReceipt = null
+    }
+  }
+  fun openWeb(raw: String) {
+    val resolved = runCatching { java.net.URI(doc?.sourceUrl.orEmpty()).resolve(raw).toString() }.getOrDefault(raw)
+    val uri = Uri.parse(resolved)
+    val sameSourceFragment = uri.fragment != null && resolved.substringBefore('#') == doc?.sourceUrl?.substringBefore('#')
+    if (raw.startsWith("#") || sameSourceFragment) {
+      scope.launch {
+        val target = navigation.fragment(id, if (raw.startsWith("#")) raw else "#${uri.fragment}")
+        if (target != null) jump(target) else snackbar.showSnackbar("That section wasn’t captured. Open the original to follow this link.")
+      }
+      return
+    }
+    if (uri.scheme?.lowercase() !in setOf("http", "https")) { scope.launch { snackbar.showSnackbar("This link can’t be opened here.") }; return }
+    runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) }
+      .onFailure { scope.launch { snackbar.showSnackbar("No browser is available to open this link.") } }
+  }
+
   ReaderTheme(if (dark) com.reader.app.prefs.ThemeMode.DARK else com.reader.app.prefs.ThemeMode.LIGHT) {
   BoxWithConstraints(Modifier.fillMaxSize()) {
   val dockMaxHeight = maxHeight * 0.45f
   Scaffold(containerColor = colors.background, contentColor = colors.text, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-    // Chrome fades in 150ms; pen mode keeps the dock visible by design.
-    androidx.compose.animation.AnimatedVisibility(
-      visible = !immersed || pen,
-      enter = androidx.compose.animation.fadeIn(animationSpec = Motion.Fade),
-      exit = androidx.compose.animation.fadeOut(animationSpec = Motion.Fade),
-    ) {
-    Column {
-      Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = { leave() }, enabled = !transitioning) { Text("Back") }
-        Spacer(Modifier.weight(1f))
-        TextButton(onClick = { appearance = true }, enabled = !transitioning) { Text("Appearance") }
-        Box {
-          IconButton(onClick = { menu = true }, enabled = !transitioning) { Icon(Icons.Default.MoreVert, contentDescription = "More actions", tint = colors.text) }
-          DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            val archived = doc?.list == com.reader.app.ui.Triage.ARCHIVED
-            val menuActions = if (archived) listOf(ArticleAction.Unarchive, ArticleAction.Delete) else listOf(ArticleAction.Later, ArticleAction.Archive)
-            menuActions.forEach { action ->
-              DropdownMenuItem(enabled = action.target == null || doc?.list != action.target,
-                text = { Text(action.label, color = if (action == ArticleAction.Delete) colors.error else colors.text) },
-                onClick = { menu = false; transition { onArticleAction(action) } })
-            }
-            if (prepared?.projection?.tables?.isNotEmpty() == true) DropdownMenuItem(
-              text = { Text("View tables", color = colors.text) },
-              onClick = { menu = false; expandedTable = 0 })
-            DropdownMenuItem(
-              text = { Text("Labels…", color = colors.text) },
-              onClick = { menu = false; showLabels = true })
-            if (undo != null) DropdownMenuItem(text = { Text("Undo highlight change") }, onClick = {
+    if (!immersed || pen) Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+      IconButton(onClick = ::leave, enabled = !transitioning) { Icon(Icons.Default.ArrowBack, "Back") }
+      Spacer(Modifier.weight(1f))
+      IconButton(onClick = { appearance = true }, enabled = !transitioning) { Icon(Icons.Default.TextFields, "Appearance") }
+      Box {
+        IconButton(onClick = { menu = true }, enabled = !transitioning) { Icon(Icons.Default.MoreVert, "Reading tools") }
+        DropdownMenu(menu, { menu = false }) {
+          DropdownMenuItem(text = { Text("Find in article") }, onClick = { menu = false; navigationSheet = "find" })
+          DropdownMenuItem(text = { Text("Contents") }, onClick = { menu = false; navigationSheet = "contents" })
+          DropdownMenuItem(text = { Text("Listen") }, enabled = prepared != null && !playerVisible,
+            onClick = { menu = false; prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } })
+          DropdownMenuItem(text = { Text("Speed") }, enabled = prepared != null,
+            onClick = { menu = false; val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } })
+          DropdownMenuItem(text = { Text("Labels") }, onClick = { menu = false; showLabels = true })
+          if (!doc?.sourceUrl.isNullOrBlank()) DropdownMenuItem(text = { Text("Open original") }, onClick = { menu = false; openWeb(doc!!.sourceUrl!!) })
+          DropdownMenuItem(text = { Text(if (immersed) "Show reading controls" else "Focus mode") }, onClick = { menu = false; view?.retainPassageOnLayout(); immersed = !immersed })
+          if (prepared?.projection?.tables?.isNotEmpty() == true) DropdownMenuItem(text = { Text("View tables") }, onClick = { menu = false; expandedTable = 0 })
+          HorizontalDivider()
+          if (doc?.finishedAt == null || doc?.list != com.reader.app.ui.Triage.ARCHIVED) DropdownMenuItem(text = { Text("Finish & archive") }, enabled = doc != null && doc?.sourceType != "link", onClick = { menu = false; finish() })
+          val archived = doc?.list == com.reader.app.ui.Triage.ARCHIVED
+          (if (archived) listOf(ArticleAction.Unarchive, ArticleAction.Delete) else listOf(ArticleAction.Later, ArticleAction.Archive)).forEach { action ->
+            DropdownMenuItem(text = { Text(action.label) }, enabled = action.target == null || doc?.list != action.target, onClick = {
               menu = false
-              transition {
-                view?.clearSelection()
-                val change = undo ?: return@transition
-                try { if (highlights.undo(change)) undo = null else scope.launch { snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.") } }
-                catch (error: CancellationException) { throw error }
-                catch (_: Exception) { scope.launch { snackbar.showSnackbar("Couldn’t undo highlight change. Try again.") } }
-              }
+              if (action == ArticleAction.Delete) confirmDelete = true else transition { onArticleAction(action) }
             })
           }
         }
       }
-
-    }
     }
   }, bottomBar = {
-    Column {
-      androidx.compose.animation.AnimatedVisibility(
-        visible = !immersed || pen,
-        enter = androidx.compose.animation.fadeIn(animationSpec = Motion.Fade),
-        exit = androidx.compose.animation.fadeOut(animationSpec = Motion.Fade),
-      ) {
-      Column(Modifier.heightIn(max = dockMaxHeight).verticalScroll(rememberScrollState())) {
-      // Finish card: one calm line, once per visit, never modal — and the
-      // moment of completion always has a way forward ("Read another").
-      androidx.compose.animation.AnimatedVisibility(
-        visible = finishCardVisible,
-        enter = androidx.compose.animation.fadeIn(animationSpec = Motion.Celebrate),
-        exit = androidx.compose.animation.fadeOut(),
-      ) {
-        Surface(color = colors.surface, contentColor = colors.text) {
-          Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = colors.success,
-              modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            // First-ever finish gets the warmer line — once per install.
-            val firstEver = remember { !hints.getBoolean("first_finish_celebrated", false) }
-            Text(
-              if (firstEver) "First one finished. It's in the Archive."
-              else "Finished · ${com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)} min",
-              fontFamily = ReaderFonts.Ui, color = colors.text,
-              modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = {
-              finishCardVisible = false
-              onReadAnother()
-            }, colors = ButtonDefaults.textButtonColors(contentColor = colors.link)) {
-              Text("Read another", fontFamily = ReaderFonts.Ui)
-            }
-            IconButton(onClick = { finishCardVisible = false }) {
-              Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = colors.secondary,
-                modifier = Modifier.size(18.dp))
-            }
+    Column(Modifier.navigationBarsPadding()) {
+      if (inspectionOrigin != null) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = ::returnToReading, modifier = Modifier.weight(1f)) { Text("Return to reading position") }
+        if (findResults.isNotEmpty()) {
+          IconButton(enabled = findIndex > 0, onClick = { findIndex--; jump(findResults[findIndex]) }) { Icon(Icons.Default.ChevronLeft, "Previous match") }
+          Text("${findIndex+1}/${findResults.size}", style = MaterialTheme.typography.labelSmall)
+          IconButton(enabled = findIndex < findResults.lastIndex, onClick = { findIndex++; jump(findResults[findIndex]) }) { Icon(Icons.Default.ChevronRight, "Next match") }
+        }
+      }
+      if (finishReceipt != null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Finished and archived", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = ::undoFinish, enabled = !transitioning) { Text("Undo") }
+      } else if (atEndOfPart && part == prepared?.index?.sections?.lastIndex && doc?.finishedAt == null && doc?.sourceType != "link") {
+        Surface(color = colors.surface) {
+          FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(enabled = !transitioning, onClick = ::finish) { Text("Finish & archive") }
+            TextButton(enabled = !transitioning, onClick = ::leave) { Text("Back to shelf") }
           }
         }
       }
-      LaunchedEffect(finishCardVisible) {
-        if (finishCardVisible) {
-          view?.let { com.reader.app.ui.Haptics.finish(it) }
-          if (!hints.getBoolean("first_finish_celebrated", false)) {
-            hints.edit().putBoolean("first_finish_celebrated", true).apply()
+      if (!immersed || pen) Column(Modifier.heightIn(max = dockMaxHeight).verticalScroll(rememberScrollState())) {
+        val ready = prepared
+        if (ready != null) {
+          val fraction = if (atEndOfPart && part == ready.index.sections.lastIndex) 1f else (liveFraction ?: doc?.progressFraction ?: 0f).coerceIn(0f, 1f)
+          val mins = kotlin.math.ceil(((1f-fraction) * com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)).toDouble()).toInt().coerceAtLeast(1)
+          Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${(fraction*100).toInt()}%" + (if (fraction >= 1f) " · End of article" else " · about $mins min left") +
+              (if (ready.index.sections.size > 1) " · Part ${part+1}/${ready.index.sections.size}" else ""),
+              style = MaterialTheme.typography.labelSmall, color = colors.secondary, modifier = Modifier.weight(1f))
+            if (undo != null) TextButton(onClick = {
+              val change = undo ?: return@TextButton
+              transition { view?.clearSelection(); if (highlights.undo(change)) undo = null else snackbar.showSnackbar("Later highlight changes were kept.") }
+            }) { Text("Undo highlight", style = MaterialTheme.typography.labelSmall) }
           }
         }
-      }
-      // Progress footer: orientation for long sessions, from already-flowing
-      // data. Whole-document numbers only; the "Saved" token was ambient
-      // noise — progress-write failures already surface as "Save failed —
-      // Retry" above the body.
-      if (prepared != null) {
-        val fraction = (liveFraction ?: doc?.progressFraction ?: 0f).coerceIn(0f, 1f)
-        val totalMins = com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)
-        val leftMins = ((1f - fraction) * totalMins).toInt().coerceAtLeast(0)
-        Text(
-          "${(fraction * 100).toInt()}% · $leftMins min left · Part ${part + 1} / ${prepared!!.index.sections.size}",
-          fontFamily = ReaderFonts.Ui, fontSize = 12.sp, color = colors.secondary,
-          modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
-            .semantics { contentDescription = "${(fraction * 100).toInt()} percent read, $leftMins minutes left" },
-        )
-      }
-      player()
-      if (pen) {
-        var toolsOpen by remember { mutableStateOf(false) }
-        Row(
-          Modifier.fillMaxWidth().navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
-          horizontalArrangement = Arrangement.SpaceEvenly,
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          IconButton(onClick = { pen = false }, modifier = Modifier.size(48.dp).semantics {
-            stateDescription = "Highlighting on"
-          }) {
-            Icon(Icons.Default.BorderColor, contentDescription = "Turn highlighting off", tint = colors.link)
-          }
-          HighlightColor.entries.forEach { color ->
-            val selected = selectedColor == color.name
-            IconToggleButton(checked = selected, onCheckedChange = { selectedColor = color.name },
-              modifier = Modifier.size(48.dp).semantics {
-                contentDescription = "Highlight color ${color.label}"
-                stateDescription = if (selected) "Selected" else "Not selected"
-              }) {
-              Box(Modifier.size(28.dp)
-                .background(color.background(dark), CircleShape)
-                .border(if (selected) 2.dp else 1.dp, colors.text.copy(alpha = if (selected) 1f else .4f), CircleShape),
-                contentAlignment = Alignment.Center) {
-                if (selected) Icon(Icons.Default.Check, contentDescription = null,
-                  tint = HighlightColor.text(dark), modifier = Modifier.size(18.dp))
-              }
+        player()
+        if (pen) FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+          HighlightColor.entries.forEach { color -> IconToggleButton(selectedColor == color.name, { selectedColor = color.name }, modifier = Modifier.semantics { contentDescription = "Highlight color ${color.label}" }) {
+            Box(Modifier.size(28.dp).background(color.background(dark), CircleShape).border(if (selectedColor == color.name) 2.dp else 0.dp, colors.text, CircleShape), contentAlignment = Alignment.Center) {
+              if (selectedColor == color.name) Icon(Icons.Default.Check, null, tint = HighlightColor.text(dark), modifier = Modifier.size(18.dp))
             }
-          }
-          Box {
-            IconButton(onClick = { toolsOpen = true }, modifier = Modifier.size(48.dp)) {
-              Icon(Icons.Default.MoreVert, contentDescription = "Reading tools", tint = colors.text)
-            }
-            DropdownMenu(expanded = toolsOpen, onDismissRequest = { toolsOpen = false }, modifier = Modifier.background(colors.surface)) {
-              DropdownMenuItem(text = { Text("Listen", color = colors.text) },
-                enabled = prepared != null && !playerVisible && !transitioning,
-                onClick = { toolsOpen = false; prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } })
-              DropdownMenuItem(text = { Text("Speed", color = colors.text) }, enabled = prepared != null && !transitioning,
-                onClick = { toolsOpen = false; val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } })
-            }
-          }
+          } }
+          TextButton(onClick = { view?.flushSelection(); pen = false }) { Text("Done") }
+        } else Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+          TextButton(onClick = { if (view?.highlightSelection() != true) highlightHelp = true }, enabled = ready != null) { Icon(Icons.Default.BorderColor, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Highlight") }
+          TextButton(onClick = { navigationSheet = "contents" }, enabled = ready != null) { Icon(Icons.Default.FormatListBulleted, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Contents") }
         }
-      } else
-      FlowRow(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        TextButton(onClick = { prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } }, enabled = prepared != null && !playerVisible && !transitioning) {
-          Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Listen")
-        }
-        // Calm dock: the Highlight control matches Listen/Speed weight when
-        // inactive (no elevation, no color fill). The active state keeps the
-        // selected highlight fill plus an explicit on/off label. The 48 dp
-        // touch target is unchanged.
-        val activeHighlight = HighlightColor.parse(selectedColor)
-        FilterChip(selected = pen, onClick = {
-          pen = !pen
-          if (pen && !hints.getBoolean("highlight_seen", false)) {
-            hints.edit().putBoolean("highlight_seen", true).apply()
-            scope.launch { snackbar.showSnackbar("Drag the handles to keep a passage. It stays on this device.") }
-          }
-        }, modifier = Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (pen) "Highlighting on" else "Highlighting off" },
-          leadingIcon = { Icon(Icons.Default.BorderColor, null, Modifier.size(20.dp)) },
-          label = {
-            if (pen) Text("Highlight on", color = HighlightColor.text(dark),
-              modifier = Modifier.background(activeHighlight.background(dark), RoundedCornerShape(3.dp)).padding(horizontal = 3.dp))
-            else Text("Highlight")
-          })
-        TextButton(onClick = { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } }, enabled = prepared != null && !transitioning) {
-          Icon(Icons.Default.Speed, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Speed")
-        }
-      }
-      }
-      }
-      // Immersed: a single thin line keeps orientation without chrome.
-      if (immersed && !pen && prepared != null) {
-        val fraction = (liveFraction ?: doc?.progressFraction ?: 0f).coerceIn(0f, 1f)
-        LinearProgressIndicator(
-          progress = { fraction },
-          modifier = Modifier.fillMaxWidth().height(2.dp),
-          color = colors.link, trackColor = colors.background,
-        )
+      } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        // Explicit accessibility route out of focus mode; clean article taps also work.
+        IconButton(onClick = { immersed = false }) { Icon(Icons.Default.MoreHoriz, "Show reading controls", tint = colors.secondary) }
       }
     }
   }) { padding ->
@@ -439,21 +413,6 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       !pen && actions.isEmpty() && !transitioning
     Box(Modifier.padding(padding).fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-      if (showSwipeHint) Surface(color = colors.surface, contentColor = colors.text) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-          // Mirror the gesture arrows for right-to-left system layouts.
-          val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
-          val hint = if (doc?.list == com.reader.app.ui.Triage.ARCHIVED) {
-            if (rtl) "Swipe inside the page: Delete → · ← Unarchive" else "Swipe inside the page: ← Delete · Unarchive →"
-          } else {
-            if (rtl) "Swipe inside the page: Archive → · ← Later" else "Swipe inside the page: ← Archive · Later →"
-          }
-          Text(hint, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-          IconButton(onClick = { showSwipeHint = false; hints.edit().putBoolean("article_swipe_seen", true).apply() }) {
-            Icon(Icons.Default.Close, contentDescription = "Dismiss swipe hint", modifier = Modifier.size(18.dp))
-          }
-        }
-      }
       // Link-only fallback: honestly labeled, with Open original + Retry +
       // selected-text guidance. The underlying Markdown already carries the
       // same notice; this banner makes the actions one tap away.
@@ -489,9 +448,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       val ready = prepared
       val text = content
       val titleDuplicate = part == 0 && ready != null && isDuplicateTitle(doc?.title.orEmpty(), ready.projection)
-      if (!titleDuplicate && !doc?.title.isNullOrBlank()) {
+      if (part == 0 && openingVisible && !immersed && !doc?.title.isNullOrBlank()) {
         Column {
-          Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp, 16.dp, 0.dp))
+          if (!titleDuplicate) Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp, 16.dp, 0.dp))
           // Same truthful source line as the library rows — never a raw
           // "android-share" or bare host.
           Text(
@@ -534,13 +493,17 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             initial = partPositions[part + 1] ?: SemanticCursor.start(id); liveCursor = null; part++
           } }) { Text("Next part") }
         }
-        val nativeMarks = remember(marks, ready, dark, at, atEnd) {
+        val nativeMarks = remember(marks, ready, dark, at, atEnd, matchTint, jumpMatch) {
           val blocks = ready.projection.blocks.mapTo(hashSetOf()) { it.id }
           buildList {
             addAll(marks.filter { it.projectionVersion == RENDERED_PROJECTION_VERSION && it.startBlockId in blocks && it.endBlockId in blocks }.map {
               NativeMark(it.id, ready.projection.offset(it.startBlockId, it.startOffset), ready.projection.offset(it.endBlockId, it.endOffset),
                 it.createdAt, HighlightColor.parse(it.color).background(dark).toArgb(), HighlightColor.text(dark).toArgb())
             })
+            jumpMatch?.takeIf { it.part == part && it.end != null }?.let { match ->
+              val start = ready.projection.offset(match.cursor.blockId, match.cursor.charOffset)
+              add(NativeMark("search-hit", start, match.end!!, 0, colors.link.copy(alpha = .25f).toArgb(), colors.text.toArgb()))
+            }
             // Search-landing tint: one fading span over the matched text.
             // Cleared on the first real scroll (see onCursor below).
             if (matchTint && at != null && atEnd != null) {
@@ -552,7 +515,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         }
         // displayRequest forces a re-display (and scroll restore) when a new
         // match lands on the already-loaded part.
-        val styleKey = listOf(ready, text, settings.font, settings.fontSizeSp, settings.margin, colors, displayRequest)
+        val styleKey = listOf(ready, text, settings.font, settings.fontSizeSp, settings.margin, settings.bold, settings.lineSpacing, colors, displayRequest)
         // Wide screens cap the measure for comfortable line lengths.
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
           val wide = maxWidth > 700.dp
@@ -566,13 +529,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             native.tag = styleKey
           }
           native.deleteTint = colors.error.toArgb()
-          native.articleList = doc?.list
+          native.articleList = null
           native.onArticleSwipe = { action -> transition { onArticleAction(action) } }
           native.setPenMode(pen)
           native.setMarks(nativeMarks)
           // Immersive toggle: any clean tap (no pen, no selection) flips the
           // chrome. Drag physics and selection are untouched.
-          native.onTap = { immersed = !immersed }
+          native.onTap = { view?.retainPassageOnLayout(); immersed = !immersed }
           native.onCursor = { cursor, fraction ->
             liveCursor = cursor
             // Whole-document fraction for the footer: the raw callback value
@@ -582,7 +545,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             if (native.tag == styleKey) {
               val whole = ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))
               liveFraction = whole
-              if (!speechPlaying) app.progress.offer(cursor, whole)
+              if (!speechPlaying && inspectionOrigin == null) app.progress.offer(cursor, whole)
             }
             // The match tint survives the landing settle (cursor == hit) and
             // clears on the first real scroll away from it.
@@ -593,28 +556,21 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
               }
             }
           }
+          native.onAtEnd = { end ->
+            if (!native.gestureActive && atEndOfPart != end) {
+              native.retainPassageOnLayout(pinEnd = end)
+              atEndOfPart = end
+            }
+          }
           native.onViewport = { scrollY, viewportHeight ->
+            val atOpening = scrollY <= 8
+            if (!native.gestureActive && openingVisible != atOpening) { native.retainPassageOnLayout(); openingVisible = atOpening }
             val show = viewportHeight > 0 && scrollY > viewportHeight
             if (show != showTopBubbleRaw) showTopBubbleRaw = show
           }
           native.onMark = { actions = it }
           native.onTable = { expandedTable = it }
-          native.onLink = { url ->
-            val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
-            if (scheme == "http" || scheme == "https") {
-              // Custom Tabs: a light client surface tinted like the reader.
-              // The library itself falls back to ACTION_VIEW when no
-              // Custom Tabs provider exists; the session returns cleanly.
-              runCatching {
-                androidx.browser.customtabs.CustomTabsIntent.Builder()
-                  .setShowTitle(true)
-                  .build()
-                  .launchUrl(context, Uri.parse(url))
-              }.onFailure { scope.launch { snackbar.showSnackbar("No browser available to open this link.") } }
-            } else {
-              scope.launch { snackbar.showSnackbar("Reader opens web links only; this link uses “${scheme ?: "unknown"}”.") }
-            }
-          }
+          native.onLink = ::openWeb
           native.onSelection = { session, sequence, range ->
             val source = doc
             val frozenColor = selectedColor
@@ -630,21 +586,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                     sessions[session] = sequence to aggregate
                     while (sessions.size > 16) sessions.remove(sessions.keys.first())
                     undo = aggregate.takeIf { it.before != null || it.after != null }
-                    if (undo != null) scope.launch {
-                      snackbar.currentSnackbarData?.dismiss()
-                      if (snackbar.showSnackbar("Highlight saved", "Undo", withDismissAction = true,
-                          duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed
-                      ) {
-                        transition {
-                          view?.clearSelection()
-                          val saved = undo ?: return@transition
-                          try {
-                            if (highlights.undo(saved)) undo = null
-                            else scope.launch { snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.") }
-                          } catch (_: Exception) { scope.launch { snackbar.showSnackbar("Couldn’t undo highlight change. Try again.") } }
-                        }
-                      }
-                    }
+                    // The mark updates immediately. A stable dock Undo avoids
+                    // covering the passage on every native handle adjustment.
+                    if (sequence == 1L) view?.announceForAccessibility("Highlight saved")
                   }
                 }
               } catch (error: Exception) { scope.launch { snackbar.showSnackbar(error.message ?: "Couldn’t prepare highlight") } }
@@ -689,56 +633,61 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       colors = colors,
     )
   }
-  activeQuote?.let { quote ->
-    AlertDialog(onDismissRequest = { actions = emptyList(); activeQuote = null }, title = { Text("Highlight") }, text = {
-      Column(Modifier.verticalScroll(rememberScrollState())) {
-        if (actions.size > 1) TextButton(onClick = { actions = actions.drop(1) + actions.first() }) { Text("Next overlapping highlight") }
-        // Recolor uses the same actual swatches, accessible names and check
-        // indicator as the pen row. The stored value remains the logical
-        // color name, independent of theme.
-        HighlightColor.entries.forEach { color ->
-          val selected = quote.color == color.name
-          TextButton(onClick = { scope.launch {
-            try { undo = highlights.recolor(quote.id, color.name); actions = emptyList(); activeQuote = null }
-            catch (_: Exception) { snackbar.showSnackbar("Couldn’t save highlight color. Try again.") }
-          } }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              Box(
-                Modifier.size(16.dp)
-                  .background(color.background(dark), CircleShape)
-                  .border(1.dp, colors.text.copy(alpha = 0.4f), CircleShape),
-                contentAlignment = Alignment.Center,
-              ) {
-                if (selected) Icon(
-                  Icons.Default.Check, contentDescription = null,
-                  tint = HighlightColor.text(dark), modifier = Modifier.size(12.dp),
-                )
-              }
-              Spacer(Modifier.width(8.dp))
-              Text(color.label + if (selected) " — selected" else "")
-            }
+  activeQuote?.let { quote -> HighlightActionsSheet(quote, actions.size > 1,
+    onNextOverlap = { actions = actions.drop(1) + actions.first() },
+    onColor = { color -> scope.launch { try { undo = highlights.recolor(quote.id, color); activeQuote = db.highlights().byId(quote.id) } catch (_: Exception) { snackbar.showSnackbar("Couldn’t change color. Try again.") } } },
+    onImportant = { scope.launch { try { undo = highlights.toggleImportant(quote.id); activeQuote = db.highlights().byId(quote.id) } catch (_: Exception) { snackbar.showSnackbar("Couldn’t save importance. Try again.") } } },
+    onShare = { share(quote) },
+    onRemove = { scope.launch {
+      try { val removed = highlights.remove(quote.id); if (removed != null && onHighlightRemoved != null) { undo = null; onHighlightRemoved(removed) } else undo = removed; actions = emptyList(); activeQuote = null }
+      catch (_: Exception) { snackbar.showSnackbar("Couldn’t remove highlight. Try again.") }
+    } }, onDismiss = { actions = emptyList(); activeQuote = null }) }
+  if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete article?") },
+    text = { Text("This permanently removes the saved article. Your highlights and their attribution stay saved.") },
+    confirmButton = { TextButton(onClick = { confirmDelete = false; transition { onArticleAction(ArticleAction.Delete) } }) { Text("Delete article", color = colors.error) } },
+    dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Keep article") } })
+  if (highlightHelp) ModalBottomSheet(onDismissRequest = { highlightHelp = false }, containerColor = colors.background) {
+    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("Keep a passage", style = MaterialTheme.typography.titleLarge)
+      Text("Press and hold text, adjust the handles, then choose Highlight. Copy, Share and your device’s text actions stay available.")
+      Text("For several passages, turn on continuous highlighting. Each selection saves as you adjust it.", color = colors.secondary)
+      Button(onClick = { highlightHelp = false; pen = true }) { Text("Turn on continuous highlighting") }
+    }
+  }
+  if (navigationSheet != null) ModalBottomSheet(onDismissRequest = { navigationSheet = null }, containerColor = colors.background, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).imePadding().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
+      Text(if (navigationSheet == "contents") "Contents" else "Find in article", style = MaterialTheme.typography.titleLarge)
+      navigationError?.let { Text(it, color = colors.error) }
+      if (navigationSheet == "find") {
+        OutlinedTextField(findText, { findText = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+          placeholder = { Text("Find a word or phrase") },
+          keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+          keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { findResults.firstOrNull()?.let { jump(it) } }))
+        Text(if (findBusy) "Searching all parts…" else if (findText.isBlank()) "Search the article text stored on this device." else "${findResults.size} matches", style = MaterialTheme.typography.bodySmall, color = colors.secondary)
+        androidx.compose.foundation.lazy.LazyColumn {
+          items(findResults.size) { i -> val match = findResults[i]
+            TextButton(onClick = { findIndex = i; jump(match) }) { Text("${i+1}. ${match.label}", maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
           }
         }
-        TextButton(onClick = { scope.launch { activeQuote = review.toggleImportant(quote.id) } }) { Text(if (quote.important) "Remove importance" else "Mark important") }
-        TextButton(onClick = { share(quote) }) { Text("Share quote") }
-        TextButton(onClick = {
-          scope.launch {
-            try {
-              undo = highlights.remove(quote.id)
-              actions = emptyList(); activeQuote = null
-              // Removal is instant but reversible: the snackbar is the
-              // visible Undo, not just the overflow entry.
-              snackbar.currentSnackbarData?.dismiss()
-              if (snackbar.showSnackbar("Highlight removed", "Undo", withDismissAction = true, duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
-                val change = undo ?: return@launch
-                if (highlights.undo(change)) undo = null
-                else snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.")
-              }
-            } catch (_: Exception) { snackbar.showSnackbar("Couldn’t remove highlight. Try again.") }
+      } else androidx.compose.foundation.lazy.LazyColumn {
+        val index = prepared?.index
+        if (index != null) index.sections.indices.forEach { n ->
+          if (index.sections.size > 1 || contents.none { it.part == n }) item {
+            TextButton(onClick = { scope.launch { val ready = app.articles.section(id, n); jump(ArticleLocation(n, ready.projection.cursor(id, 0), "Part ${n+1}")) } }) {
+              Text(if (index.sections.size == 1) "Article opening" else "Part ${n+1}", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
           }
-        }) { Text("Delete highlight") }
+          val current = contents.filter { it.part <= part }.lastOrNull { location ->
+            location.part < part || (prepared?.projection?.offset(location.cursor.blockId, location.cursor.charOffset) ?: 0) <=
+              (prepared?.projection?.offset(liveCursor?.blockId ?: initial.blockId, liveCursor?.charOffset ?: initial.charOffset) ?: 0)
+          }
+          contents.filter { it.part == n }.forEach { location -> item {
+            TextButton(onClick = { jump(location) }) { Text((if (current == location) "• " else "") + location.label,
+              fontWeight = if (current == location) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal) }
+          } }
+        }
       }
-    }, confirmButton = { TextButton(onClick = { actions = emptyList(); activeQuote = null }) { Text("Done") } })
+    }
   }
   }
 }

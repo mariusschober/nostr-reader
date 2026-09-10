@@ -75,7 +75,7 @@ import com.reader.app.ui.theme.appColors
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun InboxScreen(
   lists: Map<String, List<DocumentSummary>>,
@@ -132,460 +132,283 @@ fun InboxScreen(
   // called on its auto-fade or on the user's first committed archive action.
   onArchiveCoachDone: () -> Unit = {},
 
+  onLibrarySettings: (ReaderSettings) -> Unit = {},
+  labelIdsByDoc: Map<String, Set<String>> = emptyMap(),
+  onManageLabels: () -> Unit = {},
+  onSample: () -> Unit = {},
+  librarySearch: com.reader.app.data.LibrarySearchResult = com.reader.app.data.LibrarySearchResult(),
+  onMoreResults: () -> Unit = {},
+  captures: List<com.reader.app.capture.CaptureRequestEntity> = emptyList(),
+  onRetryCapture: (com.reader.app.capture.CaptureRequestEntity) -> Unit = {},
+
 ) {
   val c = appColors()
-  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-  val scope = androidx.compose.runtime.rememberCoroutineScope()
   val tab = if (archiveMode) Triage.ARCHIVED else selectedTab
-  BackHandler(enabled = archiveMode, onBack = onArchiveBack)
-  // Fixed tab order: the chosen tab is never auto-switched away from. An
-  // empty Inbox is a place (its empty state with actions), not a detour.
-  // Only a persisted ARCHIVED selection is normalized when not browsing.
-  LaunchedEffect(loaded, tab) {
-    if (!archiveMode && selectedTab == Triage.ARCHIVED) onSelectTab(Triage.PRIORITY)
-  }
-  var menuFor by remember { mutableStateOf<String?>(null) }
-  var confirmDeleteId by remember { mutableStateOf<String?>(null) }
-  var labelDialogIds by remember { mutableStateOf<Set<String>?>(null) }
+  var selectedIds by rememberSaveable(tab) { mutableStateOf(listOf<String>()) }
+  val selecting = selectedIds.isNotEmpty()
   var rowMenu by remember { mutableStateOf<DocumentSummary?>(null) }
-  // Long-press multi-select. Only already-legal actions are offered:
-  // Archive in the triage lists, Unarchive in Archive. Article deletion
-  // stays archive-only single-item flow; it is never batched here.
-  var selecting by rememberSaveable { mutableStateOf(false) }
-  var selectedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
-  BackHandler(enabled = selecting) { selecting = false; selectedIds = emptyList() }
-  // Search dismisses before anything else: first Back clears the query,
-  // second collapses the field. Registered last so it wins while active.
-  BackHandler(enabled = searchActive) {
-    if (searchText.isNotBlank()) onSearchText("") else onToggleSearch()
-  }
-  LaunchedEffect(tab, archiveMode, lists[tab]) {
-    val live = lists[tab].orEmpty().mapTo(hashSetOf()) { it.documentId }
-    selectedIds = selectedIds.filter { it in live }
-    if (selectedIds.isEmpty()) selecting = false
-  }
-  fun toggleSelect(id: String) {
-    selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
-  }
-  var showAdd by remember { mutableStateOf(false) }
-  var showPaste by remember { mutableStateOf(false) }
-  val snackbar = remember { SnackbarHostState() }
-  LaunchedEffect(readerMove?.id) {    val move = readerMove ?: return@LaunchedEffect
+  var deleteId by remember { mutableStateOf<String?>(null) }
+  var labelIds by remember { mutableStateOf<Set<String>?>(null) }
+  var moveIds by remember { mutableStateOf<Set<String>?>(null) }
+  var sheet by rememberSaveable { mutableStateOf<String?>(null) }
+  var pasted by rememberSaveable { mutableStateOf("") }
+  val notice = remember { SnackbarHostState() }
+  val focus = LocalFocusManager.current
+  LaunchedEffect(readerMove?.id) {
+    val move = readerMove ?: return@LaunchedEffect
     try {
-      // Action labels default to Indefinite in Material. Always set a finite
-      // duration; accessibility may extend it. A newer notice cancels this one.
-      snackbar.currentSnackbarData?.dismiss()
-      if (snackbar.showSnackbar(move.message, "Undo", withDismissAction = true,
+      if (notice.showSnackbar(move.message, "Undo", withDismissAction = true,
           duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) onUndoMove(move.moves)
     } finally { onReaderMoveConsumed(move.id) }
   }
-  // Finish + milestone notices: same finite-duration contract as moves,
-  // but never at the cost of a live Undo window — the undo is load-bearing
-  // (the move already happened), the finish notice is decoration. Wait for
-  // any action-bearing notice to clear, then surface this one.
-  LaunchedEffect(finishNotice) {
-    val notice = finishNotice ?: return@LaunchedEffect
-    while (snackbar.currentSnackbarData?.visuals?.actionLabel != null) {
-      kotlinx.coroutines.delay(250)
-    }
-    try {
-      snackbar.currentSnackbarData?.dismiss()
-      if (snackbar.showSnackbar(notice, "View Archive", withDismissAction = true,
-          duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) onFinishNoticeAction()
-    } finally { onFinishNoticeConsumed() }
+  BackHandler(enabled = archiveMode, onBack = onArchiveBack)
+  BackHandler(enabled = searchActive) { if (searchText.isNotBlank()) onSearchText("") else onToggleSearch() }
+  BackHandler(enabled = selecting) { selectedIds = emptyList() }
+  val all = lists.values.flatten()
+  val constrained = settings.age != com.reader.app.prefs.AgeFilter.ANY || settings.labelIds.isNotEmpty() || settings.unlabeled
+  val filtered = lists[tab].orEmpty().filter { doc ->
+    val assigned = labelIdsByDoc[doc.documentId].orEmpty()
+    Triage.ageMatches(doc.createdAt, settings.age) &&
+      (if (settings.unlabeled) assigned.isEmpty() else assigned.containsAll(settings.labelIds))
   }
-  Scaffold(
-    containerColor = c.background,
-    snackbarHost = {
-      SnackbarHost(snackbar) { data ->
-        Snackbar(
-          snackbarData = data, containerColor = c.text, contentColor = c.background,
-          actionColor = if (com.reader.app.ui.theme.LocalReaderDark.current) com.reader.app.ui.theme.Flexoki.Blue600 else com.reader.app.ui.theme.Flexoki.Blue400,
-        )
-      }
-    },
-    bottomBar = {
-      if (selecting) {
-        // Bottom bar (not in-flow): the list never jumps on long-press.
-        // FlowRow so 320dp phones and large font scales never clip an
-        // action off the bar.
-        val liveIds = (if (searchActive) searchResults?.rows?.map { it.documentId } else lists[tab]?.map { it.documentId }).orEmpty()
-        FlowRow(
-          Modifier.fillMaxWidth().background(c.background).padding(horizontal = 12.dp, vertical = 4.dp),
-          horizontalArrangement = Arrangement.spacedBy(0.dp),
-          verticalArrangement = Arrangement.spacedBy(0.dp),
-        ) {
-          IconButton(onClick = { selecting = false; selectedIds = emptyList() }) {
-            Icon(Icons.Default.Close, contentDescription = "Done selecting", tint = c.text)
-          }
-          Text("${selectedIds.size} selected", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.text)
-          Spacer(Modifier.width(4.dp))
-          val targets = if (tab == Triage.ARCHIVED) listOf(Triage.INBOX)
-          else listOf(Triage.PRIORITY, Triage.LATER, Triage.INBOX, Triage.ARCHIVED).filter { it != tab }
-          targets.forEach { target ->
-            TextButton(
-              onClick = {
-                val ids = selectedIds.toSet()
-                selecting = false; selectedIds = emptyList()
-                onMove(ids, target)
-              },
-              enabled = selectedIds.isNotEmpty(),
-              colors = ButtonDefaults.textButtonColors(contentColor = c.text),
-            ) {
-              if (tab == Triage.ARCHIVED) Text("Unarchive", fontFamily = ReaderFonts.Ui)
-              else Text(Triage.tabLabel(target), fontFamily = ReaderFonts.Ui)
-            }
-          }
-          if (selectedIds.size < liveIds.size) {
-            TextButton(onClick = { selectedIds = liveIds }) {
-              Text("Select all", fontFamily = ReaderFonts.Ui, color = c.text)
-            }
-          }
-          TextButton(onClick = {
-            labelDialogIds = selectedIds.toSet()
-          }, enabled = selectedIds.isNotEmpty()) {
-            Text("Label", fontFamily = ReaderFonts.Ui, color = c.text)
-          }
-          TextButton(onClick = { selecting = false; selectedIds = emptyList() }) {
-            Text("Done", fontFamily = ReaderFonts.Ui, color = c.text)
-          }
-        }
-      }
-    },
+  val displayed = if (searchActive && (searchText.isNotBlank() || constrained)) librarySearch.rows.mapNotNull { hit -> all.find { it.documentId == hit.documentId } }
+    else applySortFilter(filtered, settings.sort, com.reader.app.prefs.AgeFilter.ANY)
+  val continuation = all.filter { it.lastOpenedAt > 0 && it.finishedAt == null && it.list != Triage.ARCHIVED && it.wordCount > 0 && it.sourceType != "link" }
+    .maxByOrNull { it.lastOpenedAt }
+  fun toggle(id: String) { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }
+  fun clearFilters() = onLibrarySettings(settings.copy(age = com.reader.app.prefs.AgeFilter.ANY, labelIds = emptySet(), unlabeled = false))
+  Scaffold(containerColor = c.background, contentColor = c.text,
+    contentWindowInsets = WindowInsets.statusBars,
+    snackbarHost = { SnackbarHost(notice) },
     topBar = {
-      Row(Modifier.fillMaxWidth().padding(12.dp, 8.dp, 12.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(if (archiveMode) "Archive" else "Reader", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = c.text, modifier = Modifier.weight(1f))
-        IconButton(onClick = { showAdd = true }) {
-          Icon(Icons.Default.Add, contentDescription = "Import, paste, or pair", tint = c.text)
+      Column(Modifier.statusBarsPadding()) {
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+          Text(if (tab == "highlights") "Highlights" else "Shelf", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+          if (tab != "highlights") {
+            IconButton(onClick = onToggleSearch) { Icon(if (searchActive) Icons.Default.Close else Icons.Default.Search, if (searchActive) "Close search" else "Search saved articles") }
+            IconButton(onClick = { sheet = "add" }) { Icon(Icons.Default.Add, "Add article") }
+          }
         }
-        IconButton(onClick = onToggleSearch) {
-          Icon(Icons.Default.Search, contentDescription = if (searchActive) "Close search" else "Search library", tint = c.text)
-        }
-        IconButton(onClick = onSettings) {
-          Icon(Icons.Default.Settings, contentDescription = "Settings", tint = c.text)
+        if (tab != "highlights") {
+          val columns = if (LocalDensity.current.fontScale > 1.3f) 2 else 4
+          Triage.TABS.chunked(columns).forEach { group ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+              group.forEach { destination ->
+                Column(Modifier.weight(1f).selectable(tab == destination, role = Role.Tab,
+                  onClick = { if (destination != tab) { selectedIds = emptyList(); onSelectTab(destination) } }).padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                  Text(Triage.tabLabel(destination), fontWeight = if (tab == destination) FontWeight.Bold else FontWeight.Normal, color = if (tab == destination) c.text else c.secondary)
+                  Spacer(Modifier.height(6.dp))
+                  Box(Modifier.width(24.dp).height(2.dp).background(if (tab == destination) c.text else c.background))
+                }
+              }
+            }
+          }
         }
       }
     },
   ) { pad ->
-    Column(Modifier.padding(pad)) {
-      // Archive is a peer tab now, not a drill-in destination: the tab row
-      // is always on screen, positions never shift, and re-tapping the
-      // selected tab scrolls the list home (the universal Android reflex).
-      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Row(
-          Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          // Fixed order, always visible: tab positions never shift as the
-          // user reads. An empty tab shows count 0 and its empty state.
-          (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights", Triage.ARCHIVED)).forEachIndexed { i, key ->
-            if (i > 0) Spacer(Modifier.width(20.dp))
-            val count = if (key == "highlights") highlightCount else lists[key]?.size
-            TabText(Triage.tabLabel(key), count, selected = tab == key, color = c, onClick = {
-              when {
-                key == Triage.ARCHIVED && !archiveMode -> onArchiveOpen()
-                archiveMode && key != Triage.ARCHIVED -> { onArchiveBack(); onSelectTab(key) }
-                tab == key && tab != "highlights" -> scope.launch { listState.animateScrollToItem(0) }
-                else -> onSelectTab(key)
-              }
-            })
-          }
-        }
-        // Pinned outside the scroll: the time can never collide with tabs.
-        // Highlights has no minutes; Archive is finished reading — its
-        // pieces never count toward reading time (the empty state promises
-        // exactly that), so it shows nothing rather than a reproach.
-        if (tab != "highlights" && tab != Triage.ARCHIVED) Text(
-          ReaderCore.formatAttention(minutes[tab] ?: 0),
-          fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary,
-          maxLines = 1, modifier = Modifier.padding(start = 12.dp, end = 20.dp),
-        )
-      }
-      val list = lists[tab].orEmpty()
-      // One predictable predicate: tab scope, label, age, then sort. Search
-      // mode bypasses this entirely (relevance rules instead).
-      val displayList = remember(list, sort, age, selectedLabelNorm, labelsByDoc) {
-        applySortFilter(list, sort, age, selectedLabelNorm, labelsByDoc)
-      }
-      if (!searchActive && tab != "highlights") {
-        Row(
-          Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 2.dp),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          SortMenu(sort, onSort, c)
-          AgeChip("Any time", age == com.reader.app.prefs.AgeFilter.ANY, c) { onAge(com.reader.app.prefs.AgeFilter.ANY) }
-          AgeChip("Today", age == com.reader.app.prefs.AgeFilter.TODAY, c) { onAge(com.reader.app.prefs.AgeFilter.TODAY) }
-          AgeChip("Past week", age == com.reader.app.prefs.AgeFilter.WEEK, c) { onAge(com.reader.app.prefs.AgeFilter.WEEK) }
-          AgeChip("Past month", age == com.reader.app.prefs.AgeFilter.MONTH, c) { onAge(com.reader.app.prefs.AgeFilter.MONTH) }
-          AgeChip("Older", age == com.reader.app.prefs.AgeFilter.OLDER, c) { onAge(com.reader.app.prefs.AgeFilter.OLDER) }
-          labelCounts.forEach { label ->
-            val selected = selectedLabelNorm == label.normalized
-            FilterChip(
-              selected = selected, onClick = { onLabelSelect(if (selected) null else label.normalized) },
-              label = { Text("#${label.name} · ${label.count}", fontFamily = ReaderFonts.Ui) },
-              modifier = Modifier.semantics {
-                contentDescription = "Filter by label ${label.name}, ${label.count} articles"
-                stateDescription = if (selected) "Selected" else "Not selected"
-              },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = c.text, selectedLabelColor = c.background,
-                containerColor = c.background, labelColor = c.text,
-              ),
-              border = FilterChipDefaults.filterChipBorder(
-                borderColor = c.divider, selectedBorderColor = c.text,
-                enabled = true, selected = selected,
-              ),
-            )
-          }
-          if (sort != com.reader.app.prefs.LibrarySort.NEWEST || age != com.reader.app.prefs.AgeFilter.ANY || selectedLabelNorm != null) {
+    if (tab == "highlights") Box(Modifier.padding(pad).fillMaxSize()) { highlights() }
+    else Column(Modifier.padding(pad).fillMaxSize().imePadding()) {
+      if (searchActive) {
+        OutlinedTextField(searchText, onSearchText, Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+          placeholder = { Text("Search articles or #label") }, singleLine = true,
+          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+          keyboardActions = KeyboardActions(onSearch = { onSubmitSearch(); focus.clearFocus() }),
+          trailingIcon = { if (searchText.isNotEmpty()) IconButton(onClick = { onSearchText("") }) { Icon(Icons.Default.Close, "Clear search") } })
+        val labelTerm = Regex("(?:^|\\s)#([^#]*)$").find(searchText)
+        if (labelTerm != null) {
+          labelCounts.filter { it.name.contains(labelTerm.groupValues[1], true) }.take(4).forEach { label ->
             TextButton(onClick = {
-              onSort(com.reader.app.prefs.LibrarySort.NEWEST)
-              onAge(com.reader.app.prefs.AgeFilter.ANY)
-              onLabelSelect(null)
-            }) {
-              Text("Clear", fontFamily = ReaderFonts.Ui, color = c.text)
+              onLibrarySettings(settings.copy(labelIds = settings.labelIds + label.labelId, unlabeled = false))
+              onSearchText(searchText.substring(0, labelTerm.range.first).trimEnd())
+            }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("#${label.name}") }
+          }
+        }
+      }
+      Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(if (searchActive) (if (settings.searchCurrentShelf) "In ${Triage.tabLabel(tab)}" else "All saved articles") else
+          "${displayed.size} article${if (displayed.size == 1) "" else "s"}",
+          color = c.secondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        if (!searchActive) TextButton(onClick = { sheet = "sort" }) { Text("Sort") }
+        TextButton(onClick = { sheet = "filter" }) { Text("Filter${if (constrained) " •" else ""}") }
+      }
+      if (constrained) FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (settings.age != com.reader.app.prefs.AgeFilter.ANY) InputChip(selected = true,
+          onClick = { onLibrarySettings(settings.copy(age = com.reader.app.prefs.AgeFilter.ANY)) },
+          label = { Text(ageName(settings.age) + " ×") })
+        if (settings.unlabeled) InputChip(selected = true, onClick = { onLibrarySettings(settings.copy(unlabeled = false)) }, label = { Text("Unlabeled ×") })
+        settings.labelIds.forEach { id -> InputChip(selected = true,
+          onClick = { onLibrarySettings(settings.copy(labelIds = settings.labelIds - id)) },
+          label = { Text((labelCounts.find { it.labelId == id }?.name ?: "Removed label") + " ×") }) }
+        TextButton(onClick = ::clearFilters) { Text("Clear filters") }
+      }
+      if (selecting) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { selectedIds = emptyList() }) { Icon(Icons.Default.Close, "Clear selection") }
+        Text("${selectedIds.size}", modifier = Modifier.weight(1f))
+        TextButton(onClick = { selectedIds = displayed.map { it.documentId } }) { Text("Select all") }
+        TextButton(onClick = { labelIds = selectedIds.toSet() }) { Text("Labels") }
+        TextButton(onClick = { moveIds = selectedIds.toSet() }) { Text("Move to…") }
+      }
+      LazyColumn(state = if (searchActive) searchListState else listState,
+        modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(start = 20.dp, end = 16.dp, bottom = 24.dp)) {
+        if (!searchActive && !constrained && !selecting && continuation != null) item(key = "continue") {
+          Surface(onClick = { onOpen(continuation.documentId) }, color = c.divider.copy(alpha = .35f),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp), modifier = Modifier.padding(bottom = 12.dp).fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+              Text("Continue reading", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+              Text(continuation.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
             }
           }
         }
-      }
-      // First-visit gestures coach: the 30%/60% swipe thresholds are the
-      // one safety mechanism users can't discover by trial without risking
-      // a delete. Shown once above a non-empty Archive, fades itself out;
-      // the user's first committed archive action retires it for good.
-      if (archiveMode && !settings.archiveCoachShown && displayList.isNotEmpty()) {
-        Text(
-          "Swipe right to unarchive. Swiping far left starts a delete — you'll always confirm.",
-          fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary,
-          modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        LaunchedEffect(archiveMode) {
-          kotlinx.coroutines.delay(9000)
-          onArchiveCoachDone()
-        }
-      }
-      if (!loaded) CircularProgressIndicator(Modifier.padding(24.dp))
-      else if (searchActive) SearchContent(
-        query = searchText, onQuery = onSearchText, onSubmit = onSubmitSearch,
-        scope = searchScope, onScope = onSearchScope,
-        results = searchResults, recents = searchRecents,
-        onRecentTap = onRecentTap, onRecentRemove = onRecentRemove, onRecentsClear = onRecentsClear,
-        listState = searchListState, onOpenResult = onOpenResult, colors = c,
-      )
-      else if (tab == "highlights") highlights()
-      else if (displayList.isEmpty()) {
-        if (list.isNotEmpty()) {
-          val labelName = selectedLabelNorm?.let { norm ->
-            labelCounts.firstOrNull { it.normalized == norm }?.name ?: norm
+        if (!searchActive && tab == Triage.INBOX && captures.isNotEmpty()) item(key = "captures") {
+          Column(Modifier.padding(vertical = 12.dp)) {
+            val active = captures.count { it.state != "failed" }
+            if (active > 0) Text("Fetching $active article${if (active == 1) "" else "s"}… Your links are saved.", color = c.secondary, style = MaterialTheme.typography.bodySmall)
+            captures.filter { it.state == "failed" }.take(3).forEach { request -> Row(verticalAlignment = Alignment.CenterVertically) {
+              Text("Couldn’t fetch ${request.title ?: UriHost(request.originalUrl)}", modifier = Modifier.weight(1f), maxLines = 2, style = MaterialTheme.typography.bodySmall)
+              TextButton(onClick = { onRetryCapture(request) }) { Text("Retry") }
+            } }
           }
-          FilterEmpty(
-            tab = tab, age = age, labelName = labelName,
-            onClear = {
-              onSort(com.reader.app.prefs.LibrarySort.NEWEST)
-              onAge(com.reader.app.prefs.AgeFilter.ANY)
-              onLabelSelect(null)
-            },
-            colors = c,
-          )
-        } else {
-          EmptyShelf(
-            tab = tab,
-            libraryEmpty = (lists[Triage.INBOX].orEmpty() + lists[Triage.PRIORITY].orEmpty() +
-              lists[Triage.LATER].orEmpty() + lists[Triage.ARCHIVED].orEmpty()).isEmpty(),
-            onPair = onPair,
-            onAdd = { showAdd = true },
-            onBrowse = onSelectTab,
-          )
         }
-      } else {
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = listState) {
-          items(displayList, key = { it.documentId }) { d ->
-            if (tab == Triage.ARCHIVED) {
-              ArchiveSwipeRow(d, c,
-                selecting = selecting, selected = d.documentId in selectedIds,
-                onOpen = { if (selecting) toggleSelect(d.documentId) else onOpen(d.documentId) },
-                onLongPress = {
-                  haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                  if (!selecting) { selecting = true; selectedIds = listOf(d.documentId) }
-                  else toggleSelect(d.documentId)
-                },
-                onToggle = { toggleSelect(d.documentId) },
-                onMenu = { menuFor = d.documentId }, onAction = { action ->
-                if (!settings.archiveCoachShown) onArchiveCoachDone()
-                if (action == ArticleAction.Delete) confirmDeleteId = d.documentId else onMove(setOf(d.documentId), Triage.INBOX)
-              })
-            } else {
-              SwipeRow(
-                doc = d, list = tab, colors = c,
-                selecting = selecting, selected = d.documentId in selectedIds,
-                onOpen = { if (selecting) toggleSelect(d.documentId) else onOpen(d.documentId) },
-                onLongPress = {
-                  haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                  if (!selecting) { selecting = true; selectedIds = listOf(d.documentId) }
-                  else toggleSelect(d.documentId)
-                },
-                onToggle = { toggleSelect(d.documentId) },
-                onMenu = { rowMenu = d },
-                onSwiped = { target -> onMove(setOf(d.documentId), target) },
-              )
+        if (!loaded) item { Text("Loading your shelf…", Modifier.padding(vertical = 24.dp), color = c.secondary) }
+        else if (searchActive && searchText.isBlank() && !constrained) item {
+          Column(Modifier.padding(vertical = 12.dp)) {
+            Text("Search locally across your saved articles. Use quotes for a phrase or # to choose a label.", color = c.secondary)
+            searchRecents.forEach { q -> Row(verticalAlignment = Alignment.CenterVertically) {
+              TextButton(onClick = { onRecentTap(q) }, modifier = Modifier.weight(1f)) { Text(q, maxLines = 2) }
+              IconButton(onClick = { onRecentRemove(q) }) { Icon(Icons.Default.Close, "Remove recent search $q") }
+            } }
+          }
+        }
+        else if (searchActive && librarySearch.status != com.reader.app.data.SearchStatus.READY) item {
+          Text(when (librarySearch.status) {
+            com.reader.app.data.SearchStatus.LOADING -> "Searching saved articles…"
+            com.reader.app.data.SearchStatus.INVALID -> librarySearch.message ?: "Check your search."
+            com.reader.app.data.SearchStatus.FAILED -> "Search couldn’t load. Change the query or try again."
+            else -> "Type to search."
+          }, Modifier.padding(vertical = 20.dp), color = c.secondary)
+        }
+        else if (displayed.isEmpty()) item {
+          Column(Modifier.fillMaxWidth().padding(vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(if (searchActive || constrained) "No articles match" else if (all.isEmpty()) "Your next good read starts here" else "${Triage.tabLabel(tab)} is clear", style = MaterialTheme.typography.titleLarge)
+            Text(if (searchActive || constrained) "Try fewer words or remove a filter." else "Save something you want to give your attention to.", color = c.secondary)
+            if (constrained) TextButton(onClick = ::clearFilters) { Text("Clear filters") }
+            if (!searchActive) {
+              Button(onClick = { sheet = "add" }) { Text(if (all.isEmpty()) "Add your first article" else "Add an article") }
+              if (all.isEmpty()) TextButton(onClick = onSample) { Text("Read a sample introduction") }
+              Text("You can also share a link to Reader from any Android app.", style = MaterialTheme.typography.bodySmall, color = c.secondary)
             }
-            Divider(color = c.divider, thickness = 0.5.dp)
           }
+        }
+        else {
+          if (searchActive) item { Text("${displayed.size}${if (librarySearch.hasMore) "+" else ""} matches · ${if (settings.searchTitlesOnly) "Titles only" else "Title and text"}", color = c.secondary, style = MaterialTheme.typography.bodySmall) }
+          items(displayed, key = { it.documentId }) { doc ->
+            val open = { if (selecting) toggle(doc.documentId) else { focus.clearFocus(); if (searchActive) onOpenResult(doc.documentId) else onOpen(doc.documentId) } }
+            val select = { toggle(doc.documentId) }
+            if (searchActive) Text(Triage.tabLabel(doc.list), color = c.secondary, style = MaterialTheme.typography.labelSmall)
+            if (doc.list == Triage.ARCHIVED) ArchiveSwipeRow(doc, c, selecting, doc.documentId in selectedIds,
+              open, select, select, { rowMenu = doc }, { action -> if (action == ArticleAction.Delete) deleteId = doc.documentId else action.target?.let { onMove(setOf(doc.documentId), it) } })
+            else SwipeRow(doc, doc.list, c, selecting, doc.documentId in selectedIds,
+              open, select, select, { rowMenu = doc }, { onMove(setOf(doc.documentId), it) })
+            HorizontalDivider(color = c.divider.copy(alpha = .6f))
+          }
+          if (searchActive && librarySearch.hasMore) item { TextButton(onClick = onMoreResults, modifier = Modifier.fillMaxWidth()) { Text("Show 50 more") } }
         }
       }
     }
   }
-  if (showAdd) {
-    AlertDialog(
-      onDismissRequest = { showAdd = false },
-      containerColor = c.background,
-      title = { Text("Add", fontFamily = ReaderFonts.Ui, color = c.text) },
-      text = {
-        Column {
-          AddOption("Import file", c) { showAdd = false; onImportFile() }
-          AddOption("Paste text, markdown, or link", c) { showAdd = false; showPaste = true }
-          AddOption("Pair Chrome", c) { showAdd = false; onPair() }
+  if (sheet != null) ModalBottomSheet(onDismissRequest = { sheet = null }, containerColor = c.background, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      when (sheet) {
+        "add" -> {
+          Text("Add to Reader", style = MaterialTheme.typography.titleLarge)
+          TextButton(onClick = { sheet = "paste" }) { Text("Paste a link or text") }
+          TextButton(onClick = { sheet = null; onImportFile() }) { Text("Import a file") }
+          TextButton(onClick = { sheet = null; onPair() }) { Text("Connect Chrome") }
+          Text("On Android, choose Share → Reader from another app. No connection is needed.", color = c.secondary)
         }
-      },
-      confirmButton = {},
-    )
-  }
-  if (showPaste) {
-    var text by remember { mutableStateOf("") }
-    AlertDialog(
-      onDismissRequest = { showPaste = false },
-      containerColor = c.background,
-      title = { Text("Paste", fontFamily = ReaderFonts.Ui, color = c.text) },
-      text = {
-        OutlinedTextField(
-          value = text, onValueChange = { text = it },
-          placeholder = { Text("Paste text, markdown, or an article link…", fontFamily = ReaderFonts.Ui) },
-          modifier = Modifier.fillMaxWidth().height(220.dp),
-          keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-        )
-      },
-      confirmButton = {
-        TextButton(
-          onClick = { showPaste = false; onPasteText(text) },
-          enabled = text.isNotBlank(),
-          colors = ButtonDefaults.textButtonColors(contentColor = c.text),
-        ) { Text("Save", fontFamily = ReaderFonts.Ui) }
-      },
-      dismissButton = {
-        TextButton(onClick = { showPaste = false }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
-          Text("Cancel", fontFamily = ReaderFonts.Ui)
+        "paste" -> {
+          Text("Paste a link or text", style = MaterialTheme.typography.titleLarge)
+          OutlinedTextField(pasted, { pasted = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 240.dp), placeholder = { Text("https://… or article text") })
+          Button(enabled = pasted.isNotBlank(), onClick = { onPasteText(pasted); pasted = ""; sheet = null; focus.clearFocus() }) { Text("Save to Reader") }
         }
-      },
-    )
-  }
-  menuFor?.let { id ->
-    val docTitle = lists[Triage.ARCHIVED].orEmpty().firstOrNull { it.documentId == id }?.title
-      ?.take(60).orEmpty()
-    AlertDialog(
-      onDismissRequest = { menuFor = null },
-      containerColor = c.background,
-      title = { Text(docTitle.ifBlank { "Article" }, fontFamily = ReaderFonts.Ui, color = c.text) },
-      text = {
-        Column {
-          Text("Unarchive sends it back to Inbox. Delete is permanent.", fontFamily = ReaderFonts.Ui, color = c.text)
-          TextButton(onClick = { menuFor = null; selecting = true; selectedIds = listOf(id) }) {
-            Text("Select", fontFamily = ReaderFonts.Ui, color = c.text)
+        "sort" -> {
+          Text("Sort articles", style = MaterialTheme.typography.titleLarge)
+          com.reader.app.prefs.LibrarySort.entries.forEach { order ->
+            TextButton(onClick = { onSort(order); sheet = null }) { Text((if (order == settings.sort) "✓ " else "") + sortName(order)) }
           }
         }
-      },
-      confirmButton = {
-        TextButton(onClick = { menuFor = null; onMove(setOf(id), Triage.INBOX) }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
-          Text("Move to Inbox", fontFamily = ReaderFonts.Ui)
+        "filter" -> {
+          Text("Filter articles", style = MaterialTheme.typography.titleLarge)
+          if (searchActive) {
+            Text("Search location", style = MaterialTheme.typography.labelLarge)
+            listOf(false to "All saved articles", true to "Current shelf · ${Triage.tabLabel(tab)}").forEach { (current, title) ->
+              Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().selectable(settings.searchCurrentShelf == current, onClick = { onLibrarySettings(settings.copy(searchCurrentShelf = current)) })) {
+                RadioButton(settings.searchCurrentShelf == current, null); Text(title, Modifier.padding(start = 8.dp))
+              }
+            }
+            Text("Search fields", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              listOf(false to "Title and text", true to "Titles only").forEach { (titles, title) -> FilterChip(settings.searchTitlesOnly == titles, { onLibrarySettings(settings.copy(searchTitlesOnly = titles)) }, { Text(title) }) }
+            }
+          }
+          Text("Saved", style = MaterialTheme.typography.labelLarge)
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.reader.app.prefs.AgeFilter.entries.forEach { age -> FilterChip(settings.age == age, { onAge(age) }, { Text(ageName(age)) }) }
+          }
+          Text("Labels · match all selected", style = MaterialTheme.typography.labelLarge)
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(settings.unlabeled, { onLibrarySettings(settings.copy(unlabeled = !settings.unlabeled, labelIds = emptySet())) }, { Text("Unlabeled") })
+            labelCounts.forEach { label -> FilterChip(label.labelId in settings.labelIds,
+              { onLibrarySettings(settings.copy(unlabeled = false, labelIds = if (label.labelId in settings.labelIds) settings.labelIds - label.labelId else settings.labelIds + label.labelId)) },
+              { Text("${label.name} · ${label.count}") }) }
+          }
+          TextButton(onClick = { sheet = null; onManageLabels() }) { Text("Manage labels") }
+          Row { TextButton(onClick = ::clearFilters) { Text("Clear filters") }; Spacer(Modifier.weight(1f)); Button(onClick = { sheet = null }) { Text("Show articles") } }
         }
-      },
-      dismissButton = {
-        TextButton(onClick = { menuFor = null; confirmDeleteId = id }, colors = ButtonDefaults.textButtonColors(contentColor = c.error)) {
-          Text("Delete forever", fontFamily = ReaderFonts.Ui)
-        }
-      },
-    )
-  }
-  confirmDeleteId?.let { id ->
-    val docTitle = lists[Triage.ARCHIVED].orEmpty().firstOrNull { it.documentId == id }?.title
-      ?.take(80).orEmpty()
-    AlertDialog(
-      onDismissRequest = { confirmDeleteId = null },
-      containerColor = c.background,
-      title = { Text("Delete forever?", fontFamily = ReaderFonts.Ui, color = c.text) },
-      text = {
-        Text(
-          "“$docTitle” will be permanently deleted. Highlights you saved stay in Highlights. This cannot be undone.",
-          fontFamily = ReaderFonts.Ui, color = c.text,
-        )
-      },
-      confirmButton = {
-        TextButton(onClick = { confirmDeleteId = null; onDelete(id) }, colors = ButtonDefaults.textButtonColors(contentColor = c.error)) {
-          Text("Delete forever", fontFamily = ReaderFonts.Ui)
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { confirmDeleteId = null }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
-          Text("Cancel", fontFamily = ReaderFonts.Ui)
-        }
-      },
-    )
-  }
-  // Non-gesture equivalents for row swipes: every list row offers the same
-  // moves as its swipe directions plus Archive, with Undo via snackbar.
-  // Permanent deletion stays archive-only and is not offered here.
-  rowMenu?.let { d ->
-    val previous = tab
-    fun move(target: String) {
-      rowMenu = null
-      if (target == previous) return
-      onMove(setOf(d.documentId), target)
+      }
     }
-    AlertDialog(
-      onDismissRequest = { rowMenu = null },
-      containerColor = c.background,
-      title = { Text("Move article", fontFamily = ReaderFonts.Ui, color = c.text) },
-      text = {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
-          if (previous != Triage.PRIORITY) TextButton(onClick = { move(Triage.PRIORITY) }) { Text("Move to Priority", fontFamily = ReaderFonts.Ui, color = c.text) }
-          if (previous != Triage.INBOX) TextButton(onClick = { move(Triage.INBOX) }) { Text("Move to Inbox", fontFamily = ReaderFonts.Ui, color = c.text) }
-          if (previous != Triage.LATER) TextButton(onClick = { move(Triage.LATER) }) { Text("Save for later", fontFamily = ReaderFonts.Ui, color = c.text) }
-          if (previous != Triage.ARCHIVED) TextButton(onClick = { move(Triage.ARCHIVED) }) { Text("Archive", fontFamily = ReaderFonts.Ui, color = c.text) }
-          TextButton(onClick = { val target = d.documentId; rowMenu = null; labelDialogIds = setOf(target) }) {
-            Text("Edit labels", fontFamily = ReaderFonts.Ui, color = c.text)
-          }
-          TextButton(onClick = { val target = d.documentId; rowMenu = null; selecting = true; selectedIds = listOf(target) }) {
-            Text("Select", fontFamily = ReaderFonts.Ui, color = c.text)
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(onClick = { rowMenu = null; onOpen(d.documentId) }) { Text("Open", fontFamily = ReaderFonts.Ui, color = c.text) }
-      },
-      dismissButton = {
-        TextButton(onClick = { rowMenu = null }) { Text("Cancel", fontFamily = ReaderFonts.Ui, color = c.text) }
-      },
-    )
   }
-  labelDialogIds?.let { ids ->
-    val counts = remember(ids, labelsByDoc, labelCounts) {
-      ids.flatMap { labelsByDoc[it].orEmpty() }.groupingBy { it }.eachCount()
-        .mapNotNull { (norm, n) ->
-          labelCounts.firstOrNull { it.normalized == norm }?.let { it.name to n }
-        }.toMap()
+  val menu = rowMenu
+  if (menu != null) ModalBottomSheet(onDismissRequest = { rowMenu = null }, containerColor = c.background) {
+    Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+      Text(menu.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+      TextButton(onClick = { rowMenu = null; moveIds = setOf(menu.documentId) }) { Text("Move to…") }
+      TextButton(onClick = { rowMenu = null; labelIds = setOf(menu.documentId) }) { Text("Edit labels") }
+      TextButton(onClick = { rowMenu = null; toggle(menu.documentId) }) { Text("Select") }
+      if (menu.list == Triage.ARCHIVED) TextButton(onClick = { rowMenu = null; deleteId = menu.documentId }) { Text("Delete article…", color = c.error) }
     }
-    LabelsDialog(
-      title = if (ids.size == 1) "Labels" else "Labels (${ids.size} articles)",
-      assignedCounts = counts,
-      totalDocs = ids.size,
-      suggestions = labelCounts.map { it.name },
-      onToggle = { onToggleLabel(ids, it) },
-      onDismiss = { labelDialogIds = null },
-      colors = c,
-    )
   }
+  moveIds?.let { ids -> ModalBottomSheet(onDismissRequest = { moveIds = null }, containerColor = c.background) {
+    Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+      Text("Move ${ids.size} article${if (ids.size == 1) "" else "s"} to", style = MaterialTheme.typography.titleLarge)
+      Triage.TABS.forEach { target -> TextButton(onClick = { onMove(ids, target); selectedIds = emptyList(); moveIds = null }) { Text(Triage.tabLabel(target)) } }
+    }
+  } }
+  labelIds?.let { ids -> LabelsDialog("Labels", ids.flatMap { labelsByDoc[it].orEmpty() }.groupingBy { norm -> labelCounts.find { it.normalized == norm }?.name ?: norm }.eachCount(), ids.size,
+    labelCounts.map { it.name }, { onToggleLabel(ids, it) }, { labelIds = null }, c) }
+  deleteId?.let { id -> AlertDialog(onDismissRequest = { deleteId = null }, title = { Text("Delete article?") },
+    text = { Text("This permanently removes the saved article. Your highlights and their attribution stay saved.") },
+    confirmButton = { TextButton(onClick = { deleteId = null; onDelete(id) }) { Text("Delete article", color = c.error) } },
+    dismissButton = { TextButton(onClick = { deleteId = null }) { Text("Keep article") } }) }
 }
 
-/** Warm empty states with a way forward. Never a dead end. */
+private fun ageName(age: com.reader.app.prefs.AgeFilter) = when(age) {
+  com.reader.app.prefs.AgeFilter.ANY -> "Any time"
+  com.reader.app.prefs.AgeFilter.TODAY -> "Today"
+  com.reader.app.prefs.AgeFilter.WEEK -> "Past week"
+  com.reader.app.prefs.AgeFilter.MONTH -> "Past month"
+  com.reader.app.prefs.AgeFilter.OLDER -> "Older than a month"
+}
+private fun sortName(sort: com.reader.app.prefs.LibrarySort) = when(sort) {
+  com.reader.app.prefs.LibrarySort.NEWEST -> "Newest first"
+  com.reader.app.prefs.LibrarySort.OLDEST -> "Oldest first"
+  com.reader.app.prefs.LibrarySort.QUICKEST -> "Shortest first"
+  com.reader.app.prefs.LibrarySort.LONGEST -> "Longest first"
+  com.reader.app.prefs.LibrarySort.TITLE -> "Title A–Z"
+}
+
+
 @Composable
 private fun EmptyShelf(
   tab: String,
@@ -749,7 +572,7 @@ private fun SwipeRow(
       val nowArmed = kotlin.math.abs(offset) > thresholdPx
       if (nowArmed != armed) {
         armed = nowArmed
-        if (nowArmed) Haptics.swipeArm(haptics)
+
       }
       // Right brings nearer (green), left sets aside (blue). Warning is
       // reserved for the destructive arm (Archive delete, Remove highlight).
@@ -821,7 +644,7 @@ fun ArticleRow(
   onToggleSelect: (() -> Unit)? = null,
   onLongPress: (() -> Unit)? = null,
 ) {
-  val complete = d.progressFraction >= 0.999f
+  val complete = d.finishedAt != null
   // Finished pieces are the memory layer, not a defect: full-strength title,
   // a small Done pill, and the finished date (+ highlight count) in meta.
   val dark = com.reader.app.ui.theme.LocalReaderDark.current
@@ -878,13 +701,15 @@ fun ArticleRow(
     val mins = ReaderCore.readingMinutes(d.wordCount)
     val left = ReaderCore.timeLeft(mins, d.progressFraction)
     val metaLine = when {
+      d.sourceType == "link" -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · Link only"
       complete -> {
         val finished = ReaderCore.formatAge(if (d.finishedAt != null) d.finishedAt else d.createdAt)
         val hl = d.highlightCount
-        "✓ $finished${if (hl > 0) " · $hl highlight${if (hl == 1) "" else "s"}" else ""}"
+        "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · Finished $finished${if (hl > 0) " · $hl highlight${if (hl == 1) "" else "s"}" else ""}"
       }
-      left != null -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · $left min left · ${ReaderCore.formatAge(d.createdAt)}"
-      else -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · $mins min · ${ReaderCore.formatAge(d.createdAt)}"
+      d.progressFraction >= .999f -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · At end"
+      left != null -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · ${left.coerceAtLeast(1)} min left · ${ReaderCore.formatAge(d.createdAt)}"
+      else -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · $mins min · Unread"
     }
     Text(metaLine, fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
     if (d.progressFraction > 0.01f && d.progressFraction < 0.999f) {
@@ -920,13 +745,6 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
     val width = with(LocalDensity.current) { maxWidth.toPx() }
     val action = ArticleAction.forArticle(Triage.ARCHIVED, offset > 0)!!
     val armed = ArticleAction.commits(action, offset, width)
-    // The archive is the most dangerous list, so it is the most felt one:
-    // heavier tick when the delete arm engages, light tick for unarchive,
-    // firm press on any committed release.
-    if (armed && !wasArmed && !selecting) {
-      if (action == ArticleAction.Delete) Haptics.destructiveArm(view) else Haptics.swipeArm(haptics)
-    }
-    wasArmed = armed
     if (offset != 0f) Row(Modifier.matchParentSize().padding(8.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = if (offset > 0) Arrangement.Start else Arrangement.End) {
@@ -1316,3 +1134,5 @@ private fun FilterEmpty(
     }
   }
 }
+
+private fun UriHost(url: String): String = runCatching { java.net.URI(url).host }.getOrNull() ?: "article"

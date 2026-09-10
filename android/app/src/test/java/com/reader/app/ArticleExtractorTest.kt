@@ -11,6 +11,22 @@ class ArticleExtractorTest {
   private fun html(body: String, head: String = "<title>Test</title>"): ByteArray =
     "<!doctype html><html><head>$head</head><body>$body</body></html>".toByteArray(Charsets.UTF_8)
 
+  @Test fun publisherControlsInsideArticleDoNotBecomeReadingContent() {
+    val out = ArticleExtractor.extract(html("""<main><article class="devsite-article">
+      <div class="devsite-banner"><p>Join our research community and sign up now.</p></div>
+      <div class="devsite-article-meta">Home CSS Learn</div>
+      <h1>Box Model<devsite-actions hidden><span>Stay organized with collections</span></devsite-actions></h1>
+      <div class="devsite-article-body"><p>The box model describes how content, padding, borders and margins combine to determine an element's size.</p>
+      <h2>Content and sizing</h2><p>A fixed width creates a constraint on the content box, and the other areas add space around it.</p></div>
+      </article></main>""", "<meta property='og:title' content='Box Model &nbsp;|&nbsp; web.dev'>"), "https://web.dev/learn/css/box-model")
+    assertEquals("Box Model", out.title)
+    assertFalse(out.markdown.contains("research community"))
+    assertFalse(out.markdown.contains("collections"))
+    assertFalse(out.markdown.contains("Home CSS"))
+    assertTrue(out.markdown.contains("Content and sizing"))
+    assertTrue(out.markdown.contains("padding, borders"))
+  }
+
   @Test fun keepsParagraphsHeadingsListsLinksCodeAndTables() {
     val page = html(
       """<main><article>

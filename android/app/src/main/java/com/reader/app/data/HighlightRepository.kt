@@ -81,6 +81,11 @@ class HighlightRepository(private val db: ReaderDb) {
     HighlightMutation(before, after)
   }
 
+  suspend fun toggleImportant(id: String): HighlightMutation? = db.withTransaction {
+    val before = db.highlights().byId(id) ?: return@withTransaction null
+    val after = before.copy(important = !before.important, updatedAt = System.currentTimeMillis(), revision = before.revision + 1)
+    db.highlights().update(after); HighlightMutation(before, after)
+  }
   suspend fun recolor(id: String, color: String): HighlightMutation? = db.withTransaction {
     require(color in setOf("YELLOW", "GREEN", "CYAN", "PURPLE"))
     val before = db.highlights().byId(id) ?: return@withTransaction null

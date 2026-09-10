@@ -81,7 +81,7 @@ data class SearchRow(
 
 @Dao
 interface SearchDao {
-  @RawQuery(observedEntities = [DocumentEntity::class])
+  @RawQuery(observedEntities = [DocumentEntity::class, DocumentContentEntity::class, DocumentLabelEntity::class, LabelEntity::class])
   fun searchFts(query: SupportSQLiteQuery): Flow<List<SearchRow>>
 
   @RawQuery(observedEntities = [DocumentEntity::class])

@@ -8,7 +8,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.room.withTransaction
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -65,6 +68,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class MainActivity : ComponentActivity() {
+  private val notices = NoticeCoordinator()
+  private fun feedback(message: String) {
+    if (hasWindowFocus()) notices.show(message) else Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+  }
   private lateinit var db: ReaderDb
   private lateinit var prefs: Prefs
   private lateinit var keys: KeystoreWrap
@@ -117,6 +124,8 @@ class MainActivity : ComponentActivity() {
       var lists by remember { mutableStateOf(mapOf<String, List<com.reader.app.data.DocumentSummary>>()) }
       var libraryLoaded by remember { mutableStateOf(false) }
       var selectedTab by rememberSaveable { mutableStateOf(Triage.INBOX) }
+      var shelfTab by rememberSaveable { mutableStateOf(Triage.INBOX) }
+      val searchScrollState = androidx.compose.foundation.lazy.rememberLazyListState()
       val mainScrollStates = mapOf(
         Triage.INBOX to androidx.compose.foundation.lazy.rememberLazyListState(),
         Triage.PRIORITY to androidx.compose.foundation.lazy.rememberLazyListState(),
@@ -127,7 +136,10 @@ class MainActivity : ComponentActivity() {
       val reviewScrollState = androidx.compose.foundation.rememberScrollState()
       var reviewScrollId by rememberSaveable { mutableStateOf<String?>(null) }
       var highlightSeed by rememberSaveable { mutableLongStateOf(java.security.SecureRandom().nextLong()) }
-      var highlightsNewest by rememberSaveable { mutableStateOf(false) }
+      var highlightsNewest by rememberSaveable { mutableStateOf(true) }
+      var highlightQuery by rememberSaveable { mutableStateOf("") }
+      var importantOnly by rememberSaveable { mutableStateOf(false) }
+      val matchedHighlights by remember(highlightQuery, importantOnly) { db.highlights().matchingIds(highlightQuery.trim(), importantOnly) }.collectAsState(initial = emptyList())
       val highlightSummaries by remember { db.highlights().observeSummaries() }.collectAsState(initial = emptyList())
       var channels by remember { mutableStateOf(listOf<com.reader.app.data.ChannelEntity>()) }
       var minutesByList by remember { mutableStateOf(mapOf<String, Int>()) }
@@ -154,54 +166,46 @@ class MainActivity : ComponentActivity() {
       val labelCounts by remember { db.labels().observeLabels() }.collectAsState(initial = emptyList())
       var selectedLabelNorm by rememberSaveable { mutableStateOf<String?>(null) }
       var labelsTick by remember { mutableIntStateOf(0) }
-      var labelsByDoc by remember { mutableStateOf(mapOf<String, Set<String>>()) }
-      LaunchedEffect(lists, labelsTick) {
-        labelsByDoc = withContext(Dispatchers.IO) {
-          val normById = db.labels().allLabels().associate { it.labelId to it.normalized }
-          db.labels().allPairs().groupBy({ it.documentId }, { normById[it.labelId] ?: "?" })
-            .mapValues { (_, norms) -> norms.toSet() }
-        }
+      val labelPairs by remember { db.labels().observePairs() }.collectAsState(initial = emptyList())
+      val labelIdsByDoc = remember(labelPairs) { labelPairs.groupBy({ it.documentId }, { it.labelId }).mapValues { it.value.toSet() } }
+      val labelsByDoc = remember(labelPairs, labelCounts) {
+        val normById = labelCounts.associate { it.labelId to it.normalized }
+        labelIdsByDoc.mapValues { (_, ids) -> ids.mapNotNull { normById[it] }.toSet() }
       }
       fun toggleLabel(ids: Set<String>, raw: String) {
         val norm = com.reader.app.data.LabelNorm.normalize(raw) ?: return
         val have = ids.associateWith { id -> labelsByDoc[id]?.contains(norm) == true }
         lifecycleScope.launch {
-          withContext(Dispatchers.IO) {
+          try { withContext(Dispatchers.IO) {
             if (have.values.all { it }) {
               val labelId = db.labels().idForNormalized(norm) ?: return@withContext
               ids.forEach { id -> db.labels().unassign(id, labelId) }
             } else {
               val now = System.currentTimeMillis()
-              ids.forEach { id -> db.labels().assignNorm(id, raw, now) }
+              val failed = ids.count { id -> !db.labels().assignNorm(id, raw, now) }
+              if (failed > 0) withContext(Dispatchers.Main) { notices.show("Some articles already have 20 labels. Remove a label and try again.") }
             }
           }
           labelsTick++
+          } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+          catch (_: Exception) { notices.show("Couldn’t update labels. Try again.") }
         }
       }
       val searchRepo = remember { com.reader.app.data.SearchRepository(db, (application as com.reader.app.ReaderApp).articles, recentsStore) }
-      // Debounced, conflated: every input restarts the collection, stale
-      // queries cancel when typing advances, and the previous results stay
-      // visible until the next set lands (no flicker, no reset).
-      var searchResults by remember { mutableStateOf(com.reader.app.data.SearchResults(emptyList(), 0)) }
-      LaunchedEffect(searchActive, searchText, searchScopeName, selectedTab, route) {
-        snapshotFlow {
-          listOf(
-            searchActive.toString(),
-            searchText,
-            searchScopeName,
-            if (route == Route.Archive) Triage.ARCHIVED else selectedTab,
-          )
-        }
-          .debounce(150)
-          .distinctUntilChanged()
-          .mapLatest { (active, text, scopeName, list) ->
-            val scope = com.reader.app.data.SearchScope.valueOf(scopeName)
-            if (active != "true" || text.isBlank()) com.reader.app.data.SearchResults(emptyList(), 0)
-            else searchRepo.observeResults(text, scope, list).first()
-          }
-          .flowOn(Dispatchers.Default)
-          .catch { emit(com.reader.app.data.SearchResults(emptyList(), 0)) }
-          .collect { searchResults = it }
+      var searchPages by rememberSaveable { mutableIntStateOf(1) }
+      var librarySearch by remember { mutableStateOf(com.reader.app.data.LibrarySearchResult()) }
+      val searchRequest = com.reader.app.data.LibrarySearchRequest(searchText,
+        if (settings.searchCurrentShelf) (if (route == Route.Archive) Triage.ARCHIVED else if (selectedTab == "highlights") shelfTab else selectedTab) else null,
+        settings.searchTitlesOnly, settings.labelIds, settings.unlabeled, settings.age, searchPages)
+      LaunchedEffect(searchRequest.copy(pages = 1)) { searchPages = 1 }
+      LaunchedEffect(searchActive, searchRequest) {
+        if (!searchActive || (searchText.isBlank() && settings.labelIds.isEmpty() && !settings.unlabeled && settings.age == com.reader.app.prefs.AgeFilter.ANY)) { librarySearch = com.reader.app.data.LibrarySearchResult(); return@LaunchedEffect }
+        librarySearch = librarySearch.copy(status = com.reader.app.data.SearchStatus.LOADING)
+        delay(150)
+        try { com.reader.app.data.LibrarySearch(db).observe(searchRequest).collect { librarySearch = it } }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: IllegalArgumentException) { librarySearch = com.reader.app.data.LibrarySearchResult(status = com.reader.app.data.SearchStatus.INVALID, message = e.message) }
+        catch (_: Exception) { librarySearch = com.reader.app.data.LibrarySearchResult(status = com.reader.app.data.SearchStatus.FAILED) }
       }
       fun openSearchResult(documentId: String, query: String = searchText) {
         lifecycleScope.launch {
@@ -216,36 +220,10 @@ class MainActivity : ComponentActivity() {
       }
       // Room invalidation keeps a visible inbox truthful when a background
       // relay sync commits a document after onResume's initial refresh.
+      val captures by remember { db.captureRequests().observeUnfinished() }.collectAsState(initial = emptyList())
       val syncHealth by remember { db.syncHealth().observe() }.collectAsState(initial = null)
       var syncing by remember { mutableStateOf(false) }
       var libraryStats by remember { mutableStateOf<com.reader.app.ui.screens.LibraryStats?>(null) }
-      var finishNotice by remember { mutableStateOf<String?>(null) }
-      // Finishes surface once, quietly, and only in the library — never in
-      // the reader (the inline card covers that) and never twice.
-      LaunchedEffect(Unit) {
-        (application as com.reader.app.ReaderApp).progress.finished.collect { docId ->
-          try {
-            if (route !is Route.Inbox && route !is Route.Archive) return@collect
-            val doc = withContext(Dispatchers.IO) { db.documents().metadataById(docId) } ?: return@collect
-            val mins = com.reader.app.core.ReaderCore.readingMinutes(doc.wordCount)
-            val total = withContext(Dispatchers.IO) { db.readingStats().finishedTotal() }
-            val byDay = withContext(Dispatchers.IO) {
-              db.readingStats().recentDayStats(400).associate { it.day to it }
-            }
-            val run = com.reader.app.data.ReadingRun.computeRun(byDay, com.reader.app.data.ReadingRun.today())
-            val milestone = when {
-              total >= 100 && prefs.takeMilestone("m100") -> "Quiet milestone — 100 articles finished. Remarkable."
-              total >= 50 && prefs.takeMilestone("m50") -> "Quiet milestone — 50 articles finished."
-              total >= 10 && prefs.takeMilestone("m10") -> "Quiet milestone — 10 articles finished. Your shelf is working."
-              run >= 7 && prefs.takeMilestone("run7") -> "A week of steady reading. No streak to protect — just a nice rhythm."
-              else -> null
-            }
-            finishNotice = milestone ?: "Finished “${doc.title.take(60)}” · $mins min"
-          } catch (_: Exception) { /* best-effort celebration only */ }
-        }
-      }
-
-
       val windowColors = if (route is Route.Reader || route is Route.Rsvp) com.reader.app.ui.theme.readerColors(settings.background) else com.reader.app.ui.theme.appColors()
       SideEffect {
         val bg = windowColors.background
@@ -283,23 +261,7 @@ class MainActivity : ComponentActivity() {
         }
         minutesByList = mins
         libraryStats = computeLibraryStats(loaded.values.flatten())
-        // First-save warmth: exactly once, only when the library was empty.
-        // The sample teaches triage, highlights and offline in 3 minutes.
-        // The .qa package holds destructive fixtures that need a controllable
-        // empty library — the welcome sample stays a real-package behavior.
-        if (loaded.values.all { it.isEmpty() } && !prefs.isWelcomeShown() &&
-          !this@MainActivity.packageName.endsWith(".qa")) {
-          try {
-            Ingest.importPasted(this@MainActivity, WELCOME_MARKDOWN)
-            prefs.setWelcomeShown()
-            Toast.makeText(this@MainActivity, "First save — welcome in. It’s yours, offline.", Toast.LENGTH_LONG).show()
-            val reloaded = withContext(Dispatchers.IO) {
-              db.documents().observeSummaries().first().groupBy { it.list }
-            }
-            lists = reloaded
-            libraryLoaded = true
-          } catch (_: Exception) { /* next refresh retries; never block startup */ }
-        }
+
       }
       LaunchedEffect(refreshTick.value, route) {
         if (route == Route.Inbox || route == Route.Archive) {
@@ -319,11 +281,11 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
           try {
             val id = Ingest.importFile(this@MainActivity, uri, uri.lastPathSegment ?: "file")
-            Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
+            feedback("Added to Reader")
             refresh()
             go(Route.Reader(id))
           } catch (e: Exception) {
-            Toast.makeText(this@MainActivity, "Import failed: ${e.message?.take(120)}", Toast.LENGTH_LONG).show()
+            feedback("Import failed: ${e.message?.take(120)}")
           }
         }
       }
@@ -367,7 +329,7 @@ class MainActivity : ComponentActivity() {
             ttsController?.pause(); ttsState = null; ttsDocId = null
             refresh(); stack.pop(); tick++
           } catch (_: Exception) {
-            Toast.makeText(this@MainActivity, "Couldn’t move that just now. Nothing was moved — try again.", Toast.LENGTH_LONG).show()
+            feedback("Couldn’t move that just now. Nothing was moved — try again.")
           } finally { readerMoving = false }
         }
       }
@@ -381,7 +343,7 @@ class MainActivity : ComponentActivity() {
             if (ttsDocId == id) { ttsController?.pause(); ttsState = null; ttsDocId = null }
             (application as com.reader.app.ReaderApp).deleteArticle(id)
             if ((stack.current() as? Route.Reader)?.id == id) { stack.pop(); tick++ }
-          } catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t delete article. Try again.", Toast.LENGTH_LONG).show() }
+          } catch (_: Exception) { feedback("Couldn’t delete article. Try again.") }
           finally { deleting.remove(id) }
         }
       }
@@ -393,7 +355,7 @@ class MainActivity : ComponentActivity() {
           } catch (error: kotlinx.coroutines.CancellationException) { throw error }
           catch (error: Exception) {
             android.util.Log.e("ReaderMove", "batch move failed", error)
-            Toast.makeText(this@MainActivity, "Couldn’t move articles. Nothing was moved. Try again.", Toast.LENGTH_LONG).show()
+            feedback("Couldn’t move articles. Nothing was moved. Try again.")
           }
         }
       }
@@ -401,22 +363,46 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
           try {
             if (articleMoves.undo(moves) < moves.size) {
-              Toast.makeText(this@MainActivity, "Restored available articles. Later changes were kept.", Toast.LENGTH_LONG).show()
+              feedback("Restored available articles. Later changes were kept.")
             }
           } catch (error: kotlinx.coroutines.CancellationException) { throw error }
-          catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t undo the move. Try again.", Toast.LENGTH_LONG).show() }
+          catch (_: Exception) { feedback("Couldn’t undo the move. Try again.") }
         }
       }
 
+      val rootVisible = route == Route.Inbox || route == Route.Archive || route == Route.Settings
+      val destinationState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+      Box(Modifier.fillMaxSize()) {
+      Column(Modifier.fillMaxSize()) {
+      Box(Modifier.weight(1f)) {
+      destinationState.SaveableStateProvider(route.toString()) {
       when (val r = route) {
           is Route.Inbox, is Route.Archive -> InboxScreen(
             archiveMode = r == Route.Archive,
             onArchiveOpen = { go(Route.Archive) }, onArchiveBack = { stack.pop(); tick++ },
-            listState = if (r == Route.Archive) archiveScrollState else mainScrollStates[selectedTab] ?: mainScrollStates.getValue(Triage.PRIORITY),
+            listState = if (r == Route.Archive || selectedTab == Triage.ARCHIVED) archiveScrollState else mainScrollStates[selectedTab] ?: mainScrollStates.getValue(Triage.PRIORITY),
             lists = lists, minutes = minutesByList, settings = settings,
             readerMove = readerMove, onReaderMoveConsumed = { noticeId -> if (readerMove?.id == noticeId) readerMove = null },
-            loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = { selectedTab = it },
-            highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, {
+            loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = {
+              selectedTab = it; shelfTab = it
+              if (route == Route.Archive) { stack.reset(); tick++ }
+            },
+            onLibrarySettings = { lifecycleScope.launch { prefs.save(it) } },
+            labelIdsByDoc = labelIdsByDoc,
+            onManageLabels = { go(Route.Labels) },
+            onSample = { lifecycleScope.launch {
+              val existing = lists.values.flatten().find { it.title == "Welcome to Reader" }
+              val id = existing?.documentId ?: Ingest.importPasted(this@MainActivity, WELCOME_MARKDOWN)
+              prefs.setWelcomeShown(); refresh(); go(Route.Reader(id))
+            } },
+            captures = captures,
+            onRetryCapture = { request -> lifecycleScope.launch {
+              try { com.reader.app.capture.CaptureRepository(db).retryWithSchedule(this@MainActivity, request.requestId) }
+              catch (_: Exception) { notices.show("Couldn’t retry this article. Try again.") }
+            } },
+            librarySearch = librarySearch, onMoreResults = { searchPages++ },
+            searchListState = searchScrollState,
+            highlights = { HighlightsFeed(highlightSummaries, db, highlightSeed, highlightsNewest, {
             highlightsNewest = it
             if (!it) {
               val ids = highlightSummaries.map { quote -> quote.id }
@@ -431,29 +417,41 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch { highlightsScrollState.scrollToItem(0) }
           },
             listState = highlightsScrollState,
-            onOpenLatest = lists.values.flatten().maxByOrNull { it.createdAt }?.let { d -> ({ go(Route.Reader(d.documentId)) }) },
+            onInspect = { go(Route.Highlight(it)) }, query = highlightQuery, onQuery = { highlightQuery = it },
+            importantOnly = importantOnly, onImportantOnly = { importantOnly = it },
+            matchingIds = if (highlightQuery.isNotBlank() || importantOnly) matchedHighlights.toSet() else null,
+            onOpenLatest = lists.values.flatten().filter { it.lastOpenedAt > 0 }.maxByOrNull { it.lastOpenedAt }?.let { d -> ({ go(Route.Reader(d.documentId)) }) },
             onOpenSource = { quoteId -> lifecycleScope.launch {
               // The quote is a door back to the essay. TOCTOU-guarded like
               // the Review path; deleted sources never strand the reader.
               val entity = try { db.highlights().byId(quoteId) } catch (_: Exception) { null }
               if (entity != null && db.documents().exists(entity.documentId)) go(Route.Reader(entity.documentId, entity.id))
-              else Toast.makeText(this@MainActivity, "Source article was deleted. Your quote is still saved.", Toast.LENGTH_LONG).show()
+              else feedback("Source article was deleted. Your quote is still saved.")
             } },
             onReview = { chosen -> lifecycleScope.launch {
               try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
-              catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn’t open review: ${e.message?.take(100)}", Toast.LENGTH_LONG).show() }
+              catch (e: Exception) { feedback("Couldn’t open review: ${e.message?.take(100)}") }
             } },
             onToggleImportant = { id -> lifecycleScope.launch {
-              // Feed toggles never run while the Review route is visible, and
-              // toggleImportant is one transaction: no review mutex needed.
-              try { com.reader.app.data.ReviewRepository(db).toggleImportant(id) }
-              catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t save importance. Try again.", Toast.LENGTH_LONG).show() }
+              try {
+                val repo = com.reader.app.data.HighlightRepository(db)
+                repo.toggleImportant(id)?.let { change -> notices.show("Importance updated") { repo.undo(change) } }
+              } catch (_: Exception) { feedback("Couldn’t save importance. Try again.") }
+            } },
+            onRecolor = { id, color -> lifecycleScope.launch {
+              try {
+                val repo = com.reader.app.data.HighlightRepository(db)
+                repo.recolor(id, color)?.let { change -> notices.show("Highlight color updated") { repo.undo(change) } }
+              } catch (_: Exception) { feedback("Couldn’t update the highlight. Try again.") }
             } },
             onRemoveHighlights = { ids -> lifecycleScope.launch {
               try {
                 val repo = com.reader.app.data.HighlightRepository(db)
-                ids.forEach { repo.remove(it) }
-              } catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t remove highlights. Try again.", Toast.LENGTH_LONG).show() }
+                val changes = db.withTransaction { ids.mapNotNull { repo.remove(it) } }
+                notices.show(if (changes.size == 1) "Highlight removed" else "${changes.size} highlights removed") {
+                  db.withTransaction { changes.forEach { repo.undo(it) } }
+                }
+              } catch (_: Exception) { feedback("Couldn’t remove highlights. Try again.") }
             } },
           ) },
           onOpen = { go(Route.Reader(it)) },
@@ -481,25 +479,25 @@ class MainActivity : ComponentActivity() {
                       com.reader.app.capture.CaptureRepository(db).getOrCreate(url, titleHint, "paste")
                     } catch (e: IllegalArgumentException) {
                       val id = Ingest.importPasted(this@MainActivity, text)
-              Toast.makeText(this@MainActivity, "That link didn’t open, so we kept the text.", Toast.LENGTH_LONG).show()
+              feedback("That link didn’t open, so we kept the text.")
                       refresh()
                       go(Route.Reader(id))
                       return@launch
                     }
                     com.reader.app.capture.CaptureWorker.scheduleById(this@MainActivity, request.requestId)
-                    Toast.makeText(this@MainActivity, "Link saved — fetching article", Toast.LENGTH_SHORT).show()
+                    feedback("Link saved — fetching article")
                     refresh()
                     observeCaptureForTruthfulToast(request.requestId)
                   }
                   else -> {
                     val id = Ingest.importPasted(this@MainActivity, text)
-                    Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
+                    feedback("Added to Reader")
                     refresh()
                     go(Route.Reader(id))
                   }
                 }
               } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Paste failed: " + (e.message?.take(120) ?: "unknown"), Toast.LENGTH_LONG).show()
+                feedback("Paste failed: " + (e.message?.take(120) ?: "unknown"))
               }
             }
           },
@@ -530,27 +528,12 @@ class MainActivity : ComponentActivity() {
           },
           searchScope = searchScope,
           onSearchScope = { searchScopeName = it.name },
-          searchResults = searchResults.takeIf { searchActive && searchText.isNotBlank() }?.let { results ->
-            // Labels AND age AND search text AND list scope: one predicate.
-            val norm = selectedLabelNorm
-            val withLabels = if (norm == null) results.rows
-            else results.rows.filter { labelsByDoc[it.documentId]?.contains(norm) == true }
-            val withAge = withLabels.filter { Triage.ageMatches(it.createdAt, settings.age) }
-            results.copy(rows = withAge)
-          },
           searchRecents = remember(searchActive, recentsTick) { recentsStore.recents() },
           onRecentTap = { tapped -> searchText = tapped },
           onRecentRemove = { removed -> recentsStore.remove(removed); recentsTick++ },
           onRecentsClear = { recentsStore.clear(); recentsTick++ },
           onOpenResult = { id -> openSearchResult(id) },
-          finishNotice = finishNotice,
-          onFinishNoticeConsumed = { finishNotice = null },
-          onFinishNoticeAction = { go(Route.Archive) },
-          onArchiveCoachDone = {
-            lifecycleScope.launch {
-              if (!prefs.load().archiveCoachShown) prefs.save(prefs.load().copy(archiveCoachShown = true))
-            }
-          },
+
         )
         is Route.Review -> {
           val review = remember { com.reader.app.data.ReviewRepository(db) }
@@ -615,7 +598,7 @@ class MainActivity : ComponentActivity() {
                   if (db.documents().exists(selected.documentId)) {
                     review.openedSource(selected.id)
                     go(Route.Reader(selected.documentId, selected.id))
-                  } else Toast.makeText(this@MainActivity, "Source article was deleted. Your quote is still saved.", Toast.LENGTH_LONG).show()
+                  } else feedback("Source article was deleted. Your quote is still saved.")
                 } finally { reviewMutex.unlock() }
               } }
             },
@@ -653,6 +636,9 @@ class MainActivity : ComponentActivity() {
           onArticleAction = { action ->
             if (action == ArticleAction.Delete) deleteArticle(r.id) else action.target?.let { moveReader(r.id, it) }
           },
+          onHighlightRemoved = { change -> notices.show("Highlight removed") {
+            if (!com.reader.app.data.HighlightRepository(db).undo(change)) notices.show("Later highlight changes were kept.")
+          } },
           onPauseAudio = { ttsController?.pause() },
           speechPlaying = ttsDocId == r.id && ttsState?.playing == true,
           playerVisible = ttsDocId == r.id && ttsState != null,
@@ -707,7 +693,13 @@ class MainActivity : ComponentActivity() {
                 val prepared = section
                 val writer = (application as com.reader.app.ReaderApp).progress
                 writer.offer(actual, prepared?.fraction(prepared.projection.offset(actual.blockId, actual.charOffset)) ?: 0f)
-                writer.flush(); stack.pop(); tick++
+                writer.flush()
+                // Resume actual Speed progress, consuming any old search/quote landing.
+                stack.pop()
+                (stack.current() as? Route.Reader)?.let { previous -> destinationState.removeState(previous.toString()); stack.pop() }
+                val resumed = Route.Reader(r.id)
+                destinationState.removeState(resumed.toString())
+                stack.push(resumed); tick++
               } },
             )
           }
@@ -716,13 +708,12 @@ class MainActivity : ComponentActivity() {
           LaunchedEffect(pairingChannelId) {
             val channelId = pairingChannelId ?: return@LaunchedEffect
             while (true) {
-              delay(2000)
               val channel = withContext(Dispatchers.IO) { db.channels().byId(channelId) }
               when (channel?.state) {
                 "active" -> {
                   pairingStatus = null
                   pairingError = null
-                  Toast.makeText(this@MainActivity, "Connected", Toast.LENGTH_SHORT).show()
+                  feedback("Connected")
                   refresh()
                   pop()
                   break
@@ -740,6 +731,7 @@ class MainActivity : ComponentActivity() {
                   break
                 }
               }
+              delay(500)
             }
           }
           PairingScreen(
@@ -763,7 +755,7 @@ class MainActivity : ComponentActivity() {
                   pairingChannelId = result.channelId
                   if (result.connected) {
                     pairingStatus = null
-                    Toast.makeText(this@MainActivity, "Connected", Toast.LENGTH_SHORT).show()
+                    feedback("Connected")
                     refresh()
                     pop()
                   } else {
@@ -781,9 +773,18 @@ class MainActivity : ComponentActivity() {
             },
           )
         }
+        is Route.Highlight -> HighlightDetailScreen(r.id, db, notices = notices, onBack = ::pop,
+          onSource = { documentId, quoteId -> go(Route.Reader(documentId, quoteId)) })
+        is Route.Labels -> ManageLabelsScreen(db, onBack = ::pop,
+          onMerge = { from, to -> lifecycleScope.launch {
+            val current = prefs.load()
+            if (from in current.labelIds) prefs.save(current.copy(labelIds = current.labelIds - from + to))
+          } },
+          onDeleted = { id -> lifecycleScope.launch { val current = prefs.load(); prefs.save(current.copy(labelIds = current.labelIds - id)) } })
         is Route.Settings -> SettingsScreen(
           settings = settings, channels = channels,
           libraryStats = libraryStats,
+          onLabels = { go(Route.Labels) }, onConnect = { go(Route.Pairing) },
           syncHealth = syncHealth, syncing = syncing, onSync = {
             if (!syncing) { syncing = true; lifecycleScope.launch {
               try { withContext(Dispatchers.IO) { ReaderSyncSession(applicationContext).runOnce() } }
@@ -791,7 +792,7 @@ class MainActivity : ComponentActivity() {
             } }
           },
           onSettingsChange = { lifecycleScope.launch { prefs.save(it) } },
-          signerLabel = "Private device key (Recommended). " + AmberSigner(this).status(),
+          signerLabel = "Private device key (Recommended). " + AmberSigner(this@MainActivity).status(),
           relaySummary = (channels.firstOrNull()?.relaysJson
             ?: "${READER_DEFAULT_RELAYS.size} default public relays (${READER_RELAY_WRITE_QUORUM} required per payload).") +
             "\n\nAdd up to 2 custom relays in Chrome Settings, then re-pair so both devices authenticate the same relay set.",
@@ -805,9 +806,24 @@ class MainActivity : ComponentActivity() {
           },
           onExport = { exportDestination.launch("reader-archive.zip") },
           onSignerInfo = {
-            Toast.makeText(this, "Random local keys by default. External signers only add provenance, never transport.", Toast.LENGTH_LONG).show()
+            feedback("Random local keys by default. External signers only add provenance, never transport.")
           },
         )
+      }
+      }
+      }
+      if (rootVisible) ReaderBottomNavigation(if (route == Route.Settings) "settings" else if (selectedTab == "highlights") "highlights" else "shelf") { destination ->
+        if (selectedTab != "highlights") shelfTab = if (route == Route.Archive) Triage.ARCHIVED else selectedTab
+        stack.reset()
+        when (destination) {
+          "settings" -> stack.push(Route.Settings)
+          "highlights" -> selectedTab = "highlights"
+          else -> selectedTab = shelfTab
+        }
+        tick++
+      }
+      }
+      notices.Host(Modifier.align(Alignment.BottomCenter).padding(bottom = if (rootVisible) 88.dp else 12.dp))
       }
       }
     }
@@ -890,19 +906,19 @@ class MainActivity : ComponentActivity() {
           val row = withContext(Dispatchers.IO) { db.captureRequests().byId(requestId) } ?: return@launch
           when (row.state) {
             "completed" -> {
-              Toast.makeText(this@MainActivity, "Ready to read.", Toast.LENGTH_SHORT).show()
+              notices.show("Ready to read.")
               refreshTick.value++
               return@launch
             }
             "link_only" -> {
               val detail = row.errorMessage?.take(120) ?: "article text unavailable"
-              Toast.makeText(this@MainActivity, "Link saved — $detail", Toast.LENGTH_LONG).show()
+              notices.show("Link saved — $detail")
               refreshTick.value++
               return@launch
             }
             "failed" -> {
               val detail = row.errorMessage?.take(120) ?: row.errorCode ?: "fetch failed"
-              Toast.makeText(this@MainActivity, "Link saved — $detail", Toast.LENGTH_LONG).show()
+              notices.show("Link saved — $detail")
               refreshTick.value++
               return@launch
             }
@@ -1037,16 +1053,16 @@ private fun ReaderWithTts(
   }
 }
 
-/** First-run sample: teaches triage, highlights and offline in 3 minutes. */
+/** Optional introduction; existing welcome articles are never replaced. */
 private const val WELCOME_MARKDOWN = """# Welcome to Reader
 
-This is your quiet shelf. Everything you save lives on this phone, readable offline, with no account and no cloud.
+A quiet place for things worth reading. Your saved article text and highlights are available offline on this phone.
 
-- **Inbox** collects everything. Swipe right to prioritize, left to save for later.
-- **Listen** reads aloud; **Speed** flies through at your pace.
-- Turn on **Highlight**, drag the handles, and keep what matters. Star passages to meet them again in Review.
+- **Inbox** collects new articles. On the shelf, swipe right to prioritize or left to save for later. Article menus offer the same choices.
+- **Continue reading** brings you back to your latest unfinished article. **Contents** and **Find in article** help you explore without losing your place.
+- Press and hold a passage, adjust the handles, then choose **Highlight**. Find your saved passages in **Highlights**; mark favorites Important and choose Review when you want to revisit them.
+- **Appearance** changes size, spacing, background and font. **Listen** reads aloud; **Speed** lets you try one word at a time.
+- At the end, choose **Finish & archive** when you are ready. Ordinary Archive simply puts an article away.
 
-Try it now: highlight the sentence above, then find it under Highlights.
-
-To save the web: share any page to Reader from your browser, or paste a link with the + button.
+To save something new, share a page to Reader from an Android app or use the + button to paste a link or text. Connect Chrome in Settings to send articles from your computer. A link becomes ready for offline reading when its article text has been fetched.
 """

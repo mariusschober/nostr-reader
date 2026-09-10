@@ -3,128 +3,79 @@ package com.reader.app.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.reader.app.data.ChannelEntity
 import com.reader.app.prefs.ReaderSettings
-import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
 
-/** Minimal normal settings. Nostr details stay under Advanced. */
-data class LibraryStats(
-  val total: Int = 0,
-  val weekMinutes: Int = 0,
-  val weekFinished: Int = 0,
-  val runDays: Int = 0,
-)
+data class LibraryStats(val total: Int = 0, val weekMinutes: Int = 0, val weekFinished: Int = 0, val runDays: Int = 0)
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun SettingsScreen(
-  settings: ReaderSettings,
-  channels: List<ChannelEntity>,
-  signerLabel: String,
-  relaySummary: String,
-  onBack: () -> Unit,
-  onRevokeChannel: (String) -> Unit,
-  onExport: () -> Unit,
-  onSignerInfo: () -> Unit,
-  onSettingsChange: (ReaderSettings) -> Unit,
-  syncHealth: com.reader.app.data.SyncHealthEntity?,
-  syncing: Boolean,
-  onSync: () -> Unit,
-  libraryStats: LibraryStats? = null,
+@Composable fun SettingsScreen(settings: ReaderSettings, channels: List<ChannelEntity>, signerLabel: String,
+  relaySummary: String, onBack: () -> Unit, onRevokeChannel: (String) -> Unit, onExport: () -> Unit,
+  onSignerInfo: () -> Unit, onSettingsChange: (ReaderSettings) -> Unit,
+  syncHealth: com.reader.app.data.SyncHealthEntity?, syncing: Boolean, onSync: () -> Unit,
+  libraryStats: LibraryStats? = null, onLabels: () -> Unit = {}, onConnect: () -> Unit = {},
 ) {
-  BackHandler { onBack() }
+  BackHandler(onBack = onBack)
   val c = appColors()
   val context = androidx.compose.ui.platform.LocalContext.current
-  val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "beta" }
-  var showAdvanced by remember { mutableStateOf(false) }
-  Scaffold(
-    containerColor = c.background,
-    topBar = {
-      Row(Modifier.fillMaxWidth().padding(8.dp, 4.dp)) {
-        IconButton(onClick = onBack) {
-          Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = c.text)
-        }
+  val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "debug" }
+  var advanced by remember { mutableStateOf(false) }
+  var appearance by remember { mutableStateOf(false) }
+  var disconnect by remember { mutableStateOf<String?>(null) }
+  Surface(color = c.background, contentColor = c.text, modifier = Modifier.fillMaxSize()) {
+    Column(Modifier.statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
+      TextButton(onClick = { appearance = true }) { Text("Reading appearance", style = MaterialTheme.typography.titleMedium) }
+      Text("App theme", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.reader.app.prefs.ThemeMode.entries.forEach { mode -> FilterChip(settings.themeMode == mode,
+          { onSettingsChange(settings.copy(themeMode = mode)) }, { Text(if (mode == com.reader.app.prefs.ThemeMode.SYSTEM) "Follow system" else mode.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
       }
-    },
-  ) { pad ->
-    Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-      libraryStats?.let { stats ->
-        Text("Library", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
-        Text("${stats.total} articles on this device", fontFamily = ReaderFonts.Ui, color = c.text)
-        val runText = if (stats.runDays >= 2) " · ${stats.runDays}-day run" else ""
-        Text("This week — ${stats.weekFinished} finished · ${stats.weekMinutes}m$runText",
-          fontFamily = ReaderFonts.Ui, color = c.text)
-        Text("Days start at midnight where you are.", fontFamily = ReaderFonts.Ui, fontSize = 12.sp, color = c.secondary)
-        TextButton(onClick = onExport) { Text("Export archive (ZIP)", fontFamily = ReaderFonts.Ui, color = c.text) }
-        Spacer(Modifier.height(16.dp))
+      HorizontalDivider(color = c.divider)
+      TextButton(onClick = onLabels) { Text("Labels", style = MaterialTheme.typography.titleMedium) }
+      HorizontalDivider(color = c.divider)
+      Text("Connected devices", style = MaterialTheme.typography.titleMedium)
+      if (channels.isEmpty()) Text("Connect Chrome to send articles from your computer.", color = c.secondary)
+      channels.forEachIndexed { i, channel -> Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Chrome${if (channels.size > 1) " ${i+1}" else ""}", modifier = Modifier.weight(1f))
+        TextButton(onClick = { disconnect = channel.channelId }) { Text("Disconnect") }
+      } }
+      Row {
+        TextButton(onClick = onConnect) { Text("Connect Chrome") }
+        TextButton(enabled = !syncing, onClick = onSync) { Text(if (syncing) "Checking…" else "Check for articles") }
       }
-      Text("Appearance", color = c.secondary)
-      // Wrapping row so System/Light/Dark stay reachable on narrow screens
-      // and large text. No new settings.
-      FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        com.reader.app.prefs.ThemeMode.entries.forEach { mode ->
-          FilterChip(selected = settings.themeMode == mode, onClick = { onSettingsChange(settings.copy(themeMode = mode)) },
-            label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) })
-        }
-      }
-      Spacer(Modifier.height(16.dp))
-      Text("Sync", color = c.secondary)
-      Text(syncHealth?.checkedAt?.let { "Last checked: " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it)) } ?: "Not checked yet", color = c.text)
-      syncHealth?.let { health ->
-        Text("${health.pendingTransfers} incoming transfers · ${health.pendingReceipts} receipts pending", color = c.secondary)
-        health.error?.let { Text(it, color = c.error) }
-      }
-      TextButton(enabled = !syncing, onClick = onSync) { Text(if (syncing) "Checking…" else "Sync now") }
-      Spacer(Modifier.height(16.dp))
-      Text("Chrome", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
-      if (channels.isEmpty()) {
-        Text("No devices connected.", fontFamily = ReaderFonts.Ui, color = c.text)
-      } else {
-        for (ch in channels) {
-          Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-            Column(Modifier.weight(1f)) {
-              Text("Chrome device", fontFamily = ReaderFonts.Ui, color = c.text)
-              Text(ch.trustedSenderPubkey.take(12) + "…", fontFamily = ReaderFonts.Ui, fontSize = 12.sp, color = c.secondary)
-            }
-            TextButton(onClick = { onRevokeChannel(ch.channelId) }) {
-              Text("Revoke", fontFamily = ReaderFonts.Ui, color = c.error)
-            }
-          }
-          Divider(color = c.divider)
-        }
-      }
-      Spacer(Modifier.height(16.dp))
-      Text("Signing", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
-      Text(signerLabel, fontFamily = ReaderFonts.Ui, color = c.text)
-      TextButton(onClick = onSignerInfo) { Text("About signing", fontFamily = ReaderFonts.Ui, color = c.text) }
-      Spacer(Modifier.height(16.dp))
-      Text("About", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
-      Text("Reader $version · Licenses bundled in-app", fontFamily = ReaderFonts.Ui, color = c.text)
-      TextButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/mariusschober/nostr-reader"))) }) { Text("GitHub · Source code") }
-      Text("Vision and guidance: Marius Schober\nDevelopment and implementation: AI\nOne human. Many tokens.", fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 14.sp)
-      Spacer(Modifier.height(16.dp))
-      TextButton(onClick = { showAdvanced = !showAdvanced }) {
-        Text(if (showAdvanced) "Hide Advanced" else "Advanced", fontFamily = ReaderFonts.Ui, color = c.text)
-      }
-      if (showAdvanced) {
-        Text("Relays", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
-        Text(relaySummary, fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.text)
-        Spacer(Modifier.height(8.dp))
-        Text("Security / keys", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
-        Text(
-          "Channel keys are wrapped by the Android Keystore and excluded from backups. Export never includes keys.",
-          fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.text,
-        )
+      HorizontalDivider(color = c.divider)
+      Text("Export", style = MaterialTheme.typography.titleMedium)
+      Text("Export saved articles and highlights as files in a ZIP. This is not a full backup of settings, keys or connected devices.", color = c.secondary)
+      TextButton(onClick = onExport) { Text("Export articles & highlights") }
+      HorizontalDivider(color = c.divider)
+      Text("About Reader", style = MaterialTheme.typography.titleMedium)
+      Text("A quiet place for things worth reading. Your saved text and highlights are available on this device.", color = c.secondary)
+      Text("Version $version", style = MaterialTheme.typography.bodySmall, color = c.secondary)
+      libraryStats?.let { stats -> Text("${stats.total} saved articles · ${stats.weekFinished} finished this week\nEstimated reading time: ${stats.weekMinutes} min this week", style = MaterialTheme.typography.bodySmall, color = c.secondary) }
+      TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide Advanced ▴" else "Advanced ▾") }
+      if (advanced) {
+        Text("Connection diagnostics", style = MaterialTheme.typography.titleMedium)
+        Text(syncHealth?.checkedAt?.let { "Last checked: " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it)) } ?: "Not checked yet", color = c.secondary)
+        syncHealth?.let { Text("${it.pendingTransfers} incoming transfers · ${it.pendingReceipts} receipts pending", color = c.secondary); it.error?.let { e -> Text(e, color = c.error) } }
+        Text(relaySummary, color = c.secondary)
+        Text("Signing & keys", style = MaterialTheme.typography.titleMedium)
+        Text(signerLabel, color = c.secondary)
+        channels.forEach { Text("Device ${it.trustedSenderPubkey.take(12)}…", style = MaterialTheme.typography.bodySmall) }
+        TextButton(onClick = onSignerInfo) { Text("About device keys") }
       }
     }
   }
+  if (appearance) AppearanceSheet(settings, onSettingsChange) { appearance = false }
+  disconnect?.let { id -> AlertDialog(onDismissRequest = { disconnect = null }, title = { Text("Disconnect Chrome?") },
+    text = { Text("This Chrome connection will no longer send articles to Reader. Saved articles and highlights stay on this device. Reconnect with a new code to resume sending.") },
+    confirmButton = { TextButton(onClick = { disconnect = null; onRevokeChannel(id) }) { Text("Disconnect") } },
+    dismissButton = { TextButton(onClick = { disconnect = null }) { Text("Keep connected") } }) }
 }

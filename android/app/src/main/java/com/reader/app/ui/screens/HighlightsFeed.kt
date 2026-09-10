@@ -46,25 +46,30 @@ import kotlin.math.roundToInt
 @Composable
 fun HighlightsFeed(
   quotes: List<HighlightSummary>,
+  db: com.reader.app.data.ReaderDb,
   seed: Long,
   newest: Boolean,
   onNewest: (Boolean) -> Unit,
   onReview: (String?) -> Unit,
   onToggleImportant: (String) -> Unit = {},
+  onRecolor: (String, String) -> Unit = { _, _ -> },
   onRemoveHighlights: (Set<String>) -> Unit = {},
   onOpenLatest: (() -> Unit)? = null,
   onOpenSource: (String) -> Unit = {},
+  onInspect: (String) -> Unit = {},
+  query: String = "", onQuery: (String) -> Unit = {},
+  importantOnly: Boolean = false, onImportantOnly: (Boolean) -> Unit = {},
+  matchingIds: Set<String>? = null,
   listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
-  val sorted = remember(quotes, newest, seed) {
+  val sorted = remember(quotes, newest, seed, matchingIds) {
+    val quotes = if (matchingIds == null) quotes else quotes.filter { it.id in matchingIds }
     if (newest) quotes.sortedWith(compareByDescending<HighlightSummary> { it.createdAt }.thenBy { it.id })
     else quotes.sortedWith(compareBy<HighlightSummary> { ReviewScheduler.feedKey(seed, it.id) }.thenBy { it.id })
   }
   var selecting by rememberSaveable { mutableStateOf(false) }
   var selectedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
-  // Removal always asks once. Both the menu/batch path and a committed
-  // swipe route through the same confirm dialog — a 60% left-swipe never
-  // deletes a saved passage without the confirm.
+  // Single removal has Undo; batch removal also asks for confirmation.
   var confirmRemoveIds by remember { mutableStateOf<Set<String>?>(null) }
   var menuId by remember { mutableStateOf<String?>(null) }
   // Forget selections for quotes that disappeared elsewhere.
@@ -83,28 +88,23 @@ fun HighlightsFeed(
     onToggleImportant(id)
   }
 
-  Column(Modifier.fillMaxSize()) {
+  Column(Modifier.fillMaxSize().imePadding()) {
     if (selecting) {
       FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("${selectedIds.size} selected", style = MaterialTheme.typography.titleSmall, modifier = Modifier.align(Alignment.CenterVertically))
         TextButton(
-          onClick = { confirmRemoveIds = selectedIds.toSet() }, enabled = selectedIds.isNotEmpty(),
+          onClick = { if (selectedIds.size == 1) onRemoveHighlights(selectedIds.toSet()) else confirmRemoveIds = selectedIds.toSet() }, enabled = selectedIds.isNotEmpty(),
           colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
         ) { Text("Remove") }
         TextButton(onClick = { selecting = false; selectedIds = emptyList() }) { Text("Done") }
       }
     } else {
-      FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        FilterChip(selected = !newest, onClick = { onNewest(false) }, label = { Text("Shuffle") })
+      OutlinedTextField(query, onQuery, singleLine = true, placeholder = { Text("Find a quote or source title") }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp))
+      FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(selected = newest, onClick = { onNewest(true) }, label = { Text("Newest") })
-        Button(enabled = quotes.isNotEmpty(), onClick = { onReview(null) }) { Text("Review") }
-      }
-      if (quotes.isNotEmpty()) {
-        Text(
-          "Swipe right to star, left to remove. Long-press to select several.",
-          style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-          modifier = Modifier.padding(horizontal = 20.dp),
-        )
+        FilterChip(selected = importantOnly, onClick = { onImportantOnly(!importantOnly) }, label = { Text("Important") })
+        TextButton(onClick = { onNewest(false) }) { Text("Shuffle") }
+        TextButton(enabled = quotes.isNotEmpty(), onClick = { onReview(null) }) { Text("Review") }
       }
     }
     if (quotes.isEmpty()) {
@@ -125,13 +125,14 @@ fun HighlightsFeed(
       }
     }
     else LazyColumn(Modifier.fillMaxSize(), state = listState) {
+      if (sorted.isEmpty()) item { Text("No highlights match. Try another word or remove Important.", Modifier.padding(20.dp)) }
       items(sorted, key = { it.id }) { quote ->
         HighlightSwipeRow(
           quote = quote,
           selecting = selecting,
           selected = quote.id in selectedIds,
           haptics = haptics,
-          onOpen = { if (selecting) toggle(quote.id) else onReview(quote.id) },
+          onOpen = { if (selecting) toggle(quote.id) else onInspect(quote.id) },
           onOpenSource = { onOpenSource(quote.id) },
           onLongPress = {
             Haptics.select(haptics)
@@ -143,7 +144,7 @@ fun HighlightsFeed(
           onSwiped = { action ->
             when (action) {
               HighlightAction.Important -> star(quote.id)
-              HighlightAction.Remove -> confirmRemoveIds = setOf(quote.id)
+              HighlightAction.Remove -> onRemoveHighlights(setOf(quote.id))
             }
           },
         )
@@ -151,31 +152,22 @@ fun HighlightsFeed(
       }
     }
   }
-  quotes.firstOrNull { it.id == menuId }?.let { quote ->
-    AlertDialog(
-      onDismissRequest = { menuId = null },
-      title = { Text("Highlight actions") },
-      text = {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
-          TextButton(onClick = { menuId = null; star(quote.id) }) {
-            Text(if (quote.important) "Remove importance" else "Mark important")
-          }
-          TextButton(onClick = { menuId = null; selecting = true; selectedIds = listOf(quote.id) }) { Text("Select") }
-          TextButton(onClick = {
-            menuId = null; confirmRemoveIds = setOf(quote.id)
-          }) { Text("Remove highlight", color = MaterialTheme.colorScheme.error) }
-        }
-      },
-      confirmButton = { TextButton(onClick = { menuId = null; onReview(quote.id) }) { Text("Review quote") } },
-      dismissButton = { TextButton(onClick = { menuId = null }) { Text("Cancel") } },
-    )
+  val menuQuote by remember(menuId) { db.highlights().observeById(menuId ?: "") }.collectAsState(initial = null)
+  val context = androidx.compose.ui.platform.LocalContext.current
+  menuQuote?.let { quote ->
+    HighlightActionsSheet(quote,
+      onColor = { onRecolor(quote.id, it) }, onImportant = { star(quote.id) },
+      onShare = { context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, "“${quote.quote}”\n— ${quote.sourceTitle}" + (quote.sourceUrl?.let { " ($it)" } ?: ""))
+      }, "Share highlight")) },
+      onRemove = { menuId = null; onRemoveHighlights(setOf(quote.id)) }, onDismiss = { menuId = null })
   }
   confirmRemoveIds?.let { doomed ->
     val count = doomed.size
     AlertDialog(
       onDismissRequest = { confirmRemoveIds = null },
       title = { Text(if (count == 1) "Remove highlight?" else "Remove $count highlights?") },
-      text = { Text("Your saved quotes will be deleted. The articles stay in your library. This cannot be undone.") },
+      text = { Text("Remove these highlights? The articles stay in your library. Undo will be available afterward.") },
       confirmButton = {
         TextButton(
           onClick = {
@@ -223,7 +215,7 @@ private fun HighlightSwipeRow(
       } else null
       offset = 0f
       gestureDrag = false
-      if (action != null) onSwiped(action)
+      if (action != null) { Haptics.commit(haptics); onSwiped(action) }
     }
     val action = when {
       offset > 1f -> HighlightAction.Important
@@ -271,16 +263,7 @@ private fun HighlightSwipeRow(
             onHorizontalDrag = { change, dx ->
               offset = (offset + dx).coerceIn(-widthPx, widthPx)
               change.consume()
-              // Vocabulary: a light tick the moment the drag crosses the
-              // commit threshold, heavier when the crossing is destructive
-              // (Remove). Fires once per crossing, never on release.
-              if (!selecting) {
-                val nowArmed = action?.takeIf { HighlightAction.commits(it, offset, widthPx) }
-                if (nowArmed != null && nowArmed != armedAction) {
-                  if (nowArmed == HighlightAction.Remove) Haptics.destructiveArm(view) else Haptics.swipeArm(haptics)
-                }
-                armedAction = nowArmed
-              }
+
             },
           )
         }
@@ -295,11 +278,14 @@ private fun HighlightSwipeRow(
       }
       Column(Modifier.weight(1f).semantics { if (selecting) stateDescription = if (selected) "Selected" else "Not selected" }) {
         val dark = com.reader.app.ui.theme.LocalReaderDark.current
+        Text(quote.sourceTitle, style = MaterialTheme.typography.labelMedium, maxLines = 2,
+          modifier = Modifier.padding(bottom = 8.dp).clickable(onClickLabel = "Open source article") { onOpenSource() })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
           Text(
-            quote.preview + if (quote.quoteLength > 800) "…" else "",
+            quote.preview,
+            maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyLarge,
-            fontFamily = com.reader.app.ui.theme.ReaderFonts.Asul,
+            fontFamily = com.reader.app.ui.theme.ReaderFonts.Newsreader,
             color = com.reader.app.ui.theme.HighlightColor.text(dark),
             modifier = Modifier.weight(1f)
               .background(com.reader.app.ui.theme.HighlightColor.parse(quote.color).background(dark))
@@ -319,8 +305,8 @@ private fun HighlightSwipeRow(
         Spacer(Modifier.height(8.dp))
         // The way back: a quote is a door to the essay it came from.
         Text(
-          "→ ${quote.sourceTitle}", style = MaterialTheme.typography.labelMedium,
-          modifier = Modifier.clickable(onClickLabel = "Open source article") { onOpenSource() },
+          "Read full highlight", style = MaterialTheme.typography.labelMedium,
+          modifier = Modifier.clickable(onClickLabel = "Read full highlight") { onOpen() },
         )
       }
       if (!selecting) IconButton(onClick = onMenu) {

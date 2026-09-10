@@ -17,5 +17,7 @@ sealed interface Route {
   @kotlinx.serialization.Serializable data class Rsvp(val id: String, val from: SemanticCursor) : Route
   @kotlinx.serialization.Serializable data object Pairing : Route
   @kotlinx.serialization.Serializable data object Settings : Route
+  @kotlinx.serialization.Serializable data class Highlight(val id: String) : Route
+  @kotlinx.serialization.Serializable data object Labels : Route
   @kotlinx.serialization.Serializable data object Review : Route
 }

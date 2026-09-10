@@ -25,11 +25,15 @@ data class ReaderSettings(
   val themeMode: ThemeMode = ThemeMode.SYSTEM,
   val ttsSpeed: Float = 1.0f,
   val rsvpWpm: Int = 300,
-  val lineSpacing: LineSpacing = LineSpacing.COMPACT,
+  val lineSpacing: LineSpacing = LineSpacing.COMFORT,
   val sort: LibrarySort = LibrarySort.NEWEST,
   val age: AgeFilter = AgeFilter.ANY,
   /** Bold body text — a low-vision/comfort pairing, real weight not fake. */
   val bold: Boolean = false,
+  val labelIds: Set<String> = emptySet(),
+  val unlabeled: Boolean = false,
+  val searchCurrentShelf: Boolean = false,
+  val searchTitlesOnly: Boolean = false,
   /** One-time gestures coach shown on the first Archive visit. */
   val archiveCoachShown: Boolean = false,
 ) {
@@ -52,6 +56,10 @@ class Prefs(private val ctx: Context) {
     val SPACING = stringPreferencesKey("lineSpacing")
     val SORT = stringPreferencesKey("sort")
     val AGE = stringPreferencesKey("age")
+    val LABELS = stringSetPreferencesKey("selectedLabelIds")
+    val UNLABELED = booleanPreferencesKey("unlabeledOnly")
+    val SEARCH_CURRENT = booleanPreferencesKey("searchCurrentShelf")
+    val SEARCH_TITLES = booleanPreferencesKey("searchTitlesOnly")
     val BOLD = booleanPreferencesKey("boldText")
     val ARCHIVE_COACH = booleanPreferencesKey("archiveCoachShown")
     val WELCOME = booleanPreferencesKey("welcomeShown")
@@ -75,6 +83,10 @@ class Prefs(private val ctx: Context) {
       sort = runCatching { LibrarySort.valueOf(d[K.SORT] ?: "NEWEST") }.getOrDefault(LibrarySort.NEWEST),
       age = runCatching { AgeFilter.valueOf(d[K.AGE] ?: "ANY") }.getOrDefault(AgeFilter.ANY),
       bold = d[K.BOLD] == true,
+      labelIds = d[K.LABELS].orEmpty(),
+      unlabeled = d[K.UNLABELED] == true,
+      searchCurrentShelf = d[K.SEARCH_CURRENT] == true,
+      searchTitlesOnly = d[K.SEARCH_TITLES] == true,
       archiveCoachShown = d[K.ARCHIVE_COACH] == true,
     )
   }
@@ -92,7 +104,11 @@ class Prefs(private val ctx: Context) {
         set(K.SPACING, s.lineSpacing.name)
         set(K.SORT, s.sort.name)
         set(K.AGE, s.age.name)
-        if (s.bold) set(K.BOLD, true)
+        set(K.BOLD, s.bold)
+        set(K.LABELS, s.labelIds)
+        set(K.UNLABELED, s.unlabeled)
+        set(K.SEARCH_CURRENT, s.searchCurrentShelf)
+        set(K.SEARCH_TITLES, s.searchTitlesOnly)
         if (s.archiveCoachShown) set(K.ARCHIVE_COACH, true)
       }
     }

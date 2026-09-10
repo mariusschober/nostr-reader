@@ -40,7 +40,7 @@ export class QaBrowser {
     const { targetId } = await this.send('Target.createTarget', { url });
     const sessionId = await this.attach(targetId);
     await this.send('Page.enable', {}, sessionId);
-    await this.wait(async () => (await this.evaluate(sessionId, 'document.readyState')) === 'complete');
+    await this.wait(async () => await this.evaluate(sessionId, 'location.href !== \"about:blank\" && document.readyState === \"complete\"'));
     return { targetId, sessionId };
   }
   async evaluate(sessionId, expression) {

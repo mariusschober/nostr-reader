@@ -169,36 +169,12 @@ class SearchRepository(
    * anything is missing — callers open at the article start instead.
    */
   suspend fun matchOffset(documentId: String, queryText: String): SearchHit? {
-    val tokens = SearchQuery.surfaceTokens(queryText)
-    if (tokens.isEmpty()) return null
-    return try {
-      ensureIndexed()
-      if (SearchFtsSupport.supported) {
-        val fts = SearchQuery.buildFtsQuery(queryText) ?: return null
-        val quads = db.search().ftsOffsets(SearchDao.offsetsQuery(documentId, fts)).firstOrNull() ?: return null
-        val hits = parseOffsets(quads).filter { it.col == 1 }
-        if (hits.isEmpty()) return null
-        val first = hits.minByOrNull { it.byteOffset }!!
-        val ftsBody = db.search().ftsBodies(SearchDao.bodyQuery(documentId)).firstOrNull()
-          ?: ftsBodyFallback(documentId) ?: return null
-        val term = utf8Slice(ftsBody, first.byteOffset, first.byteLength).ifBlank { return null }
-        val charEst = utf8PrefixLength(ftsBody, first.byteOffset)
-        resolveCursor(documentId, term, charEst)
-      } else {
-        val length = db.documents().contentLength(documentId)
-        if (length <= 0) return null
-        val canonical = db.documents().contentRange(documentId, 0, length)
-        val term = tokens.maxByOrNull { token ->
-          if (canonical.contains(token, ignoreCase = token.any { it in 'A'..'Z' || it in 'a'..'z' })) token.length else -1
-        }?.takeIf { canonical.contains(it, ignoreCase = it.any { c -> c in 'A'..'Z' || c in 'a'..'z' }) }
-          ?: return null
-        val idx = canonical.indexOf(term, ignoreCase = term.any { it in 'A'..'Z' || it in 'a'..'z' })
-          .takeIf { it >= 0 } ?: return null
-        resolveCursor(documentId, term, idx)
-      }
-    } catch (_: Exception) {
-      null
+    val terms = com.reader.app.core.SearchTerms.parse(queryText)
+    for (term in terms) {
+      val hit = ArticleNavigation(articles, db).find(documentId, term).firstOrNull() ?: continue
+      return SearchHit(documentId, hit.part, hit.cursor, hit.end ?: 0, term)
     }
+    return null
   }
 
   /** Shared tail: canonical offset + surface term → rendered cursor. */

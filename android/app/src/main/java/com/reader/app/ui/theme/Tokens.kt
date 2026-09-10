@@ -104,7 +104,29 @@ fun ReaderTheme(mode: ThemeMode, content: @Composable () -> Unit) {
     surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
     outline = c.secondary, error = c.error,
   )
-  CompositionLocalProvider(LocalReaderDark provides dark) { MaterialTheme(colorScheme = scheme, content = content) }
+  CompositionLocalProvider(LocalReaderDark provides dark) { MaterialTheme(colorScheme = scheme, typography = readerTypography(), content = content) }
+}
+
+@Composable
+private fun readerTypography(): androidx.compose.material3.Typography {
+  val base = androidx.compose.material3.Typography()
+  return androidx.compose.material3.Typography(
+    displayLarge = base.displayLarge.copy(fontFamily = ReaderFonts.Ui),
+    displayMedium = base.displayMedium.copy(fontFamily = ReaderFonts.Ui),
+    displaySmall = base.displaySmall.copy(fontFamily = ReaderFonts.Ui),
+    headlineLarge = base.headlineLarge.copy(fontFamily = ReaderFonts.Ui),
+    headlineMedium = base.headlineMedium.copy(fontFamily = ReaderFonts.Ui),
+    headlineSmall = base.headlineSmall.copy(fontFamily = ReaderFonts.Ui),
+    titleLarge = base.titleLarge.copy(fontFamily = ReaderFonts.Ui),
+    titleMedium = base.titleMedium.copy(fontFamily = ReaderFonts.Ui),
+    titleSmall = base.titleSmall.copy(fontFamily = ReaderFonts.Ui),
+    bodyLarge = base.bodyLarge.copy(fontFamily = ReaderFonts.Ui),
+    bodyMedium = base.bodyMedium.copy(fontFamily = ReaderFonts.Ui),
+    bodySmall = base.bodySmall.copy(fontFamily = ReaderFonts.Ui),
+    labelLarge = base.labelLarge.copy(fontFamily = ReaderFonts.Ui),
+    labelMedium = base.labelMedium.copy(fontFamily = ReaderFonts.Ui),
+    labelSmall = base.labelSmall.copy(fontFamily = ReaderFonts.Ui),
+  )
 }
 
 /** Bundled article fonts (assets/fonts). No network loading. */

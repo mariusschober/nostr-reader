@@ -211,131 +211,58 @@ private fun inlineLen(i: com.reader.app.core.Inline): Int = when (i) {
   is com.reader.app.core.Inline.FootnoteRef -> 0
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit, onClose: () -> Unit) {
   val c = readerColors(settings.background)
-  AlertDialog(
-    onDismissRequest = onClose,
-    containerColor = c.background,
-    title = { Text("Appearance", fontFamily = ReaderFonts.Ui, color = c.text) },
-    text = {
-      Column(Modifier.verticalScroll(rememberScrollState())) {
-        Text("Font", fontFamily = ReaderFonts.Ui, color = c.secondary)
-        ArticleFont.entries.forEach { f ->
-          val label = when (f) {
-            ArticleFont.NEWSREADER -> "Newsreader"
-            ArticleFont.CRIMSON_PRO -> "Crimson Pro"
-            ArticleFont.ASUL -> "Asul"
-            ArticleFont.ATKINSON -> "Atkinson Hyperlegible"
-            ArticleFont.ABEEZEE -> "ABeeZee"
-          }
-          Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(selected = settings.font == f, role = Role.RadioButton, onClick = { onChange(settings.copy(font = f)) }).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(
-              selected = settings.font == f, onClick = null,
-              colors = RadioButtonDefaults.colors(selectedColor = c.text, unselectedColor = c.secondary),
-            )
-            Text(label, fontFamily = fontFor(f), color = c.text, modifier = Modifier.weight(1f))
-          }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Text("Size: ${settings.fontSizeSp.toInt()}", fontFamily = ReaderFonts.Ui, color = c.secondary, modifier = Modifier.weight(1f))
-          // Steppers: the slider is slow for the common "one notch" nudge.
-          IconButton(onClick = { onChange(settings.copy(fontSizeSp = (settings.fontSizeSp - 1f).coerceIn(14f, 32f))) },
-            modifier = Modifier.semantics { contentDescription = "Smaller text" }) {
-            Icon(Icons.Default.Remove, contentDescription = null, tint = c.text)
-          }
-          IconButton(onClick = { onChange(settings.copy(fontSizeSp = (settings.fontSizeSp + 1f).coerceIn(14f, 32f))) },
-            modifier = Modifier.semantics { contentDescription = "Larger text" }) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = c.text)
-          }
-        }
-        Slider(
-          modifier = Modifier.semantics { contentDescription = "Article text size"; stateDescription = "${settings.fontSizeSp.toInt()}" },
-          value = settings.fontSizeSp, onValueChange = { onChange(settings.copy(fontSizeSp = it)) },
-          valueRange = 14f..32f,
-          colors = SliderDefaults.colors(thumbColor = c.text, activeTrackColor = c.text, inactiveTrackColor = c.divider),
-        )
-        Spacer(Modifier.height(8.dp))
-        Text("Line spacing", fontFamily = ReaderFonts.Ui, color = c.secondary)
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          com.reader.app.prefs.LineSpacing.entries.forEach { spacing ->
-            val label = when (spacing) {
-              com.reader.app.prefs.LineSpacing.COMPACT -> "Compact"
-              com.reader.app.prefs.LineSpacing.COMFORT -> "Comfort"
-              com.reader.app.prefs.LineSpacing.AIRY -> "Airy"
-            }
-            FilterChip(
-              selected = settings.lineSpacing == spacing, onClick = { onChange(settings.copy(lineSpacing = spacing)) },
-              label = { Text(label, fontFamily = ReaderFonts.Ui) },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = c.text, selectedLabelColor = c.background,
-                containerColor = c.background, labelColor = c.text,
-              ),
-              border = FilterChipDefaults.filterChipBorder(
-                borderColor = c.divider, selectedBorderColor = c.text,
-                enabled = true, selected = settings.lineSpacing == spacing,
-              ),
-            )
-          }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text("Margins", fontFamily = ReaderFonts.Ui, color = c.secondary)
-        // Wrapping row: every choice stays reachable on narrow screens and
-        // large text. No horizontal clipping; no new settings.
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          ArticleMargin.entries.forEach { m ->
-            FilterChip(
-              selected = settings.margin == m, onClick = { onChange(settings.copy(margin = m)) },
-              label = { Text(m.name.lowercase().replaceFirstChar { it.uppercase() }, fontFamily = ReaderFonts.Ui) },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = c.text, selectedLabelColor = c.background,
-                containerColor = c.background, labelColor = c.text,
-              ),
-              border = FilterChipDefaults.filterChipBorder(
-                borderColor = c.divider, selectedBorderColor = c.text,
-                enabled = true, selected = settings.margin == m,
-              ),
-            )
-          }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text("Background", fontFamily = ReaderFonts.Ui, color = c.secondary)
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          ArticleBackground.entries.forEach { b ->
-            FilterChip(
-              selected = settings.background == b, onClick = { onChange(settings.copy(background = b)) },
-              label = { Text(when (b) { ArticleBackground.FOLLOW_APP -> "Follow system"; ArticleBackground.PAPER -> "Paper"; ArticleBackground.SOFT -> "Soft"; ArticleBackground.SEPIA -> "Sepia"; ArticleBackground.INK -> "Ink"; ArticleBackground.BLACK -> "Black" }, fontFamily = ReaderFonts.Ui, maxLines = 2) },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = c.text, selectedLabelColor = c.background,
-                containerColor = c.background, labelColor = c.text,
-              ),
-              border = FilterChipDefaults.filterChipBorder(
-                borderColor = c.divider, selectedBorderColor = c.text,
-                enabled = true, selected = settings.background == b,
-              ),
-            )
-          }
-        }
-        Spacer(Modifier.height(8.dp))
-        // Bold body: real variable-font weight; pairs with larger sizes.
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(
-          selected = settings.bold, role = Role.Switch,
-          onClick = { onChange(settings.copy(bold = !settings.bold)) },
-        ), verticalAlignment = Alignment.CenterVertically) {
-          Text("Bold text", fontFamily = ReaderFonts.Ui, color = c.text, modifier = Modifier.weight(1f))
-          Switch(checked = settings.bold, onCheckedChange = { onChange(settings.copy(bold = it)) },
-            colors = SwitchDefaults.colors(checkedTrackColor = c.text, checkedThumbColor = c.background))
+  var expanded by remember { mutableStateOf(false) }
+  ModalBottomSheet(onDismissRequest = onClose, containerColor = c.background,
+    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    Column(Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState())
+      .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Appearance", style = MaterialTheme.typography.titleLarge, color = c.text, modifier = Modifier.weight(1f))
+        TextButton(onClick = onClose) { Text("Done") }
+      }
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Text size · ${settings.fontSizeSp.toInt()}", modifier = Modifier.weight(1f), color = c.text)
+        IconButton(onClick = { onChange(settings.copy(fontSizeSp = (settings.fontSizeSp - 1).coerceIn(14f, 32f))) }) { Icon(Icons.Default.Remove, "Smaller text", tint = c.text) }
+        IconButton(onClick = { onChange(settings.copy(fontSizeSp = (settings.fontSizeSp + 1).coerceIn(14f, 32f))) }) { Icon(Icons.Default.Add, "Larger text", tint = c.text) }
+      }
+      Text("Spacing", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.reader.app.prefs.LineSpacing.entries.forEach { spacing ->
+          FilterChip(settings.lineSpacing == spacing, { onChange(settings.copy(lineSpacing = spacing)) },
+            { Text(spacing.name.lowercase().replaceFirstChar { it.uppercase() }) })
         }
       }
-    },
-    confirmButton = {
-      TextButton(onClick = onClose, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
-        Text("Done", fontFamily = ReaderFonts.Ui)
+      Text("Background", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ArticleBackground.entries.forEach { b -> FilterChip(settings.background == b, { onChange(settings.copy(background = b)) },
+          { Text(when(b) { ArticleBackground.FOLLOW_APP -> "Follow app theme"; else -> b.name.lowercase().replaceFirstChar { it.uppercase() } }) }) }
       }
-    },
-  )
+      TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Fewer options ▴" else "Font, margins & bold ▾") }
+      if (expanded) {
+        Text("Font", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+        ArticleFont.entries.forEach { font ->
+          Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(settings.font == font, role = Role.RadioButton,
+            onClick = { onChange(settings.copy(font = font)) }), verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(settings.font == font, null)
+            Text(when(font) { ArticleFont.NEWSREADER -> "Newsreader"; ArticleFont.CRIMSON_PRO -> "Crimson Pro"; ArticleFont.ASUL -> "Asul"; ArticleFont.ATKINSON -> "Atkinson Hyperlegible"; ArticleFont.ABEEZEE -> "ABeeZee" }, fontFamily = fontFor(font), color = c.text)
+          }
+        }
+        Text("Margins", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          ArticleMargin.entries.forEach { margin -> FilterChip(settings.margin == margin, { onChange(settings.copy(margin = margin)) },
+            { Text(margin.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Text("Bold text", modifier = Modifier.weight(1f), color = c.text)
+          Switch(settings.bold, { onChange(settings.copy(bold = it)) }, modifier = Modifier.semantics { contentDescription = "Bold text" })
+        }
+      }
+    }
+  }
 }
 
 /**

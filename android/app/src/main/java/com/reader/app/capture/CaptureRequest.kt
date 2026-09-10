@@ -43,6 +43,9 @@ data class CaptureRequestEntity(
 
 @Dao
 interface CaptureRequestDao {
+  @Query("SELECT * FROM capture_requests WHERE state IN ('pending','fetching','failed') ORDER BY createdAt")
+  fun observeUnfinished(): kotlinx.coroutines.flow.Flow<List<CaptureRequestEntity>>
+
   @Insert(onConflict = OnConflictStrategy.ABORT)
   suspend fun insert(request: CaptureRequestEntity)
 

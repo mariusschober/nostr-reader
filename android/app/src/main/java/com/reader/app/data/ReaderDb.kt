@@ -41,6 +41,7 @@ data class DocumentSummary(
   /** Memory-layer context for finished rows; null while unread. */
   val finishedAt: Long? = null,
   val highlightCount: Int = 0,
+  val lastOpenedAt: Long = 0,
 )
 
 /** Minimal row for search-index backfill (never bodies at this layer). */
@@ -191,7 +192,7 @@ abstract class DocumentDao {
   @Query("SELECT CAST(COUNT(*) AS TEXT) || ':' || CAST(COALESCE(MAX(updatedAt), 0) AS TEXT) FROM documents")
   abstract fun observeRevision(): Flow<String>
 
-  @Query("SELECT documentId, title, sourceType, sourceName, sourceUrl, wordCount, state, list, progressFraction, createdAt, updatedAt, finishedAt, (SELECT COUNT(*) FROM highlights WHERE highlights.documentId = documents.documentId) AS highlightCount FROM documents ORDER BY createdAt DESC, documentId ASC")
+  @Query("SELECT documentId, title, sourceType, sourceName, sourceUrl, wordCount, state, list, progressFraction, createdAt, updatedAt, finishedAt, lastOpenedAt, (SELECT COUNT(*) FROM highlights WHERE highlights.documentId = documents.documentId) AS highlightCount FROM documents ORDER BY createdAt DESC, documentId ASC")
   abstract fun observeSummaries(): Flow<List<DocumentSummary>>
 
   @Query("SELECT documentId, title FROM documents ORDER BY createdAt")

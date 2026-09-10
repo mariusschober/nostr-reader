@@ -25,11 +25,11 @@ class QaPairingUiInstrumentedTest {
       for (i in 0 until node.childCount) node.getChild(i)?.let { visit(it)?.let { found -> return found } }
       return null
     }
-    return runner.uiAutomation.rootInActiveWindow?.let(::visit)
+    return runner.getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).rootInActiveWindow?.let(::visit)
   }
   internal fun waitNode(label: String, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo {
     repeat(100) { find(predicate)?.let { return it }; SystemClock.sleep(100) }
-    error("QA UI control unavailable: $label; active package=${runner.uiAutomation.rootInActiveWindow?.packageName ?: "none"}")
+    error("QA UI control unavailable: $label; active package=${runner.getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).rootInActiveWindow?.packageName ?: "none"}")
   }
   internal fun click(label: String) {
     var node = waitNode(label) { it.text?.toString() == label || it.contentDescription?.toString() == label }
@@ -57,7 +57,7 @@ class QaPairingUiInstrumentedTest {
     click("Review")
     click("Connect")
     repeat(600) {
-      if (find { it.contentDescription?.toString() == "Import, paste, or pair" } != null) return
+      if (find { it.contentDescription?.toString() == "Add article" } != null) return
       SystemClock.sleep(100)
     }
     error("QA pairing did not reach library within 60 seconds")
@@ -65,7 +65,7 @@ class QaPairingUiInstrumentedTest {
 
   internal fun openPairing() {
     ActivityScenario.launch(com.reader.app.ui.MainActivity::class.java)
-    click("Import, paste, or pair")
-    click("Pair Chrome")
+    click("Add article")
+    click("Connect Chrome")
   }
 }

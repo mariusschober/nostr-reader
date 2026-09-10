@@ -1,11 +1,8 @@
 package com.reader.app.data
 
-import com.reader.app.core.ReaderCore
 import com.reader.app.cursor.SemanticCursor
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -18,10 +15,6 @@ class ProgressWriter(private val db: ReaderDb) {
   private val writing = Mutex()
   private val pending = mutableMapOf<String, Pending>()
   private var sequence = 0L
-
-  /** Document IDs that crossed the finish line (sticky, once each). */
-  private val _finished = MutableSharedFlow<String>(extraBufferCapacity = 16)
-  val finished: SharedFlow<String> = _finished
 
   init {
     scope.launch {
@@ -50,15 +43,6 @@ class ProgressWriter(private val db: ReaderDb) {
     for ((id, value) in batch) {
       val now = System.currentTimeMillis()
       db.documents().setProgress(id, value.cursor.blockId, value.cursor.charOffset, value.fraction, now)
-      // Finish credit: full-article minutes, counted once, on device zone days.
-      // Reading time is derived from length, never wall-clock — no timer runs.
-      if (value.fraction >= 0.999f) {
-        val words = db.readingStats().wordCountOf(id) ?: 0
-        val day = java.time.LocalDate.now(java.time.ZoneId.systemDefault()).toString()
-        if (db.readingStats().recordFinish(id, ReaderCore.readingMinutes(words), day, now)) {
-          _finished.tryEmit(id)
-        }
-      }
       synchronized(lock) { if (pending[id]?.sequence == value.sequence) pending.remove(id) }
     }
   }
