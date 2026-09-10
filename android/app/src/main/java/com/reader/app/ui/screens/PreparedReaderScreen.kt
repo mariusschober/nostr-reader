@@ -228,7 +228,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   val dockMaxHeight = maxHeight * 0.45f
   Scaffold(containerColor = colors.background, contentColor = colors.text, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
     Column {
-      Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+      Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         TextButton(onClick = { leave() }, enabled = !transitioning) { Text("Back") }
         Spacer(Modifier.weight(1f))
         TextButton(onClick = { appearance = true }, enabled = !transitioning) { Text("Appearance") }

@@ -290,7 +290,7 @@ class MainActivity : ComponentActivity() {
         if (loaded.values.all { it.isEmpty() } && !prefs.isWelcomeShown() &&
           !this@MainActivity.packageName.endsWith(".qa")) {
           try {
-            Ingest.importPlainText(this@MainActivity, WELCOME_MARKDOWN, "welcome", "Welcome to Reader")
+            Ingest.importPasted(this@MainActivity, WELCOME_MARKDOWN)
             prefs.setWelcomeShown()
             Toast.makeText(this@MainActivity, "First save — welcome in. It’s yours, offline.", Toast.LENGTH_LONG).show()
             val reloaded = withContext(Dispatchers.IO) {
