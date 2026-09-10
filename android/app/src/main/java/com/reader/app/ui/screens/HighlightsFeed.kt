@@ -7,6 +7,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -52,6 +53,7 @@ fun HighlightsFeed(
   onToggleImportant: (String) -> Unit = {},
   onRemoveHighlights: (Set<String>) -> Unit = {},
   onOpenLatest: (() -> Unit)? = null,
+  onOpenSource: (String) -> Unit = {},
   listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
   val sorted = remember(quotes, newest, seed) {
@@ -130,6 +132,7 @@ fun HighlightsFeed(
           selected = quote.id in selectedIds,
           haptics = haptics,
           onOpen = { if (selecting) toggle(quote.id) else onReview(quote.id) },
+          onOpenSource = { onOpenSource(quote.id) },
           onLongPress = {
             Haptics.select(haptics)
             if (!selecting) { selecting = true; selectedIds = listOf(quote.id) }
@@ -196,6 +199,7 @@ private fun HighlightSwipeRow(
   selected: Boolean,
   haptics: androidx.compose.ui.hapticfeedback.HapticFeedback,
   onOpen: () -> Unit,
+  onOpenSource: () -> Unit,
   onLongPress: () -> Unit,
   onToggle: () -> Unit,
   onMenu: () -> Unit,
@@ -313,7 +317,11 @@ private fun HighlightSwipeRow(
           }
         }
         Spacer(Modifier.height(8.dp))
-        Text(quote.sourceTitle, style = MaterialTheme.typography.labelMedium)
+        // The way back: a quote is a door to the essay it came from.
+        Text(
+          "→ ${quote.sourceTitle}", style = MaterialTheme.typography.labelMedium,
+          modifier = Modifier.clickable(onClickLabel = "Open source article") { onOpenSource() },
+        )
       }
       if (!selecting) IconButton(onClick = onMenu) {
         Icon(Icons.Default.MoreVert, contentDescription = "Highlight options")

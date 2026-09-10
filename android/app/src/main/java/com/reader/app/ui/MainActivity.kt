@@ -429,9 +429,16 @@ class MainActivity : ComponentActivity() {
               highlightSeed = candidate
             }
             lifecycleScope.launch { highlightsScrollState.scrollToItem(0) }
-          }, 
+          },
             listState = highlightsScrollState,
             onOpenLatest = lists.values.flatten().maxByOrNull { it.createdAt }?.let { d -> ({ go(Route.Reader(d.documentId)) }) },
+            onOpenSource = { quoteId -> lifecycleScope.launch {
+              // The quote is a door back to the essay. TOCTOU-guarded like
+              // the Review path; deleted sources never strand the reader.
+              val entity = try { db.highlights().byId(quoteId) } catch (_: Exception) { null }
+              if (entity != null && db.documents().exists(entity.documentId)) go(Route.Reader(entity.documentId, entity.id))
+              else Toast.makeText(this@MainActivity, "Source article was deleted. Your quote is still saved.", Toast.LENGTH_LONG).show()
+            } },
             onReview = { chosen -> lifecycleScope.launch {
               try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
               catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn’t open review: ${e.message?.take(100)}", Toast.LENGTH_LONG).show() }
