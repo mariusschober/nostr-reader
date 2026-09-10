@@ -34,8 +34,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.reader.app.core.ReviewScheduler
 import com.reader.app.data.HighlightSummary
+import com.reader.app.ui.Haptics
 import com.reader.app.ui.HighlightAction
 import com.reader.app.ui.theme.Flexoki
+import com.reader.app.ui.theme.Motion
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
@@ -56,13 +58,16 @@ fun HighlightsFeed(
   }
   var selecting by rememberSaveable { mutableStateOf(false) }
   var selectedIds by rememberSaveable { mutableStateOf(listOf<String>()) }
-  var confirmRemove by remember { mutableStateOf(false) }
+  // Removal always asks once. Both the menu/batch path and a committed
+  // swipe route through the same confirm dialog — a 60% left-swipe never
+  // deletes a saved passage without the confirm.
+  var confirmRemoveIds by remember { mutableStateOf<Set<String>?>(null) }
   var menuId by remember { mutableStateOf<String?>(null) }
   // Forget selections for quotes that disappeared elsewhere.
   LaunchedEffect(quotes) {
     val live = quotes.mapTo(hashSetOf()) { it.id }
     selectedIds = selectedIds.filter { it in live }
-    if (selectedIds.isEmpty()) { selecting = false; confirmRemove = false }
+    if (selectedIds.isEmpty()) { selecting = false; confirmRemoveIds = null }
   }
   BackHandler(enabled = selecting) { selecting = false; selectedIds = emptyList() }
   fun toggle(id: String) {
@@ -70,7 +75,7 @@ fun HighlightsFeed(
   }
   val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
   fun star(id: String) {
-    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+    Haptics.star(haptics)
     onToggleImportant(id)
   }
 
@@ -79,7 +84,7 @@ fun HighlightsFeed(
       FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("${selectedIds.size} selected", style = MaterialTheme.typography.titleSmall, modifier = Modifier.align(Alignment.CenterVertically))
         TextButton(
-          onClick = { confirmRemove = true }, enabled = selectedIds.isNotEmpty(),
+          onClick = { confirmRemoveIds = selectedIds.toSet() }, enabled = selectedIds.isNotEmpty(),
           colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
         ) { Text("Remove") }
         TextButton(onClick = { selecting = false; selectedIds = emptyList() }) { Text("Done") }
@@ -105,9 +110,10 @@ fun HighlightsFeed(
           quote = quote,
           selecting = selecting,
           selected = quote.id in selectedIds,
+          haptics = haptics,
           onOpen = { if (selecting) toggle(quote.id) else onReview(quote.id) },
           onLongPress = {
-            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            Haptics.select(haptics)
             if (!selecting) { selecting = true; selectedIds = listOf(quote.id) }
             else toggle(quote.id)
           },
@@ -116,7 +122,7 @@ fun HighlightsFeed(
           onSwiped = { action ->
             when (action) {
               HighlightAction.Important -> star(quote.id)
-              HighlightAction.Remove -> onRemoveHighlights(setOf(quote.id))
+              HighlightAction.Remove -> confirmRemoveIds = setOf(quote.id)
             }
           },
         )
@@ -135,7 +141,7 @@ fun HighlightsFeed(
           }
           TextButton(onClick = { menuId = null; selecting = true; selectedIds = listOf(quote.id) }) { Text("Select") }
           TextButton(onClick = {
-            menuId = null; selectedIds = listOf(quote.id); confirmRemove = true
+            menuId = null; confirmRemoveIds = setOf(quote.id)
           }) { Text("Remove highlight", color = MaterialTheme.colorScheme.error) }
         }
       },
@@ -143,24 +149,23 @@ fun HighlightsFeed(
       dismissButton = { TextButton(onClick = { menuId = null }) { Text("Cancel") } },
     )
   }
-  if (confirmRemove) {
-    val count = selectedIds.size
+  confirmRemoveIds?.let { doomed ->
+    val count = doomed.size
     AlertDialog(
-      onDismissRequest = { confirmRemove = false },
+      onDismissRequest = { confirmRemoveIds = null },
       title = { Text(if (count == 1) "Remove highlight?" else "Remove $count highlights?") },
       text = { Text("Your saved quotes will be deleted. The articles stay in your library. This cannot be undone.") },
       confirmButton = {
         TextButton(
           onClick = {
-            confirmRemove = false
-            val doomed = selectedIds.toSet()
-            selecting = false; selectedIds = emptyList()
-            if (doomed.isNotEmpty()) onRemoveHighlights(doomed)
+            confirmRemoveIds = null
+            selecting = false; selectedIds = selectedIds.filter { it !in doomed }
+            onRemoveHighlights(doomed)
           },
           colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
         ) { Text("Remove") }
       },
-      dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
+      dismissButton = { TextButton(onClick = { confirmRemoveIds = null }) { Text("Cancel") } },
     )
   }
 }
@@ -171,6 +176,7 @@ private fun HighlightSwipeRow(
   quote: HighlightSummary,
   selecting: Boolean,
   selected: Boolean,
+  haptics: androidx.compose.ui.hapticfeedback.HapticFeedback,
   onOpen: () -> Unit,
   onLongPress: () -> Unit,
   onToggle: () -> Unit,
@@ -182,7 +188,9 @@ private fun HighlightSwipeRow(
   // and sets a guard so the up ending a swipe can't double-fire onClick.
   var offset by remember(quote.id) { mutableFloatStateOf(0f) }
   var gestureDrag by remember { mutableStateOf(false) }
-  val displayedOffset by animateFloatAsState(offset, if (gestureDrag) snap() else tween(160, easing = FastOutSlowInEasing), label = "Highlight swipe")
+  var armedAction by remember { mutableStateOf<HighlightAction?>(null) }
+  val view = androidx.compose.ui.platform.LocalView.current
+  val displayedOffset by animateFloatAsState(offset, if (gestureDrag) snap() else Motion.Settle, label = "Highlight swipe")
 
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val density = LocalDensity.current
@@ -236,11 +244,21 @@ private fun HighlightSwipeRow(
           if (selecting) return@pointerInput
           detectHorizontalDragGestures(
             onDragStart = { gestureDrag = true },
-            onDragCancel = { settle(false) },
-            onDragEnd = { settle(true) },
+            onDragCancel = { settle(false); armedAction = null },
+            onDragEnd = { settle(true); armedAction = null },
             onHorizontalDrag = { change, dx ->
               offset = (offset + dx).coerceIn(-widthPx, widthPx)
               change.consume()
+              // Vocabulary: a light tick the moment the drag crosses the
+              // commit threshold, heavier when the crossing is destructive
+              // (Remove). Fires once per crossing, never on release.
+              if (!selecting) {
+                val nowArmed = action?.takeIf { HighlightAction.commits(it, offset, widthPx) }
+                if (nowArmed != null && nowArmed != armedAction) {
+                  if (nowArmed == HighlightAction.Remove) Haptics.destructiveArm(view) else Haptics.swipeArm(haptics)
+                }
+                armedAction = nowArmed
+              }
             },
           )
         }

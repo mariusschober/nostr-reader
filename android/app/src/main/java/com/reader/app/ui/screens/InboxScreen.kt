@@ -28,9 +28,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MoveToInbox
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.foundation.background
 import com.reader.app.ui.ArticleAction
+import com.reader.app.ui.Haptics
+import com.reader.app.ui.theme.Motion
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -55,6 +60,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -122,15 +128,20 @@ fun InboxScreen(
   finishNotice: String? = null,
   onFinishNoticeConsumed: () -> Unit = {},
   onFinishNoticeAction: () -> Unit = {},
+  // Retires the one-time Archive gestures coach (see W1.4 in the plan):
+  // called on its auto-fade or on the user's first committed archive action.
+  onArchiveCoachDone: () -> Unit = {},
 
 ) {
   val c = appColors()
   val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
   val tab = if (archiveMode) Triage.ARCHIVED else selectedTab
   BackHandler(enabled = archiveMode, onBack = onArchiveBack)
-  LaunchedEffect(loaded, lists[Triage.INBOX]?.size, tab) {
+  // Fixed tab order: the chosen tab is never auto-switched away from. An
+  // empty Inbox is a place (its empty state with actions), not a detour.
+  // Only a persisted ARCHIVED selection is normalized when not browsing.
+  LaunchedEffect(loaded, tab) {
     if (!archiveMode && selectedTab == Triage.ARCHIVED) onSelectTab(Triage.PRIORITY)
-    if (loaded && lists[Triage.INBOX].isNullOrEmpty() && tab == Triage.INBOX) onSelectTab(Triage.PRIORITY)
   }
   var menuFor by remember { mutableStateOf<String?>(null) }
   var confirmDeleteId by remember { mutableStateOf<String?>(null) }
@@ -167,9 +178,15 @@ fun InboxScreen(
           duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) onUndoMove(move.moves)
     } finally { onReaderMoveConsumed(move.id) }
   }
-  // Finish + milestone notices: same finite-duration contract as moves.
+  // Finish + milestone notices: same finite-duration contract as moves,
+  // but never at the cost of a live Undo window — the undo is load-bearing
+  // (the move already happened), the finish notice is decoration. Wait for
+  // any action-bearing notice to clear, then surface this one.
   LaunchedEffect(finishNotice) {
     val notice = finishNotice ?: return@LaunchedEffect
+    while (snackbar.currentSnackbarData?.visuals?.actionLabel != null) {
+      kotlinx.coroutines.delay(250)
+    }
     try {
       snackbar.currentSnackbarData?.dismiss()
       if (snackbar.showSnackbar(notice, "View Archive", withDismissAction = true,
@@ -259,7 +276,9 @@ fun InboxScreen(
           Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
           verticalAlignment = Alignment.CenterVertically,
         ) {
-          (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights").filter { it != Triage.INBOX || !loaded || !lists[Triage.INBOX].isNullOrEmpty() }).forEachIndexed { i, key ->
+          // Fixed order, always visible: tab positions never shift as the
+          // user reads. An empty tab shows count 0 and its empty state.
+          (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights")).forEachIndexed { i, key ->
             if (i > 0) Spacer(Modifier.width(20.dp))
             val count = if (key == "highlights") highlightCount else lists[key]?.size
             TabText(Triage.tabLabel(key), count, selected = tab == key, color = c, onClick = { onSelectTab(key) })
@@ -321,6 +340,21 @@ fun InboxScreen(
           }
         }
       }
+      // First-visit gestures coach: the 30%/60% swipe thresholds are the
+      // one safety mechanism users can't discover by trial without risking
+      // a delete. Shown once above a non-empty Archive, fades itself out;
+      // the user's first committed archive action retires it for good.
+      if (archiveMode && !settings.archiveCoachShown && displayList.isNotEmpty()) {
+        Text(
+          "Swipe right to unarchive. Swiping far left starts a delete — you'll always confirm.",
+          fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary,
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        LaunchedEffect(archiveMode) {
+          kotlinx.coroutines.delay(9000)
+          onArchiveCoachDone()
+        }
+      }
       if (!loaded) CircularProgressIndicator(Modifier.padding(24.dp))
       else if (searchActive) SearchContent(
         query = searchText, onQuery = onSearchText, onSubmit = onSubmitSearch,
@@ -368,6 +402,7 @@ fun InboxScreen(
                 },
                 onToggle = { toggleSelect(d.documentId) },
                 onMenu = { menuFor = d.documentId }, onAction = { action ->
+                if (!settings.archiveCoachShown) onArchiveCoachDone()
                 if (action == ArticleAction.Delete) confirmDeleteId = d.documentId else onMove(setOf(d.documentId), Triage.INBOX)
               })
             } else {
@@ -680,7 +715,7 @@ private fun SwipeRow(
   var armed by remember { mutableStateOf(false) }
   val displayedOffset by animateFloatAsState(
     offset,
-    if (gestureDrag) snap() else tween(160, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+    if (gestureDrag) snap() else Motion.Settle,
     label = "Article swipe",
   )
   BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -697,7 +732,7 @@ private fun SwipeRow(
       gestureDrag = false
       armed = false
       if (hit != null) {
-        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        Haptics.commit(haptics)
         onSwiped(hit)
       }
     }
@@ -712,17 +747,35 @@ private fun SwipeRow(
       val nowArmed = kotlin.math.abs(offset) > thresholdPx
       if (nowArmed != armed) {
         armed = nowArmed
-        if (nowArmed) haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        if (nowArmed) Haptics.swipeArm(haptics)
       }
-      val tint = if (target == Triage.PRIORITY) colors.success else colors.warning
+      // Right brings nearer (green), left sets aside (blue). Warning is
+      // reserved for the destructive arm (Archive delete, Remove highlight).
+      val tint = if (target == Triage.PRIORITY || target == Triage.INBOX) colors.success else colors.link
       Box(
         Modifier.matchParentSize().padding(horizontal = 8.dp),
         contentAlignment = if (offset > 0) Alignment.CenterStart else Alignment.CenterEnd,
       ) {
-        Text(
-          Triage.tabLabel(target), fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold,
-          fontSize = 14.sp, color = tint,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            when (target) {
+              Triage.PRIORITY -> Icons.Default.Star
+              Triage.INBOX -> Icons.Default.MoveToInbox
+              Triage.LATER -> Icons.Default.Schedule
+              else -> Icons.Default.Inventory2
+            },
+            contentDescription = null, tint = tint, modifier = Modifier.size(18.dp),
+          )
+          Spacer(Modifier.width(6.dp))
+          Text(
+            Triage.tabLabel(target), fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold,
+            fontSize = 14.sp, color = tint,
+            modifier = Modifier.graphicsLayer {
+              scaleX = if (armed) 1.15f else 1f
+              scaleY = if (armed) 1.15f else 1f
+            },
+          )
+        }
       }
     }
     // NOTE (2026-09-09): tap and long-press live on the inner ArticleRow
@@ -825,28 +878,52 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
   var offset by remember(doc.documentId) { mutableFloatStateOf(0f) }
   var dragging by remember { mutableStateOf(false) }
   val latestAction by rememberUpdatedState(onAction)
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+  val view = androidx.compose.ui.platform.LocalView.current
+  var wasArmed by remember { mutableStateOf(false) }
+  val displayedOffset by animateFloatAsState(
+    offset,
+    if (dragging) snap() else Motion.Settle,
+    label = "Archive swipe",
+  )
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val width = with(LocalDensity.current) { maxWidth.toPx() }
     val action = ArticleAction.forArticle(Triage.ARCHIVED, offset > 0)!!
     val armed = ArticleAction.commits(action, offset, width)
+    // The archive is the most dangerous list, so it is the most felt one:
+    // heavier tick when the delete arm engages, light tick for unarchive,
+    // firm press on any committed release.
+    if (armed && !wasArmed && !selecting) {
+      if (action == ArticleAction.Delete) Haptics.destructiveArm(view) else Haptics.swipeArm(haptics)
+    }
+    wasArmed = armed
     if (offset != 0f) Row(Modifier.matchParentSize().padding(8.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = if (offset > 0) Arrangement.Start else Arrangement.End) {
       val tint = if (action == ArticleAction.Delete) colors.error else colors.link
       Icon(if (action == ArticleAction.Delete) Icons.Default.Delete else Icons.Default.MoveToInbox, null, tint = tint)
       Spacer(Modifier.width(6.dp))
-      Text(if (armed) action.releaseLabel else action.label, color = tint, fontFamily = ReaderFonts.Ui, fontSize = 13.sp)
+      Text(
+        if (armed) action.releaseLabel else action.label, color = tint, fontFamily = ReaderFonts.Ui, fontSize = 13.sp,
+        modifier = Modifier.graphicsLayer {
+          scaleX = if (armed) 1.15f else 1f
+          scaleY = if (armed) 1.15f else 1f
+        },
+      )
     }
-    Box(Modifier.offset { IntOffset(offset.roundToInt(), 0) }.background(colors.background).pointerInput(doc.documentId, width, selecting) {
+    Box(Modifier.offset { IntOffset(displayedOffset.roundToInt(), 0) }.background(colors.background).pointerInput(doc.documentId, width, selecting) {
       if (selecting) return@pointerInput
       detectHorizontalDragGestures(
         onDragStart = { dragging = true },
-        onDragCancel = { offset = 0f; dragging = false },
+        onDragCancel = { offset = 0f; dragging = false; wasArmed = false },
         onDragEnd = {
           val selected = ArticleAction.forArticle(Triage.ARCHIVED, offset > 0)!!
           val commit = ArticleAction.commits(selected, offset, width)
-          offset = 0f; dragging = false
-          if (commit) latestAction(selected)
+          offset = 0f; dragging = false; wasArmed = false
+          if (commit) {
+            Haptics.commit(haptics)
+            latestAction(selected)
+          }
         },
         onHorizontalDrag = { change, amount -> change.consume(); offset = (offset + amount).coerceIn(-width, width) },
       )

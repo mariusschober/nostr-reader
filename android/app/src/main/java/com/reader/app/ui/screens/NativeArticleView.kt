@@ -140,7 +140,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           val offset = if (allowed && swipeEligible) dx.coerceIn(-width.toFloat(), width.toFloat()) else 0f
           body.translationX = offset
           val armed = ArticleAction.commits(action, offset, width.toFloat())
-          if (armed && !swipeArmed) performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+          if (armed && !swipeArmed) {
+            if (action == ArticleAction.Delete) com.reader.app.ui.Haptics.destructiveArm(this)
+            else com.reader.app.ui.Haptics.swipeArm(this)
+          }
           swipeArmed = armed
           swipeLabel.layoutParams = LayoutParams(kotlin.math.abs(offset).toInt().coerceAtLeast(1), LayoutParams.WRAP_CONTENT,
             android.view.Gravity.CENTER_VERTICAL or (if (offset > 0) android.view.Gravity.LEFT else android.view.Gravity.RIGHT))
@@ -164,7 +167,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         swipeLabel.text = ""
         swipeLabel.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)
         onSwipeProgress(0f, false)
-        if (commit) ArticleAction.forArticle(articleList, later)?.let { reportCursor(); onArticleSwipe(it) }
+        if (commit) {
+          com.reader.app.ui.Haptics.commit(this)
+          ArticleAction.forArticle(articleList, later)?.let { reportCursor(); onArticleSwipe(it) }
+        }
         recycleVelocity()
         return true
       }

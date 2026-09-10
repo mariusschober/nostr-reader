@@ -538,6 +538,11 @@ class MainActivity : ComponentActivity() {
           finishNotice = finishNotice,
           onFinishNoticeConsumed = { finishNotice = null },
           onFinishNoticeAction = { go(Route.Archive) },
+          onArchiveCoachDone = {
+            lifecycleScope.launch {
+              if (!prefs.load().archiveCoachShown) prefs.save(prefs.load().copy(archiveCoachShown = true))
+            }
+          },
         )
         is Route.Review -> {
           val review = remember { com.reader.app.data.ReviewRepository(db) }

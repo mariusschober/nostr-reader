@@ -626,7 +626,22 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         }
         TextButton(onClick = { scope.launch { activeQuote = review.toggleImportant(quote.id) } }) { Text(if (quote.important) "Remove importance" else "Mark important") }
         TextButton(onClick = { share(quote) }) { Text("Share quote") }
-        TextButton(onClick = { scope.launch { undo = highlights.remove(quote.id); actions = emptyList(); activeQuote = null } }) { Text("Delete highlight") }
+        TextButton(onClick = {
+          scope.launch {
+            try {
+              undo = highlights.remove(quote.id)
+              actions = emptyList(); activeQuote = null
+              // Removal is instant but reversible: the snackbar is the
+              // visible Undo, not just the overflow entry.
+              snackbar.currentSnackbarData?.dismiss()
+              if (snackbar.showSnackbar("Highlight removed", "Undo", withDismissAction = true, duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
+                val change = undo ?: return@launch
+                if (highlights.undo(change)) undo = null
+                else snackbar.showSnackbar("Highlight changed since saving; Undo is unavailable.")
+              }
+            } catch (_: Exception) { snackbar.showSnackbar("Couldn’t remove highlight. Try again.") }
+          }
+        }) { Text("Delete highlight") }
       }
     }, confirmButton = { TextButton(onClick = { actions = emptyList(); activeQuote = null }) { Text("Done") } })
   }

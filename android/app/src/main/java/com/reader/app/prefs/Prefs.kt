@@ -28,6 +28,8 @@ data class ReaderSettings(
   val lineSpacing: LineSpacing = LineSpacing.COMPACT,
   val sort: LibrarySort = LibrarySort.NEWEST,
   val age: AgeFilter = AgeFilter.ANY,
+  /** One-time gestures coach shown on the first Archive visit. */
+  val archiveCoachShown: Boolean = false,
 ) {
   fun lineHeightMultiplier(): Float = when (lineSpacing) {
     LineSpacing.COMPACT -> 1.35f
@@ -48,6 +50,7 @@ class Prefs(private val ctx: Context) {
     val SPACING = stringPreferencesKey("lineSpacing")
     val SORT = stringPreferencesKey("sort")
     val AGE = stringPreferencesKey("age")
+    val ARCHIVE_COACH = booleanPreferencesKey("archiveCoachShown")
     val WELCOME = booleanPreferencesKey("welcomeShown")
     val MILESTONES = stringSetPreferencesKey("milestonesDone")
   }
@@ -68,6 +71,7 @@ class Prefs(private val ctx: Context) {
       lineSpacing = runCatching { LineSpacing.valueOf(d[K.SPACING] ?: "COMFORT") }.getOrDefault(LineSpacing.COMFORT),
       sort = runCatching { LibrarySort.valueOf(d[K.SORT] ?: "NEWEST") }.getOrDefault(LibrarySort.NEWEST),
       age = runCatching { AgeFilter.valueOf(d[K.AGE] ?: "ANY") }.getOrDefault(AgeFilter.ANY),
+      archiveCoachShown = d[K.ARCHIVE_COACH] == true,
     )
   }
 
@@ -84,6 +88,7 @@ class Prefs(private val ctx: Context) {
         set(K.SPACING, s.lineSpacing.name)
         set(K.SORT, s.sort.name)
         set(K.AGE, s.age.name)
+        if (s.archiveCoachShown) set(K.ARCHIVE_COACH, true)
       }
     }
   }

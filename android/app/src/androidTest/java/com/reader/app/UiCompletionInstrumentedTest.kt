@@ -238,10 +238,14 @@ class UiCompletionInstrumentedTest {
     }
   }
 
-  @Test fun loadedEmptyInboxAndIncomingArticlesKeepChosenTab() = isolated {
+  @Test fun loadedEmptyInboxStaysOnInboxAndIncomingArticlesKeepChosenTab() = isolated {
     fixture("Priority anchor", Triage.PRIORITY)
     ActivityScenario.launch(MainActivity::class.java).use {
-      waitFor("empty Inbox fallback") { node("Priority anchor") != null && node("Inbox") == null }
+      // Fixed tab order (2026-09-10 renegotiation): the empty Inbox holds its
+      // ground with its warm empty state instead of auto-switching away.
+      waitFor("empty Inbox holds its ground") {
+        node("Inbox zero. Nice.") != null || node("Your quiet shelf awaits") != null
+      }
       fun selected(label: String): Boolean {
         var n = node(label)
         while (n != null) { if (n.isSelected) return true; n = n.parent }
@@ -250,7 +254,6 @@ class UiCompletionInstrumentedTest {
       for (tab in listOf("Priority", "Later", "Highlights")) {
         tap(tab)
         fixture("Incoming for $tab")
-        waitFor("Inbox becomes available") { node("Inbox") != null }
         assertTrue("Incoming content must not steal $tab", selected(tab))
       }
       tap("Open archive")

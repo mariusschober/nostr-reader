@@ -19,6 +19,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.reader.app.core.ReviewState
 import com.reader.app.data.HighlightEntity
+import com.reader.app.ui.theme.Motion
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -57,9 +58,10 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
           var width by remember { mutableFloatStateOf(1f) }
           val next by rememberUpdatedState(onNext)
           val important by rememberUpdatedState(onImportant)
+          val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
           val translation by animateFloatAsState(
             targetValue = distance,
-            animationSpec = if (dragging) snap() else tween(220, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
+            animationSpec = if (dragging) snap() else Motion.Reveal,
             label = "Review card",
             finishedListener = { if (exiting) next() },
           )
@@ -80,7 +82,13 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
                 if (!exiting) {
                   dragging = false
                   if (distance < -threshold) advance()
-                  else { if (distance > threshold) important(); distance = 0f }
+                  else {
+                    if (distance > threshold) {
+                      com.reader.app.ui.Haptics.star(haptics)
+                      important()
+                    }
+                    distance = 0f
+                  }
                 }
               },
               onHorizontalDrag = { change, amount -> change.consume(); if (!exiting) distance += amount },
@@ -103,9 +111,8 @@ fun ReviewScreen(state: ReviewState?, quote: HighlightEntity?, loading: Boolean,
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalArrangement = Arrangement.spacedBy(4.dp),
           ) {
-            val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
             TextButton(enabled = !exiting, onClick = {
-              haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+              com.reader.app.ui.Haptics.star(haptics)
               onImportant()
             }) { Text(if (quote.important) "★ Important" else "☆ Important") }
             TextButton(enabled = !exiting, onClick = onShare) { Text("Share") }
