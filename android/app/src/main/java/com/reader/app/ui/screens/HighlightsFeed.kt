@@ -101,6 +101,31 @@ fun HighlightsFeed(
     onToggleImportant(id)
   }
 
+  // Floating Review banner: an overlay above the bottom navigation. Visible on
+  // arrival and at the top, hidden after a deliberate downward scroll and shown
+  // again on upward scroll. It never relayouts the quote list.
+  val hasHighlights = quotes.isNotEmpty()
+  var bannerVisible by rememberSaveable { mutableStateOf(true) }
+  val bannerSuppressed = selecting || menuId != null || confirmRemoveIds != null || query.isNotBlank()
+  val bannerThreshold = with(LocalDensity.current) { 16.dp.toPx() }
+  LaunchedEffect(listState, bannerSuppressed) {
+    if (bannerSuppressed) return@LaunchedEffect
+    var lastIndex = listState.firstVisibleItemIndex
+    var lastOffset = listState.firstVisibleItemScrollOffset
+    var accumulated = 0f
+    snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+      .collect { (index, offset) ->
+        if (index == lastIndex) accumulated += (offset - lastOffset).toFloat()
+        else accumulated += if (index > lastIndex) bannerThreshold * 4f else -bannerThreshold * 4f
+        lastIndex = index; lastOffset = offset
+        when {
+          index == 0 && offset == 0 -> { accumulated = 0f; bannerVisible = true }
+          accumulated >= bannerThreshold -> { bannerVisible = false; accumulated = 0f }
+          accumulated <= -bannerThreshold -> { bannerVisible = true; accumulated = 0f }
+        }
+      }
+  }
+
   Column(Modifier.fillMaxSize().imePadding()) {
     if (selecting) {
       FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -113,14 +138,6 @@ fun HighlightsFeed(
       }
     } else {
       val focusManager = LocalFocusManager.current
-      val hasHighlights = quotes.isNotEmpty()
-      // Review is the page's primary action until a search is active; then it
-      // condenses so results keep the room.
-      val condensed = hasHighlights && (query.isNotBlank() || importantOnly)
-      if (!condensed) {
-        ReviewEntryCard(reviewSummary, hasHighlights, onOpenLatest) { onStartReview(reviewSummary.finished) }
-        Spacer(Modifier.height(12.dp))
-      }
       ReaderSearchField(
         value = query, onValueChange = onQuery,
         placeholder = "Search highlights", clearLabel = "Clear highlight search",
@@ -134,12 +151,6 @@ fun HighlightsFeed(
         // never mistaken for an unselected secondary action.
         FilterChip(selected = !newest, onClick = { onNewest(false) }, label = { Text("Shuffle") })
       }
-      if (condensed) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-          Text("Review highlights", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-          TextButton(onClick = { onStartReview(reviewSummary.finished) }) { Text(reviewActionLabel(reviewSummary)) }
-        }
-      }
     }
     if (quotes.isEmpty()) {
       // Same centered warmth as the other empty states, with one way out.
@@ -151,34 +162,48 @@ fun HighlightsFeed(
             "While reading, press-and-hold any passage to keep it.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
+          if (onOpenLatest != null) {
+            Spacer(Modifier.height(16.dp))
+            TextButton(onClick = onOpenLatest) { Text("Open your latest read") }
+          }
         }
       }
-    }
-    else LazyColumn(Modifier.fillMaxSize(), state = listState) {
-      if (sorted.isEmpty()) item { Text("No highlights match. Try another word or remove Important.", Modifier.padding(20.dp)) }
-      items(sorted, key = { it.id }) { quote ->
-        HighlightSwipeRow(
-          quote = quote,
-          selecting = selecting,
-          selected = quote.id in selectedIds,
-          haptics = haptics,
-          onOpen = { if (selecting) toggle(quote.id) else onInspect(quote.id) },
-          onOpenSource = { onOpenSource(quote.id) },
-          onLongPress = {
-            Haptics.select(haptics)
-            if (!selecting) { selecting = true; selectedIds = listOf(quote.id) }
-            else toggle(quote.id)
-          },
-          onToggle = { toggle(quote.id) },
-          onMenu = { menuId = quote.id },
-          onSwiped = { action ->
-            when (action) {
-              HighlightAction.Important -> star(quote.id)
-              HighlightAction.Remove -> onRemoveHighlights(setOf(quote.id))
-            }
-          },
-        )
-        HorizontalDivider()
+    } else Box(Modifier.fillMaxSize()) {
+      LazyColumn(
+        Modifier.fillMaxSize(),
+        state = listState,
+        // Room beneath the last card so its footer stays reachable above the
+        // floating banner.
+        contentPadding = PaddingValues(bottom = 96.dp),
+      ) {
+        if (sorted.isEmpty()) item { Text("No highlights match. Try another word or remove Important.", Modifier.padding(20.dp)) }
+        items(sorted, key = { it.id }) { quote ->
+          HighlightSwipeRow(
+            quote = quote,
+            selecting = selecting,
+            selected = quote.id in selectedIds,
+            haptics = haptics,
+            onOpen = { if (selecting) toggle(quote.id) else onInspect(quote.id) },
+            onOpenSource = { onOpenSource(quote.id) },
+            onLongPress = {
+              Haptics.select(haptics)
+              if (!selecting) { selecting = true; selectedIds = listOf(quote.id) }
+              else toggle(quote.id)
+            },
+            onToggle = { toggle(quote.id) },
+            onMenu = { menuId = quote.id },
+            onSwiped = { action ->
+              when (action) {
+                HighlightAction.Important -> star(quote.id)
+                HighlightAction.Remove -> onRemoveHighlights(setOf(quote.id))
+              }
+            },
+          )
+          HorizontalDivider()
+        }
+      }
+      if (hasHighlights && bannerVisible && !bannerSuppressed) {
+        ReviewBanner(reviewSummary, Modifier.align(Alignment.BottomCenter)) { onStartReview(reviewSummary.finished) }
       }
     }
   }
@@ -213,50 +238,41 @@ fun HighlightsFeed(
   }
 }
 
-private fun reviewActionLabel(summary: ReviewSummary): String = when {
-  !summary.exists -> "Start review"
+private fun reviewBannerSecondary(summary: ReviewSummary): String = when {
+  !summary.exists -> "Start a round"
   summary.phase == "done" -> "Review again"
-  else -> "Continue review"
-}
-
-private fun reviewStateLine(summary: ReviewSummary, hasHighlights: Boolean): String = when {
-  !hasHighlights -> "Save a passage while reading to start a review."
-  !summary.exists -> "Revisit your saved passages."
-  summary.phase == "bonus" -> "Revisiting Important highlights"
-  summary.phase == "done" -> "Round complete."
-  else -> "${summary.remaining} remaining in this round"
+  summary.remaining > 0 -> "Continue · ${summary.remaining} remaining"
+  else -> "Continue"
 }
 
 /**
- * The page's single primary action. It reads persisted review state but never
- * writes it; only the button calls the deliberate start/continue/restart path.
+ * Floating Review entry above the bottom navigation, showing the persisted
+ * state without writing it. Only the tap calls the deliberate
+ * start/continue/restart path.
  */
 @Composable
-private fun ReviewEntryCard(summary: ReviewSummary, hasHighlights: Boolean, onOpenLatest: (() -> Unit)?, onStart: () -> Unit) {
+private fun ReviewBanner(summary: ReviewSummary, modifier: Modifier = Modifier, onStart: () -> Unit) {
   val c = appColors()
   Surface(
-    color = c.divider.copy(alpha = .35f),
+    color = c.surface,
+    contentColor = c.text,
     shape = RoundedCornerShape(12.dp),
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+    shadowElevation = 6.dp,
+    modifier = modifier
+      .fillMaxWidth()
+      .padding(horizontal = 16.dp, vertical = 12.dp)
+      .heightIn(min = 64.dp)
+      .clip(RoundedCornerShape(12.dp))
+      .clickable(onClickLabel = "Review highlights", onClick = onStart),
   ) {
-    Row(
-      Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
       Column(Modifier.weight(1f)) {
         Text("Review highlights", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(2.dp))
         Text(
-          reviewStateLine(summary, hasHighlights),
+          reviewBannerSecondary(summary),
           style = MaterialTheme.typography.bodySmall, color = c.secondary,
-          maxLines = 2, overflow = TextOverflow.Ellipsis,
+          maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
-      }
-      Spacer(Modifier.width(12.dp))
-      if (hasHighlights) {
-        FilledTonalButton(onClick = onStart) { Text(reviewActionLabel(summary)) }
-      } else if (onOpenLatest != null) {
-        TextButton(onClick = onOpenLatest) { Text("Open your latest read") }
       }
     }
   }
