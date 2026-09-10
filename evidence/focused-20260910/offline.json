@@ -1,0 +1,73 @@
+{
+  "radiosDisabled": true,
+  "wifiBefore": "1",
+  "dataBefore": "1",
+  "reader": {
+    "nodes": [
+      {
+        "text": "paulgraham.com · 2 min",
+        "description": null,
+        "editable": false,
+        "scrollable": false,
+        "checked": false,
+        "selected": false
+      },
+      {
+        "text": "Being a Noob\n\nJanuary 2020\n\nWhen I was young, I thought old people had everything figured out. Now that I'm old, I know this isn't true.\n\nI constantly feel like a noob. It seems like I'm always talking to some startup wo",
+        "description": null,
+        "editable": false,
+        "scrollable": false,
+        "checked": false,
+        "selected": false
+      },
+      {
+        "text": null,
+        "description": "Back",
+        "editable": false,
+        "scrollable": false,
+        "checked": false,
+        "selected": false
+      },
+      {
+        "text": null,
+        "description": "Appearance",
+        "editable": false,
+        "scrollable": false,
+        "checked": false,
+        "selected": false
+      },
+      {
+        "text": null,
+        "description": "Reading tools",
+        "editable": false,
+        "scrollable": false,
+        "checked": false,
+        "selected": false
+      },
+      {
+        "text": "5% · about 2 min left",
+        "description": null,
+        "editable": false,
+        "scrollable": false,
+        "checked": false,
+        "selected": false
+      },
+      {
+        "text": "Highlight",
+        "description": null,
+        "editable": false,
+        "scrollable": false,
+        "checked": false,
+        "selected": false
+      },
+      {
+        "text": "Contents",
+        "description": null,
+        "editable": false,
+        "scrollable": false,
+        "checked": false,
+        "selected": false
+      }
+    ]
+  }
+}

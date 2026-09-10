@@ -1,0 +1,502 @@
+[
+  {
+    "id": "chrome-1",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/greatwork.html"
+  },
+  {
+    "id": "chrome-2",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/kids.html"
+  },
+  {
+    "id": "chrome-3",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/selfindulgence.html"
+  },
+  {
+    "id": "chrome-4",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/prepare.html"
+  },
+  {
+    "id": "chrome-5",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/earn.html"
+  },
+  {
+    "id": "chrome-6",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/winc.html"
+  },
+  {
+    "id": "chrome-7",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/brandage.html"
+  },
+  {
+    "id": "chrome-8",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/field.html"
+  },
+  {
+    "id": "chrome-9",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/goodwriting.html"
+  },
+  {
+    "id": "chrome-10",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/woke.html"
+  },
+  {
+    "id": "chrome-11",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/writes.html"
+  },
+  {
+    "id": "chrome-12",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/when.html"
+  },
+  {
+    "id": "chrome-13",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/foundermode.html"
+  },
+  {
+    "id": "chrome-14",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/persistence.html"
+  },
+  {
+    "id": "chrome-15",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/reddits.html"
+  },
+  {
+    "id": "chrome-16",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/google.html"
+  },
+  {
+    "id": "chrome-17",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/best.html"
+  },
+  {
+    "id": "chrome-18",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/superlinear.html"
+  },
+  {
+    "id": "chrome-19",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/getideas.html"
+  },
+  {
+    "id": "chrome-20",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/read.html"
+  },
+  {
+    "id": "chrome-21",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/want.html"
+  },
+  {
+    "id": "chrome-22",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/alien.html"
+  },
+  {
+    "id": "chrome-23",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/users.html"
+  },
+  {
+    "id": "chrome-24",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/words.html"
+  },
+  {
+    "id": "chrome-25",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/goodtaste.html"
+  },
+  {
+    "id": "chrome-26",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/smart.html"
+  },
+  {
+    "id": "chrome-27",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/weird.html"
+  },
+  {
+    "id": "chrome-28",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/hwh.html"
+  },
+  {
+    "id": "chrome-29",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/own.html"
+  },
+  {
+    "id": "chrome-30",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/fn.html"
+  },
+  {
+    "id": "chrome-31",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/newideas.html"
+  },
+  {
+    "id": "chrome-32",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/nft.html"
+  },
+  {
+    "id": "chrome-33",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/real.html"
+  },
+  {
+    "id": "chrome-34",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/richnow.html"
+  },
+  {
+    "id": "chrome-35",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/simply.html"
+  },
+  {
+    "id": "chrome-36",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/donate.html"
+  },
+  {
+    "id": "chrome-37",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/worked.html"
+  },
+  {
+    "id": "chrome-38",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/earnest.html"
+  },
+  {
+    "id": "chrome-39",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/ace.html"
+  },
+  {
+    "id": "chrome-40",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/airbnbs.html"
+  },
+  {
+    "id": "chrome-41",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/think.html"
+  },
+  {
+    "id": "chrome-42",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/wtax.html"
+  },
+  {
+    "id": "chrome-43",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/conformism.html"
+  },
+  {
+    "id": "chrome-44",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/orth.html"
+  },
+  {
+    "id": "chrome-45",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/cred.html"
+  },
+  {
+    "id": "chrome-46",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/useful.html"
+  },
+  {
+    "id": "chrome-47",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/noob.html"
+  },
+  {
+    "id": "chrome-48",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/mod.html"
+  },
+  {
+    "id": "chrome-49",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/fp.html"
+  },
+  {
+    "id": "chrome-50",
+    "path": "chrome",
+    "url": "https://www.paulgraham.com/lesson.html"
+  },
+  {
+    "id": "link-1",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/welcome"
+  },
+  {
+    "id": "link-2",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/box-model"
+  },
+  {
+    "id": "link-3",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/selectors"
+  },
+  {
+    "id": "link-4",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/nesting"
+  },
+  {
+    "id": "link-5",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/the-cascade"
+  },
+  {
+    "id": "link-6",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/specificity"
+  },
+  {
+    "id": "link-7",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/inheritance"
+  },
+  {
+    "id": "link-8",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/color"
+  },
+  {
+    "id": "link-9",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/sizing"
+  },
+  {
+    "id": "link-10",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/layout"
+  },
+  {
+    "id": "link-11",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/flexbox"
+  },
+  {
+    "id": "link-12",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/grid"
+  },
+  {
+    "id": "link-13",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/logical-properties"
+  },
+  {
+    "id": "link-14",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/custom-properties"
+  },
+  {
+    "id": "link-15",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/spacing"
+  },
+  {
+    "id": "link-16",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/pseudo-elements"
+  },
+  {
+    "id": "link-17",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/pseudo-classes"
+  },
+  {
+    "id": "link-18",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/borders"
+  },
+  {
+    "id": "link-19",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/shadows"
+  },
+  {
+    "id": "link-20",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/focus"
+  },
+  {
+    "id": "link-21",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/cursors-and-pointers"
+  },
+  {
+    "id": "link-22",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/z-index"
+  },
+  {
+    "id": "link-23",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/anchor-positioning"
+  },
+  {
+    "id": "link-24",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/popover-and-dialog"
+  },
+  {
+    "id": "link-25",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/functions"
+  },
+  {
+    "id": "link-26",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/paths-shapes-clipping-masking"
+  },
+  {
+    "id": "link-27",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/gradients"
+  },
+  {
+    "id": "link-28",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/animations"
+  },
+  {
+    "id": "link-29",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/filters"
+  },
+  {
+    "id": "link-30",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/blend-modes"
+  },
+  {
+    "id": "link-31",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/lists"
+  },
+  {
+    "id": "link-32",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/counters"
+  },
+  {
+    "id": "link-33",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/transitions"
+  },
+  {
+    "id": "link-34",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/view-transitions-spas"
+  },
+  {
+    "id": "link-35",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/overflow"
+  },
+  {
+    "id": "link-36",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/backgrounds"
+  },
+  {
+    "id": "link-37",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/typography"
+  },
+  {
+    "id": "link-38",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/container-queries"
+  },
+  {
+    "id": "link-39",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/conclusion"
+  },
+  {
+    "id": "link-40",
+    "path": "android-link",
+    "url": "https://web.dev/learn/css/quiz"
+  },
+  {
+    "id": "link-41",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/welcome"
+  },
+  {
+    "id": "link-42",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/overview"
+  },
+  {
+    "id": "link-43",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/document-structure"
+  },
+  {
+    "id": "link-44",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/metadata"
+  },
+  {
+    "id": "link-45",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/semantic-html"
+  },
+  {
+    "id": "link-46",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/headings-and-sections"
+  },
+  {
+    "id": "link-47",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/attributes"
+  },
+  {
+    "id": "link-48",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/text-basics"
+  },
+  {
+    "id": "link-49",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/links"
+  },
+  {
+    "id": "link-50",
+    "path": "android-link",
+    "url": "https://web.dev/learn/html/lists"
+  }
+]

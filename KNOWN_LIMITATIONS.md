@@ -1,8 +1,27 @@
+# Current limits and scope
+
+The current UI cycle is documented in [FOCUSED_HANDOFF_20260910.md](FOCUSED_HANDOFF_20260910.md). It supersedes the old automatic-finish, milestone, welcome-seed, scrolling-tab and search contracts below. Room remains v13. The executable remaining-work plan is [NEXT_AGENT_PLAN.md](NEXT_AGENT_PLAN.md); installed source is `b14f128`.
+
+- Shelf and Highlights currently share a title style but use different effective row heights, shifting their title baselines. Their oversized outlined search fields and weak Review entry are observed TCL issues awaiting the planned design pass.
+- Review currently has a visually heavy quote panel, a right-aligned small header and no visible cycle progress. The scheduler uses cycles and Important bonuses, not calendar due dates; do not claim highlights are due today.
+- The final native end-of-text detection adjustment has final compile/lint proof but still needs one targeted TCL check; broader native position/Speed fixes have preceding targeted device evidence.
+
+- The user explicitly replaced extensive acceptance campaigns with 100 actual article saves (50 Chrome, 50 Android links), five representative inspections and one focused walkthrough. No scale, soak, two-hour reading, exhaustive lifecycle/accessibility/device or statistical performance campaign was run. Sustained use is the user's seven-day trial.
+- Chrome intake was exercised with the real unpacked extension and encrypted transfer to TCL through isolated local QA relays. This establishes that tested path, not current public-relay reliability.
+- Search is a uniform local SQLite substring implementation, independent of FTS5. Ordinary terms combine with AND, quoted phrases stay contiguous, facets apply before pages of 50. No stemming, language-wide accent folding, semantic search or ranked relevance beyond title preference is claimed.
+- Existing saved text remains immutable. The web.dev publisher-control cleanup affects future captures; older QA copies retain their original extraction. Recapture can create a new content version.
+- Very large articles remain in bounded parts. Contents and Find span parts; native selection and speech operate within the current part.
+- Images open online; offline image storage, notes, pagination mode, background audio, accounts, cloud processing and telemetry remain outside this cycle.
+- Export contains articles/highlights, not restorable settings, keys, pairings or Review scheduling. Listening pauses in the background. The UI labels duration statistics as estimates.
+- No push, merge, release, hosted CI or store acceptance is part of this handoff.
+
+## Historical checkpoints (not current acceptance)
+
 > Latest scoped Android UI completion: [UI_UX_COMPLETION_REPORT.md](UI_UX_COMPLETION_REPORT.md), source `ca06d1d`. TCL enlarged text/display, landscape, strict TalkBack controls, tables and review checks passed; this does not complete the broader beta campaigns below.
 
 > Current hardening: see [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md). [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md) records the prior candidate checkpoint (Room v9, Chrome 136, Android 118). Finalization on `codex/reliability-finalize` moves to Room v10, Chrome 140, Android 120 unit tests with host gates passing; the later UI completion report records scoped TCL device validation of finalization; this earlier report does not. Results below describe their recorded checkpoints.
 
-# Known limitations — 0.9.0-beta.1 candidate
+### Historical 0.9.0-beta.1 observations
 
 Latest focused evidence is in [UI_UX_COMPLETION_REPORT.md](UI_UX_COMPLETION_REPORT.md). Earlier UI checkpoints remain in [ARCHIVE_REFRESH.md](ARCHIVE_REFRESH.md) and [UI_REFRESH.md](UI_REFRESH.md). [BETA_TEST_REPORT.md](BETA_TEST_REPORT.md) records
 the preceding beta checkpoint. These limits remain unless explicitly superseded
