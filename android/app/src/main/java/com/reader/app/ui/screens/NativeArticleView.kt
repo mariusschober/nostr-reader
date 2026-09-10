@@ -247,12 +247,23 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         actionMode = mode
         selectionCommitted = false
         selectionSession = UUID.randomUUID().toString()
-        // Highlight rides first; Copy/Define/Share stay available. Clearing
-        // the menu surrendered the platform dictionary for no gain.
-        menu.add(0, HIGHLIGHT_ACTION, 0, "Highlight")
+        if (pen) {
+          // Continuous highlighting: keep the action mode (so handles,
+          // magnifier and edge autoscroll keep working) but suppress the
+          // floating text-action menu. The dock itself owns the actions.
+          menu.clear()
+        } else {
+          // Ordinary selection: Highlight rides first; Copy/Define/Share stay
+          // available. Clearing the menu surrendered the platform dictionary
+          // for no gain.
+          menu.add(0, HIGHLIGHT_ACTION, 0, "Highlight")
+        }
         return true
       }
-      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+      override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+        if (pen) { menu.clear(); return true }
+        return false
+      }
       override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
         if (item.itemId != HIGHLIGHT_ACTION) return false
         selectionCommitted = true

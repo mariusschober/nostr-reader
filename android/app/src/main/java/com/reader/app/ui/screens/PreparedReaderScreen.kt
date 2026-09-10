@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -278,9 +280,28 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     if (activeQuote != null) { actions = emptyList(); activeQuote = null; return }
     view?.flushSelection()
     if (view?.clearSelection() == true) return
+    // Back dismisses a sheet/selection first, then exits fullscreen focus,
+    // and only then leaves the article.
+    if (immersed) { immersed = false; return }
     transition(onBack)
   }
   BackHandler(enabled = !transitioning) { leave() }
+  // Fullscreen focus: hide the Android status/navigation bars and let an edge
+  // swipe reveal them transiently. Ordinary mode restores them, and disposal
+  // (leaving the reader) guarantees they come back.
+  DisposableEffect(immersed) {
+    val window = (context as? android.app.Activity)?.window
+    val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
+    if (controller != null) {
+      if (immersed) {
+        controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+      } else {
+        controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+      }
+    }
+    onDispose { controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+  }
   // Reading sessions run long: never let the lock screen interrupt
   // mid-paragraph. Scoped strictly to the reader and speed-read surfaces.
   DisposableEffect(id) {
@@ -394,7 +415,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       }
     }
   }, bottomBar = {
-    Column(Modifier.navigationBarsPadding()) {
+    if (!immersed || pen) Column(Modifier.navigationBarsPadding()) {
       if (inspectionOrigin != null) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = ::returnToReading, modifier = Modifier.weight(1f)) { Text("Return to reading position") }
         if (findResults.isNotEmpty()) {
@@ -414,7 +435,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           }
         }
       }
-      if (!immersed || pen) Column(Modifier.heightIn(max = dockMaxHeight).verticalScroll(rememberScrollState())) {
+      Column(Modifier.heightIn(max = dockMaxHeight).verticalScroll(rememberScrollState())) {
         val ready = prepared
         if (ready != null) {
           val fraction = if (atEndOfPart && part == ready.index.sections.lastIndex) 1f else (liveFraction ?: doc?.progressFraction ?: 0f).coerceIn(0f, 1f)
@@ -473,17 +494,17 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             readingActions.forEach { item -> ReadingActionButton(item, colors, Modifier.weight(1f)) }
           }
         }
-      } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        // Explicit accessibility route out of focus mode; clean article taps also work.
-        IconButton(onClick = { immersed = false }) { Icon(Icons.Default.MoreHoriz, "Show reading controls", tint = colors.secondary) }
       }
     }
   }) { padding ->
-    // "Back to top" bubble: scrolled down at least a viewport with no
-    // selection gesture in flight. One predictable rule, useful beyond
-    // search landings for every long article.
-    val showTopBubble = showTopBubbleRaw &&
-      !pen && actions.isEmpty() && !transitioning
+    // Return-to-beginning bubble: only after a library-search landing, once
+    // the opening is scrolled away, with no selection/highlight/sheet in
+    // flight. `at` is the search cursor (the legacy provenance field), so
+    // restored search routes stay compatible. Focus and overlays hide it
+    // temporarily without consuming it.
+    val showTopBubble = at != null && showTopBubbleRaw &&
+      !pen && actions.isEmpty() && !transitioning && !immersed &&
+      navigationSheet == null && !highlightHelp && activeQuote == null
     Box(Modifier.padding(padding).fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
       // Link-only fallback: honestly labeled, with Open original + Retry +
@@ -593,7 +614,14 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
           val wide = maxWidth > 700.dp
           val capWidth = if (wide) 680.dp else maxWidth
-          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+          Box(
+            Modifier.fillMaxSize().semantics {
+              // Focus mode keeps no visible reveal control; expose the reveal
+              // as an accessibility action on the reading surface instead.
+              if (immersed) customActions = listOf(CustomAccessibilityAction("Show reading controls") { immersed = false; true })
+            },
+            contentAlignment = Alignment.TopCenter,
+          ) {
             AndroidView(factory = { NativeArticleView(it).also { view = it } },
               modifier = Modifier.widthIn(max = capWidth).fillMaxHeight().clipToBounds(),
               update = { native ->
@@ -676,13 +704,18 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         SmallFloatingActionButton(
           onClick = {
             matchTint = false
-            view?.smoothScrollToTop()
+            // Beginning of part zero, not merely the current part.
+            if (part == 0) view?.smoothScrollToTop() else transition {
+              initial = SemanticCursor.start(id); liveCursor = null
+              displayRequest++
+              part = 0
+            }
           },
           modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(16.dp),
           containerColor = colors.surface,
           contentColor = colors.text,
         ) {
-          Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Back to top")
+          Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Go to article beginning")
         }
       }
     }
