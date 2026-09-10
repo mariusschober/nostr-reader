@@ -393,15 +393,14 @@ class UiCompletionInstrumentedTest {
     }
   }
 
-  @Test fun highlightsReviewSourceAndSettingsKeepFeedPosition() = isolated {
+  @Test fun highlightsSourceLinkAndSettingsKeepFeedPosition() = isolated {
     repeat(20) { quote(fixture("Nav quote ${it.toString().padStart(2, '0')}")) }
     ActivityScenario.launch(MainActivity::class.java).use { scenario ->
       tap("Highlights"); tap("Newest"); scroll(); scroll()
-      val before = anchor("Nav quote")
+      val before = anchor("→ Nav quote")
       tap("Settings"); back(); assertAnchor(before)
-      tap(before.first); waitFor("review") { node("Next") != null }
+      // The arrow line opens the source article at the passage directly.
       tap(before.first); waitFor("source reader") { node("Appearance") != null }
-      back(); waitFor("review again") { node("Next") != null }
       back(); assertAnchor(before)
       scenario.recreate(); assertAnchor(before)
       screenshot("highlights-restored")
