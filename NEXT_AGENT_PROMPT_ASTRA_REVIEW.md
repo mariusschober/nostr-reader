@@ -6,45 +6,59 @@ You are a rigorous, independent reviewer and auditor for an Android reader app. 
 
 - Repo: `/Users/schober/Projects/Nostr Reader`
 - Branch: `codex/reliability-finalize` — work stays local. Do not push, merge or release.
-- HEAD: `f98aa9f15cb3e7b5e0b383661580f006b141c10e` — handover and install evidence for the pass.
-- Implementation commit under review: **`fd1b813`** (`feat(android): quieter shelf markers and progress stroke`), directly on top of **`99c5cf9`** (`feat(android): shared destination headers, compact search, prominent Review`).
+- Audited revision (HEAD): **`9fa220d98150d01cab0b63014807b313c5551679`** — `feat(android): floating Review banner replaces the top entry card`.
+- Feature commits in scope, newest first:
+  - `9fa220d` floating Review banner replaces the top entry card
+  - `bdf17fc` fullscreen focus, search-only up button, native menu suppression while highlighting
+  - `5dbb98a` final-pass stage 1 — Reader rename, four reading actions, warmer Paper, one-time highlight help
+  - `99c5cf9` shared destination headers, compact search, prominent Review
+  - `fd1b813` quieter shelf markers and progress stroke
 - Base chain: `b14f128c54996515f45218f8d912ef106c174446` on `15a77ff647ac39f4e9165e47504d553504a1ac8b`.
-- Diff to audit: `git diff 15a77ff..fd1b813 -- android/ docs/` (use `git show` per commit for exact hunks, including `f98aa9f` docs/evidence).
-- Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `03cdfb15714568f9d63b51ad6fba94806728978bd6d4b502e3bb36d82d4b7916`, on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ`. QA package is `com.reader.app.qa`.
+- Diff to audit: `git diff 15a77ff..9fa220d -- android/ docs/` (use `git show` per commit for exact hunks).
+- Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `03cdfb15714568f9d63b51ad6fba94806728978bd6d4b502e3bb36d82d4b7916`, source commit `fd1b813`, on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ`. **The installed build predates the audited revision** — `bdf17fc`, `5dbb98a` and `9fa220d` are local-only and not yet installed. The QA package is `com.reader.app.qa`.
 
 ## Read first
 
+- `FINAL_USABILITY_SPEC_20260911.md` — the current specification; it supersedes conflicting older requirements.
 - `FOCUSED_HANDOFF_20260910.md` — implemented scope, evidence, state/code map, trial boundaries.
-- `NEXT_AGENT_PLAN.md` — the plan this pass executed (work packages A–E and §9 remaining checks).
-- `docs/COPY_DECK.md` — the copy/behavior contract that changed with this pass.
-- `evidence/focused-20260910/installation.json` — installed build and hashes.
-- `evidence/focused-20260910/final-verification-20260910b.txt` — host/device checks actually run.
+- `CONTINUE.md` — running stage-by-stage progress of the final usability pass.
+- `NEXT_AGENT_PLAN.md` — the earlier plan (work packages A–E); superseded where it conflicts with the new spec.
+- `docs/COPY_DECK.md` — the copy/behavior contract.
+- `evidence/focused-20260910/installation.json` and `final-verification-20260910b.txt` — installed build, hashes, checks actually run.
 - `evidence/focused-20260910/*.png` and `walkthrough.jsonl` — real TCL observations (not mockups).
+
+## Scope note
+
+The working tree may contain uncommitted work-in-progress (quote-tap Review with round preservation across `ReviewScheduler.kt`, `HighlightRepository.kt`, `HighlightsFeed.kt`, `ReviewScreen.kt`, `MainActivity.kt`). Audit the **committed revision `9fa220d`**; treat any uncommitted diff as out of scope unless the operator re-points you after committing it, and say so plainly if it changes your conclusion.
 
 ## What changed (audit targets)
 
-- `ui/DestinationHeader.kt` — new shared 52dp header row for Shelf / Highlights / Settings / Review.
-- `ui/ReaderSearchField.kt` — new compact 48dp search surface.
-- `data/HighlightRepository.kt`, `data/Highlights.kt` — read-only `observeSummary()` / `ReviewDao.observeParts()`.
-- `ui/screens/HighlightsFeed.kt` — Review entry card plus read-only state line.
+- `ui/DestinationHeader.kt` — shared 52dp header row for Reader/Shelf, Highlights, Settings and Review.
+- `ui/ReaderSearchField.kt` — compact 48dp search surface.
+- `ui/screens/PreparedReaderScreen.kt`, `ui/screens/NativeArticleView.kt` — four reading actions (Highlight · Contents · Listen · Speed), fullscreen focus (immersive bars), native text-action menu suppression while highlighting.
+- `ui/screens/HighlightsFeed.kt` — full-quote adaptive cards, Important badge, floating Review banner.
 - `ui/screens/ReviewScreen.kt` — compact header, truthful phase progress, Newsreader measure, Source action, completion state.
-- `ui/screens/InboxScreen.kt`, `SettingsScreen.kt`, `ui/MainActivity.kt` — wiring, one-time focus, Back-closes-search.
-- `ReaderFlowInstrumentedTest.kt` — updated completion-copy expectation.
+- `data/HighlightRepository.kt`, `data/Highlights.kt` — read-only `observeSummary()` / `ReviewDao.observeParts()`.
+- `ui/screens/InboxScreen.kt`, `ui/screens/SettingsScreen.kt`, `ui/MainActivity.kt` — wiring, one-time search focus, Back-closes-search, Reader rename, warmer Paper surface, one-time highlight help.
+- `ReaderFlowInstrumentedTest.kt`, `UiCompletionInstrumentedTest.kt` — updated completion-copy expectations.
 
 ## Audit axes and required questions
 
 **1. Correctness / code review**
 
-- Does `DestinationHeader` actually guarantee identical title geometry across destinations, or can content/actions still shift the baseline or reserve height differently?
+- Does `DestinationHeader` actually guarantee identical title geometry across Reader, Highlights, Settings and Review, or can content/actions still shift the baseline or reserve height differently?
 - Is the Review summary genuinely read-only (never starts, advances or repairs a cycle just to render)? Look for any write path, side effect, race or re-subscription.
+- Do the four reading actions preserve existing speech/session state (Listen pause/resume, Speed pause + flush) and stay ≥48dp at font scale 1.0–1.4?
+- Is fullscreen focus mode enterable and exitable without stranding the system bars or overlapping content, and does native menu suppression restore correctly?
 - Is the search field's one-time focus and Back-closes-search behavior correct across config change, process death, returning from an article, and empty → typed → cleared?
 - Is the phase progress count correct in every phase, including when Important bonus items follow the current queue?
-- Any regression in the gated `ReaderFlowInstrumentedTest` completion-copy contract?
-- Do the claims in `FOCUSED_HANDOFF_20260910.md` and `docs/COPY_DECK.md` match the actual code?
+- Any regression in the gated instrumented tests' completion-copy contract?
+- Do the claims in `FOCUSED_HANDOFF_20260910.md`, `CONTINUE.md` and `docs/COPY_DECK.md` match the actual code?
 
 **2. Performance**
 
-- Compose recomposition/measure cost of the shared header, Review entry card and search field; unstable lambdas/keys, allocations during item composition, whole-list recomposition on scroll?
+- Compose recomposition/measure cost of the shared header, floating Review banner and search field; unstable lambdas/keys, allocations during item composition, whole-list recomposition on scroll?
+- The floating banner appears/hides on scroll direction — does that cause per-frame recomposition or layout thrash?
 - Search: is the query bounded/debounced? Do `observeSummary()` / `observeParts()` leak, re-subscribe per recomposition, or run work on the main thread?
 - Reader/Review: any new main-thread database or layout work? Any regression against the pre-pass baseline in the touched files?
 - State your measurement method (Compose trace, `dumpsys gfxinfo`, profiler) or mark **NOT MEASURED**. Do not imply a benchmark you did not run.
@@ -52,8 +66,9 @@ You are a rigorous, independent reviewer and auditor for an Android reader app. 
 **3. UI**
 
 - Does the shared header hold a stable baseline at font scale 1.0 and 1.4 with no clipping or overlap? Verify on the TCL device where possible.
-- Does the compact search field replace the oversized outlined field consistently on Shelf and Highlights, with a reachable clear action and a correct editable accessibility label?
-- Is Review visually primary within Highlights, and are its typography, 3dp colour marker and completion states coherent?
+- Does the compact search field replace the oversized outlined field consistently on Reader and Highlights, with a reachable clear action and a correct editable accessibility label?
+- Do the four reading actions render as one coherent ≥48dp row (icon above a 12sp label) and wrap cleanly above font scale 1.3?
+- Is Review visually primary within Highlights, and are the card typography, 3dp colour marker, Important badge and completion states coherent?
 - Contrast, ≥48dp touch targets, focus order, colour-only signalling, overlap and truncation.
 
 **4. UX**
@@ -61,6 +76,7 @@ You are a rigorous, independent reviewer and auditor for an Android reader app. 
 - Inspection stays separate from deliberate Review; inspection must never advance a cycle. Confirm from code and, if possible, device.
 - Review entry states (`Revisit your saved passages.` / `N remaining in this round` / `Revisiting Important highlights` / `Round complete.` / save-first) correct and non-pressuring?
 - Source round-trip preserves the pending cycle, and Back from Review returns to Highlights with position intact?
+- Does fullscreen focus mode remove distractions without hiding controls the reader still needs, and is exit discoverable?
 - Search with the keyboard open, quoted phrases, `#` label autocomplete, and constraints beyond the first 50 matches.
 - Any copy that overclaims (offline availability, streaks, ranking) versus `docs/COPY_DECK.md`.
 
