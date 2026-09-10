@@ -691,8 +691,12 @@ fun ArticleRow(
   }
   Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
     if (siteColor != null) {
+      // A quiet site cue rather than a competing bar: short and slightly
+      // translucent. It never carries meaning on its own - the source name
+      // always appears in the meta line directly below it.
       Box(
-        Modifier.padding(top = 2.dp, end = 8.dp).width(3.dp).height(38.dp).background(siteColor),
+        Modifier.padding(top = 3.dp, end = 8.dp).width(3.dp).height(22.dp)
+          .background(siteColor.copy(alpha = 0.6f)),
       )
     }
     if (selecting) {
@@ -751,10 +755,11 @@ fun ArticleRow(
     Text(metaLine, fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
     if (d.progressFraction > 0.01f && d.progressFraction < 0.999f) {
       Spacer(Modifier.height(6.dp))
+      // Subordinate to the title: progress informs, it does not compete.
       LinearProgressIndicator(
         progress = d.progressFraction.coerceIn(0f, 1f),
         modifier = Modifier.fillMaxWidth().height(2.dp),
-        color = c.text, trackColor = c.divider,
+        color = c.secondary, trackColor = c.divider,
       )
     }
     }
