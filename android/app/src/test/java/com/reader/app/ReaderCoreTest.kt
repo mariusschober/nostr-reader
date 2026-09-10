@@ -107,4 +107,30 @@ class ReaderCoreTest {
     assertEquals("localhost", ReaderCore.registrableHost("localhost"))
     assertEquals("", ReaderCore.registrableHost(""))
   }
+
+  @Test
+  fun timeLeftWindowsAndArithmetic() {
+    // Outside the in-progress window rows show total minutes, not "left".
+    assertEquals(null, ReaderCore.timeLeft(40, 0f))
+    assertEquals(null, ReaderCore.timeLeft(40, 0.005f))
+    assertEquals(null, ReaderCore.timeLeft(40, 0.999f))
+    assertEquals(null, ReaderCore.timeLeft(40, 1f))
+    // In progress: proportional remainder, always at least one minute.
+    assertEquals(12, ReaderCore.timeLeft(40, 0.7f))
+    assertEquals(20, ReaderCore.timeLeft(40, 0.5f))
+    assertEquals(1, ReaderCore.timeLeft(40, 0.99f))
+  }
+
+  @Test
+  fun siteHueIsStableAndHostDerived() {
+    // Same site, same hue — forever, offline.
+    assertEquals(ReaderCore.siteHue("en.wikipedia.org", null), ReaderCore.siteHue(null, "https://en.wikipedia.org/wiki/X"))
+    assertEquals(ReaderCore.siteHue("www.norvig.com", null), ReaderCore.siteHue("norvig.com", null))
+    // Hue lives in [0, 360).
+    val hue = ReaderCore.siteHue("example.com", null)!!
+    assertTrue(hue in 0f..360f)
+    // No host at all: no mark.
+    assertEquals(null, ReaderCore.siteHue(null, null))
+    assertEquals(null, ReaderCore.siteHue("The Verge", null))
+  }
 }

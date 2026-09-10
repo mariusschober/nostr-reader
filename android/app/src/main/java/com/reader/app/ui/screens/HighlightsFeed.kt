@@ -28,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -50,6 +51,7 @@ fun HighlightsFeed(
   onReview: (String?) -> Unit,
   onToggleImportant: (String) -> Unit = {},
   onRemoveHighlights: (Set<String>) -> Unit = {},
+  onOpenLatest: (() -> Unit)? = null,
   listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
 ) {
   val sorted = remember(quotes, newest, seed) {
@@ -103,7 +105,23 @@ fun HighlightsFeed(
         )
       }
     }
-    if (quotes.isEmpty()) Text("Save a passage while reading to find it here.", modifier = Modifier.padding(24.dp))
+    if (quotes.isEmpty()) {
+      // Same centered warmth as the other empty states, with one way out.
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 32.dp)) {
+          Text("No highlights yet.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+          Spacer(Modifier.height(8.dp))
+          Text(
+            "While reading, press-and-hold any passage to keep it.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          if (onOpenLatest != null) {
+            Spacer(Modifier.height(16.dp))
+            TextButton(onClick = onOpenLatest) { Text("Open your latest read") }
+          }
+        }
+      }
+    }
     else LazyColumn(Modifier.fillMaxSize(), state = listState) {
       items(sorted, key = { it.id }) { quote ->
         HighlightSwipeRow(

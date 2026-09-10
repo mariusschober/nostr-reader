@@ -81,6 +81,32 @@ class UiCompletionInstrumentedTest {
     event(MotionEvent.ACTION_UP, b.exactCenterX(), b.exactCenterY(), down)
     SystemClock.sleep(250)
   }
+  /** Tabs may overflow the viewport on narrow devices: nudge the tab row
+   *  (the topmost scrollable surface) sideways until the label is visible. */
+  private fun tapTab(label: String) {
+    repeat(6) {
+      if (node(label) != null) { tap(label); return }
+      val row = nodes().filter { it.isVisibleToUser && it.isScrollable }
+        .minByOrNull { Rect().also(it::getBoundsInScreen).top } ?: error("No tab row")
+      val b = Rect().also(row::getBoundsInScreen)
+      // Drag inside the scrollable's own bounds — the pinned attention
+      // label to its right is not part of the scroll and would eat the
+      // gesture.
+      val y = b.exactCenterY()
+      val startX = b.right - b.width() * .15f
+      val endX = b.left + b.width() * .15f
+      val down = SystemClock.uptimeMillis()
+      event(MotionEvent.ACTION_DOWN, startX, y, down)
+      repeat(16) { step ->
+        event(MotionEvent.ACTION_MOVE, startX - (startX - endX) * (step + 1) / 16f, y, down)
+        SystemClock.sleep(20)
+      }
+      event(MotionEvent.ACTION_UP, endX, y, down)
+      SystemClock.sleep(500)
+      screenshot("tabscroll-${label.replace(Regex("[^a-zA-Z0-9]"), "-")}-$it")
+    }
+    error("Tab unreachable: $label")
+  }
   private fun back() {
     check(automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
     SystemClock.sleep(300)
@@ -256,11 +282,10 @@ class UiCompletionInstrumentedTest {
         fixture("Incoming for $tab")
         assertTrue("Incoming content must not steal $tab", selected(tab))
       }
-      tap("Open archive")
+      tapTab("Archive")
       fixture("Incoming while archived")
       SystemClock.sleep(500)
       assertNotNull(node("No archived articles."))
-      assertNull(node("Open archive"))
       back()
       waitFor("return to chosen Highlights tab") { selected("Highlights") }
     }
@@ -335,7 +360,7 @@ class UiCompletionInstrumentedTest {
     val a = fixture("Batch archived A", Triage.ARCHIVED)
     val b = fixture("Batch archived B", Triage.ARCHIVED)
     ActivityScenario.launch(MainActivity::class.java).use {
-      tap("Open archive"); tap("Article options"); tap("Select")
+      tapTab("Archive"); tap("Article options"); tap("Select")
       tap(a.title)
       waitFor("two archived selections") { node("2 selected") != null }
       screenshot("archive-batch-selection")
@@ -356,7 +381,7 @@ class UiCompletionInstrumentedTest {
     }
     ActivityScenario.launch(MainActivity::class.java).use { scenario ->
       for (list in listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, Triage.ARCHIVED)) {
-        if (list == Triage.ARCHIVED) tap("Open archive") else tap(Triage.tabLabel(list))
+        tap(Triage.tabLabel(list))
         scroll(); scroll()
         val before = anchor("Nav $list")
         tap("Settings"); back(); assertAnchor(before)

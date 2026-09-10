@@ -26,7 +26,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MoveToInbox
@@ -73,6 +72,7 @@ import com.reader.app.prefs.ReaderSettings
 import com.reader.app.ui.Triage
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -135,6 +135,7 @@ fun InboxScreen(
 ) {
   val c = appColors()
   val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+  val scope = androidx.compose.runtime.rememberCoroutineScope()
   val tab = if (archiveMode) Triage.ARCHIVED else selectedTab
   BackHandler(enabled = archiveMode, onBack = onArchiveBack)
   // Fixed tab order: the chosen tab is never auto-switched away from. An
@@ -206,10 +207,13 @@ fun InboxScreen(
     bottomBar = {
       if (selecting) {
         // Bottom bar (not in-flow): the list never jumps on long-press.
+        // FlowRow so 320dp phones and large font scales never clip an
+        // action off the bar.
         val liveIds = (if (searchActive) searchResults?.rows?.map { it.documentId } else lists[tab]?.map { it.documentId }).orEmpty()
-        Row(
+        FlowRow(
           Modifier.fillMaxWidth().background(c.background).padding(horizontal = 12.dp, vertical = 4.dp),
-          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(0.dp),
+          verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
           IconButton(onClick = { selecting = false; selectedIds = emptyList() }) {
             Icon(Icons.Default.Close, contentDescription = "Done selecting", tint = c.text)
@@ -237,7 +241,6 @@ fun InboxScreen(
               Text("Select all", fontFamily = ReaderFonts.Ui, color = c.text)
             }
           }
-          Spacer(Modifier.weight(1f))
           TextButton(onClick = {
             labelDialogIds = selectedIds.toSet()
           }, enabled = selectedIds.isNotEmpty()) {
@@ -251,15 +254,9 @@ fun InboxScreen(
     },
     topBar = {
       Row(Modifier.fillMaxWidth().padding(12.dp, 8.dp, 12.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (archiveMode) IconButton(onClick = onArchiveBack) { Icon(Icons.Default.ArrowBack, "Back") }
         Text(if (archiveMode) "Archive" else "Reader", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = c.text, modifier = Modifier.weight(1f))
         IconButton(onClick = { showAdd = true }) {
           Icon(Icons.Default.Add, contentDescription = "Import, paste, or pair", tint = c.text)
-        }
-        // The Archive destination has its own Back control; a disabled
-        // Archive icon here added visual noise without an action.
-        if (!archiveMode) IconButton(onClick = onArchiveOpen) {
-          Icon(Icons.Default.Archive, contentDescription = "Open archive", tint = c.text)
         }
         IconButton(onClick = onToggleSearch) {
           Icon(Icons.Default.Search, contentDescription = if (searchActive) "Close search" else "Search library", tint = c.text)
@@ -271,22 +268,34 @@ fun InboxScreen(
     },
   ) { pad ->
     Column(Modifier.padding(pad)) {
-      if (!archiveMode) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+      // Archive is a peer tab now, not a drill-in destination: the tab row
+      // is always on screen, positions never shift, and re-tapping the
+      // selected tab scrolls the list home (the universal Android reflex).
+      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Row(
           Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
           verticalAlignment = Alignment.CenterVertically,
         ) {
           // Fixed order, always visible: tab positions never shift as the
           // user reads. An empty tab shows count 0 and its empty state.
-          (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights")).forEachIndexed { i, key ->
+          (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights", Triage.ARCHIVED)).forEachIndexed { i, key ->
             if (i > 0) Spacer(Modifier.width(20.dp))
             val count = if (key == "highlights") highlightCount else lists[key]?.size
-            TabText(Triage.tabLabel(key), count, selected = tab == key, color = c, onClick = { onSelectTab(key) })
+            TabText(Triage.tabLabel(key), count, selected = tab == key, color = c, onClick = {
+              when {
+                key == Triage.ARCHIVED && !archiveMode -> onArchiveOpen()
+                archiveMode && key != Triage.ARCHIVED -> { onArchiveBack(); onSelectTab(key) }
+                tab == key && tab != "highlights" -> scope.launch { listState.animateScrollToItem(0) }
+                else -> onSelectTab(key)
+              }
+            })
           }
         }
-        // Pinned outside the scroll: the time can never collide with tabs,
-        // and Highlights (which has no minutes) shows nothing, not "0m".
-        if (tab != "highlights") Text(
+        // Pinned outside the scroll: the time can never collide with tabs.
+        // Highlights has no minutes; Archive is finished reading — its
+        // pieces never count toward reading time (the empty state promises
+        // exactly that), so it shows nothing rather than a reproach.
+        if (tab != "highlights" && tab != Triage.ARCHIVED) Text(
           ReaderCore.formatAttention(minutes[tab] ?: 0),
           fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary,
           maxLines = 1, modifier = Modifier.padding(start = 12.dp, end = 20.dp),
@@ -576,13 +585,6 @@ fun InboxScreen(
   }
 }
 
-private fun emptyHint(tab: String): String = when (tab) {
-  Triage.INBOX -> "Nothing here yet.\nSend something from Chrome."
-  Triage.PRIORITY -> "Nothing prioritized.\nSwipe a row right in the Inbox."
-  Triage.LATER -> "Nothing saved for later."
-  else -> "No archived articles."
-}
-
 /** Warm empty states with a way forward. Never a dead end. */
 @Composable
 private fun EmptyShelf(
@@ -622,7 +624,7 @@ private fun EmptyShelf(
     else -> {
       title = "No archived articles."
       body = "Finished pieces land here. They stay searchable, never count toward your reading time."
-      secondary = "Browse library" to { onBrowse(Triage.INBOX) }
+      secondary = "Browse Inbox" to { onBrowse(Triage.INBOX) }
     }
   }
   Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -630,7 +632,7 @@ private fun EmptyShelf(
       Text(title, fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = colors.text)
       Spacer(Modifier.height(8.dp))
       Text(body, fontFamily = ReaderFonts.Ui, color = colors.secondary, fontSize = 15.sp)
-      Spacer(Modifier.height(4.dp))
+      Spacer(Modifier.height(16.dp))
       primary?.let { (label, action) ->
         Button(onClick = action, colors = ButtonDefaults.buttonColors(containerColor = colors.text, contentColor = colors.background)) {
           Text(label, fontFamily = ReaderFonts.Ui)
@@ -820,7 +822,19 @@ fun ArticleRow(
   onLongPress: (() -> Unit)? = null,
 ) {
   val complete = d.progressFraction >= 0.999f
+  // Finished pieces are the memory layer, not a defect: full-strength title,
+  // a small Done pill, and the finished date (+ highlight count) in meta.
+  val dark = com.reader.app.ui.theme.LocalReaderDark.current
+  val siteHue = ReaderCore.siteHue(d.sourceName, d.sourceUrl)
+  val siteColor = siteHue?.let {
+    androidx.compose.ui.graphics.Color.hsl(it, saturation = 0.48f, lightness = if (dark) 0.62f else 0.42f)
+  }
   Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
+    if (siteColor != null) {
+      Box(
+        Modifier.padding(top = 2.dp, end = 8.dp).width(3.dp).height(38.dp).background(siteColor),
+      )
+    }
     if (selecting) {
       Checkbox(
         checked = selected, onCheckedChange = { onToggleSelect?.invoke() },
@@ -839,12 +853,18 @@ fun ArticleRow(
     Row(verticalAlignment = Alignment.CenterVertically) {
       Text(
         d.title, fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.SemiBold, fontSize = 16.sp,
-        color = if (complete) c.text.copy(alpha = 0.55f) else c.text,
+        color = c.text,
         maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
       )
       if (complete) {
         Spacer(Modifier.width(8.dp))
-        Icon(Icons.Default.Check, contentDescription = "Read", tint = c.secondary)
+        // A positive Done pill instead of a half-faded title: attended, not
+        // glitched. The check icon folds into the meta line below.
+        Text(
+          "Done", fontFamily = ReaderFonts.Ui, fontSize = 11.sp, color = c.text,
+          modifier = Modifier.background(c.divider, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        )
       }
       // Tap opens (or toggles selection); ⋮ opens the row menu. The menu
       // is hidden while selecting to keep the selection gesture unambiguous.
@@ -856,7 +876,17 @@ fun ArticleRow(
     }
     Spacer(Modifier.height(2.dp))
     val mins = ReaderCore.readingMinutes(d.wordCount)
-    Text("${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · ${mins} min · ${ReaderCore.formatAge(d.createdAt)}", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
+    val left = ReaderCore.timeLeft(mins, d.progressFraction)
+    val metaLine = when {
+      complete -> {
+        val finished = ReaderCore.formatAge(if (d.finishedAt != null) d.finishedAt else d.createdAt)
+        val hl = d.highlightCount
+        "✓ $finished${if (hl > 0) " · $hl highlight${if (hl == 1) "" else "s"}" else ""}"
+      }
+      left != null -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · $left min left · ${ReaderCore.formatAge(d.createdAt)}"
+      else -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · $mins min · ${ReaderCore.formatAge(d.createdAt)}"
+    }
+    Text(metaLine, fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
     if (d.progressFraction > 0.01f && d.progressFraction < 0.999f) {
       Spacer(Modifier.height(6.dp))
       LinearProgressIndicator(

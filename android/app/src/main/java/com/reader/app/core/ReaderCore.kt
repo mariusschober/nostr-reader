@@ -121,6 +121,43 @@ object ReaderCore {
 
   fun readingMinutes(words: Int): Int = maxOf(1, (words + 224) / 225)
 
+  /**
+   * Minutes left on a piece the reader is partway through. The single most
+   * decision-relevant number in the library ("can I finish this now?").
+   * Null outside the in-progress window — rows then show total minutes.
+   */
+  fun timeLeft(totalMinutes: Int, progressFraction: Float): Int? {
+    if (progressFraction <= 0.01f || progressFraction >= 0.999f) return null
+    return maxOf(1, kotlin.math.round(totalMinutes * (1f - progressFraction)).toInt())
+  }
+
+  /**
+   * Deterministic per-site hue (0..360) for the row's source mark, derived
+   * from the registrable host — same site, same color, forever, offline.
+   * Null when no host is known (pasted text without a link).
+   */
+  fun siteHue(sourceName: String?, sourceUrl: String?): Float? {
+    val named = sourceName?.trim().orEmpty()
+    val host = if (named.isNotBlank() && !named.contains(' ') && named.contains('.') &&
+      named.matches(Regex("[A-Za-z0-9.-]+"))
+    ) registrableHost(named)
+    else {
+      runCatching {
+        val h = java.net.URI(sourceUrl ?: "").host?.lowercase(java.util.Locale.ROOT).orEmpty()
+        h.trimEnd('.')
+      }.getOrDefault("").takeIf { it.isNotBlank() && '.' in it }?.let { registrableHost(it) }.orEmpty()
+    }
+    if (host.isBlank()) return null
+    var h = 2166136261L
+    for (ch in host) {
+      h = h xor ch.code.toLong()
+      h *= 16777619L
+      h = h and 0xFFFFFFFFL
+    }
+    return (h % 360L).toFloat()
+  }
+
+
   /** Relative age for library rows. Clock-skew futures read as Just now. */
   fun formatAge(addedAtMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
     val delta = nowMillis - addedAtMillis

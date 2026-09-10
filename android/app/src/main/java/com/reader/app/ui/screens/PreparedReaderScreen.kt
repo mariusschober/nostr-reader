@@ -432,7 +432,17 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       val text = content
       val titleDuplicate = part == 0 && ready != null && isDuplicateTitle(doc?.title.orEmpty(), ready.projection)
       if (!titleDuplicate && !doc?.title.isNullOrBlank()) {
-        Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp))
+        Column {
+          Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp, 16.dp, 0.dp))
+          // Same truthful source line as the library rows — never a raw
+          // "android-share" or bare host.
+          Text(
+            "${com.reader.app.core.ReaderCore.shortDisplaySource(doc?.sourceType.orEmpty(), doc?.sourceName, doc?.sourceUrl)} · ${com.reader.app.core.ReaderCore.readingMinutes(doc?.wordCount ?: 0)} min",
+            style = MaterialTheme.typography.bodySmall, color = colors.secondary,
+            modifier = Modifier.padding(16.dp, 2.dp, 16.dp, 0.dp),
+          )
+          Spacer(Modifier.height(4.dp))
+        }
       }
       if (saveError != null) TextButton(onClick = { transition { } }) { Text("Save failed — Retry", color = colors.error) }
       if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)

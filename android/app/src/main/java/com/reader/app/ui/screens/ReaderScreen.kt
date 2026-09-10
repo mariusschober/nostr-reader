@@ -147,7 +147,7 @@ fun ReaderScreen(
               Text(doc.title, fontFamily = font, fontSize = (settings.fontSizeSp + 7).sp, color = c.text)
               Spacer(Modifier.height(4.dp))
               val mins = ReaderCore.readingMinutes(doc.wordCount)
-              Text("${doc.sourceType} · ${mins} min", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary)
+              Text("${ReaderCore.shortDisplaySource(doc.sourceType, doc.sourceName, doc.sourceUrl)} · ${mins} min", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary)
               Spacer(Modifier.height(16.dp))
             }
           }

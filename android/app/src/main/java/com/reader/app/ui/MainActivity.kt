@@ -409,14 +409,14 @@ class MainActivity : ComponentActivity() {
       }
 
       when (val r = route) {
-        is Route.Inbox, is Route.Archive -> InboxScreen(
-          archiveMode = r == Route.Archive,
-          onArchiveOpen = { go(Route.Archive) }, onArchiveBack = { stack.pop(); tick++ },
-          listState = if (r == Route.Archive) archiveScrollState else mainScrollStates[selectedTab] ?: mainScrollStates.getValue(Triage.PRIORITY),
-          lists = lists, minutes = minutesByList, settings = settings,
-          readerMove = readerMove, onReaderMoveConsumed = { noticeId -> if (readerMove?.id == noticeId) readerMove = null },
-          loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = { selectedTab = it },
-          highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, {
+          is Route.Inbox, is Route.Archive -> InboxScreen(
+            archiveMode = r == Route.Archive,
+            onArchiveOpen = { go(Route.Archive) }, onArchiveBack = { stack.pop(); tick++ },
+            listState = if (r == Route.Archive) archiveScrollState else mainScrollStates[selectedTab] ?: mainScrollStates.getValue(Triage.PRIORITY),
+            lists = lists, minutes = minutesByList, settings = settings,
+            readerMove = readerMove, onReaderMoveConsumed = { noticeId -> if (readerMove?.id == noticeId) readerMove = null },
+            loaded = libraryLoaded, selectedTab = selectedTab, onSelectTab = { selectedTab = it },
+            highlights = { HighlightsFeed(highlightSummaries, highlightSeed, highlightsNewest, {
             highlightsNewest = it
             if (!it) {
               val ids = highlightSummaries.map { quote -> quote.id }
@@ -429,8 +429,9 @@ class MainActivity : ComponentActivity() {
               highlightSeed = candidate
             }
             lifecycleScope.launch { highlightsScrollState.scrollToItem(0) }
-          },
+          }, 
             listState = highlightsScrollState,
+            onOpenLatest = lists.values.flatten().maxByOrNull { it.createdAt }?.let { d -> ({ go(Route.Reader(d.documentId)) }) },
             onReview = { chosen -> lifecycleScope.launch {
               try { com.reader.app.data.ReviewRepository(db).resume(chosen); go(Route.Review) }
               catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn’t open review: ${e.message?.take(100)}", Toast.LENGTH_LONG).show() }
