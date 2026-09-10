@@ -25,10 +25,11 @@ ADB serial: re-identify TCL; expected ZXKRS4VKGQ8PWGEQ. Destructive fixtures use
 - [x] Review promoted to the primary Highlights action with a read-only state card
 - [x] Review typography (Newsreader 22sp), truthful progress, distinct Source action, completion state
 - [x] Quieter highlight previews; Shuffle shows a selected state
+- [x] Quieter shelf rows — short translucent site marker, muted progress stroke (commit `fd1b813`)
 - [x] Native end-of-text re-checked on TCL (card appears, viewport stable, no completion credit)
 - [x] Native selection re-checked on TCL (handle drag → one saved range, no duplicates)
 - [x] Enlarged-text 1.4 pass on QA, system value restored to 1.0
-- [x] Normal `assembleDebug` + in-place install; installed hash `a7cc78a9…`; owner data preserved
+- [x] Normal `assembleDebug` + in-place install; installed hash `03cdfb15…` (`fd1b813`); owner data preserved
 
 Still open (see NEXT_AGENT_PLAN.md §9): multiword `#` autocomplete, >50 paging UI, all active-constraint
 combinations, one expanded table and one captured local footnote when the corpus supplies them, and

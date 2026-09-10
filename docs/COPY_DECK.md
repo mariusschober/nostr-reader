@@ -13,6 +13,7 @@ Use clear, quiet language. Describe the stored outcome accurately and give a use
 | Bottom navigation | Shelf · Highlights · Settings | Hidden in the reader, quote detail and Review. Re-selecting preserves position. |
 | Destination header | Shelf · Highlights · Settings · Review | One shared row: 52dp minimum height, 20dp leading inset, common headline typography and vertical alignment. The row reserves its height with no trailing actions, so the title baseline never moves between destinations. Height grows with the system text scale instead of clipping. Shelf's Search and Add stay at least 48 × 48dp. |
 | Shelves | Inbox · Priority · Later · Archive | All visible, wrapping at enlarged text; counts outside the tabs. |
+| Shelf rows | Title · source · remaining time · Done pill | The title stays dominant: the per-source marker is a short 22dp accent paired with the source name in the meta line, and in-progress progress is a thin muted stroke. Unread, in-progress, At end, Finished and Link only are distinguished by text, never by colour alone. |
 | Resume | Continue reading | Actual reading activity, unfinished and non-archived; hidden while searching, filtering or selecting. |
 | First save | Add your first article | Opens saving choices; sample reading is optional. |
 | Save sheet | Paste a link or text · Import a file · Connect Chrome | Android sharing also works without pairing. |

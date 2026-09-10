@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "99c5cf9",
+  "sourceCommit": "fd1b813",
   "branch": "codex/reliability-finalize",
   "package": "com.reader.app",
   "versionName": "0.9.0-beta.1",
@@ -9,15 +9,15 @@
   "androidSdk": 36,
   "serial": "ZXKRS4VKGQ8PWGEQ",
   "apkPath": "/Users/schober/Projects/Nostr Reader/artifacts/hardening/focused-20260910/reader-debug-next.apk",
-  "apkSha256": "a7cc78a9187a1a59fa027d887be91ae8c4c72e24933940981d1ddce69c978736",
-  "installedApkSha256": "a7cc78a9187a1a59fa027d887be91ae8c4c72e24933940981d1ddce69c978736",
-  "previousInstalledApkSha256": "ee05b86a1e1024a7d0150742392d5349bef94da4c502fe75887f4081070910ca",
-  "installedPath": "/data/app/~~okDKDXjkUJcuOkvW75l2jQ==/com.reader.app-wwdBRqhu7prjrncpdBVGOw==/base.apk",
-  "installedAtUtc": "2026-09-10T23:00:29+00:00",
+  "apkSha256": "03cdfb15714568f9d63b51ad6fba94806728978bd6d4b502e3bb36d82d4b7916",
+  "installedApkSha256": "03cdfb15714568f9d63b51ad6fba94806728978bd6d4b502e3bb36d82d4b7916",
+  "previousInstalledApkSha256": "a7cc78a9187a1a59fa027d887be91ae8c4c72e24933940981d1ddce69c978736",
+  "installedPath": "/data/app/~~TP3WpoGo_dwlPE11JZNmXw==/com.reader.app-LvkiU4KzwsAdwKgadRcteA==/base.apk",
+  "installedAtUtc": "2026-09-10T23:30:17+00:00",
   "inPlaceInstall": true,
   "ownerDataPreserved": true,
-  "ownerEvidence": "owner-20260910c-before.json / owner-20260910c-after.json (8 tables + preferences identical; schema v13; 1 article, 0 highlights, 0 channels)",
+  "ownerEvidence": "owner-20260910d-before.json / owner-20260910d-after.json (8 tables + preferences identical; schema v13; 1 article, 0 highlights, 0 channels)",
   "signingCertificateSha256": "3af50cab6e0515f478413e79786958671913b2cae67037defe537bb1e7465069",
-  "qaApkSha256": "c827261950509269f035683ee50c6ac2bff0b3015fc8042afd60ed9499f51c27",
-  "note": "Supersedes installation-20260910a.json (the b14f128 install). The normal app was launched after install with no FATAL EXCEPTION; the owner Today filter and dark theme were retained."
+  "qaApkSha256": "3f595f046c25d1892aedc8a4a79a31bb8d4ee7708fab2fd36d8b9f7849187c63",
+  "note": "Supersedes installation-20260910a.json (the b14f128 install); the a7cc78a9 build (99c5cf9) is the previous install. The normal app was launched after install with no FATAL EXCEPTION. The owner archived the only test article before this install, so Inbox is legitimately empty and the owner's dark theme remains."
 }
