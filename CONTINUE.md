@@ -1,6 +1,6 @@
-# Continue after the focused UX implementation
+# Continue with the final usability pass
 
-Execute [NEXT_AGENT_PLAN.md](NEXT_AGENT_PLAN.md) when asked to continue. Start with [NEXT_AGENT_PROMPT.md](NEXT_AGENT_PROMPT.md), [START_HERE.md](START_HERE.md) and [FOCUSED_HANDOFF_20260910.md](FOCUSED_HANDOFF_20260910.md). The former batch D/E/F plan is superseded by the user's approved implementation and reduced verification scope.
+Execute **[FINAL_USABILITY_SPEC_20260911.md](FINAL_USABILITY_SPEC_20260911.md)** when asked to continue. Start with [START_HERE.md](START_HERE.md), then [FOCUSED_HANDOFF_20260910.md](FOCUSED_HANDOFF_20260910.md), [NEXT_AGENT_PLAN.md](NEXT_AGENT_PLAN.md) and [docs/COPY_DECK.md](docs/COPY_DECK.md). The new spec supersedes the earlier focused plan and the former batch D/E/F plan where they conflict.
 
 The latest user instruction prioritized conserving usage and installing a trial build. The original plan is not fully accepted: the handoff lists remaining focused checks and refinements. The next product input is the user's seven-day trial. The latest remaining design priorities are title/header consistency, compact beautiful search, and Review as a major feature. When a bug is reported, reproduce that exact path, make the smallest complete fix and repeat only affected checks. Do not create a new broad campaign.
 

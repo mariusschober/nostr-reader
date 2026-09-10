@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -12,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
@@ -21,10 +23,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.tween
@@ -41,6 +46,41 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** One row entry for the four reading actions. */
+private data class ReadingActionItem(
+  val label: String,
+  val icon: ImageVector,
+  val selected: Boolean,
+  val enabled: Boolean,
+  val onClick: () -> Unit,
+)
+
+/**
+ * Equal-width action with a 20–22dp icon above a short label and a 48dp-minimum
+ * touch target. Used for Highlight · Contents · Listen · Speed.
+ */
+@Composable
+private fun ReadingActionButton(item: ReadingActionItem, colors: ReaderColors, modifier: Modifier = Modifier) {
+  val tint = when {
+    !item.enabled -> colors.secondary.copy(alpha = .4f)
+    item.selected -> colors.text
+    else -> colors.secondary
+  }
+  Column(
+    modifier = modifier
+      .heightIn(min = 48.dp)
+      .clip(RoundedCornerShape(10.dp))
+      .clickable(enabled = item.enabled, onClick = item.onClick)
+      .padding(vertical = 4.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.Center,
+  ) {
+    Icon(item.icon, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp))
+    Spacer(Modifier.height(2.dp))
+    Text(item.label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp), color = tint, maxLines = 1)
+  }
+}
+
 /** Loads metadata independently from the library and parses only the visible bounded part. */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -50,6 +90,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          onSpeedRead: (SemanticCursor) -> Unit,
                          onArticleAction: (ArticleAction) -> Unit,
                          onPauseAudio: () -> Unit = {},
+                         onResumeAudio: () -> Unit = {},
                          onHighlightRemoved: ((HighlightMutation) -> Unit)? = null,
                          speechPlaying: Boolean = false,
                          playerVisible: Boolean = false,
@@ -369,7 +410,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         Surface(color = colors.surface) {
           FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(enabled = !transitioning, onClick = ::finish) { Text("Finish & archive") }
-            TextButton(enabled = !transitioning, onClick = ::leave) { Text("Back to shelf") }
+            TextButton(enabled = !transitioning, onClick = ::leave) { Text("Back to Reader") }
           }
         }
       }
@@ -396,9 +437,41 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             }
           } }
           TextButton(onClick = { view?.flushSelection(); pen = false }) { Text("Done") }
-        } else Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-          TextButton(onClick = { if (view?.highlightSelection() != true) highlightHelp = true }, enabled = ready != null) { Icon(Icons.Default.BorderColor, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Highlight") }
-          TextButton(onClick = { navigationSheet = "contents" }, enabled = ready != null) { Icon(Icons.Default.FormatListBulleted, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Contents") }
+        } else {
+          // Four equally weighted reading actions: Highlight · Contents ·
+          // Listen · Speed. Labels wrap to a 2x2 grid at enlarged text rather
+          // than scrolling or shrinking.
+          val cursorNow = liveCursor ?: view?.currentCursor() ?: initial
+          val readingActions = listOf(
+            ReadingActionItem("Highlight", Icons.Default.BorderColor, pen, ready != null) {
+              if (!settings.highlightCoachSeen) {
+                highlightHelp = true
+                onSettingsChange(settings.copy(highlightCoachSeen = true))
+              } else {
+                view?.retainPassageOnLayout()
+                pen = true
+              }
+            },
+            ReadingActionItem("Contents", Icons.AutoMirrored.Filled.FormatListBulleted, false, ready != null) {
+              navigationSheet = "contents"
+            },
+            ReadingActionItem(if (speechPlaying) "Pause" else "Listen",
+              if (speechPlaying) Icons.Default.Pause else Icons.AutoMirrored.Filled.VolumeUp, speechPlaying, ready != null) {
+              if (speechPlaying) onPauseAudio()
+              else if (playerVisible) onResumeAudio()
+              else prepared?.let { transition { onListen(it.projection, cursorNow) } }
+            },
+            ReadingActionItem("Speed", Icons.Default.Speed, false, ready != null) {
+              transition { onSpeedRead(cursorNow) }
+            },
+          )
+          if (LocalDensity.current.fontScale > 1.3f) Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            readingActions.chunked(2).forEach { pair ->
+              Row(Modifier.fillMaxWidth()) { pair.forEach { item -> ReadingActionButton(item, colors, Modifier.weight(1f)) } }
+            }
+          } else Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            readingActions.forEach { item -> ReadingActionButton(item, colors, Modifier.weight(1f)) }
+          }
         }
       } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         // Explicit accessibility route out of focus mode; clean article taps also work.
@@ -649,9 +722,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   if (highlightHelp) ModalBottomSheet(onDismissRequest = { highlightHelp = false }, containerColor = colors.background) {
     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text("Keep a passage", style = MaterialTheme.typography.titleLarge)
-      Text("Press and hold text, adjust the handles, then choose Highlight. Copy, Share and your device’s text actions stay available.")
-      Text("For several passages, turn on continuous highlighting. Each selection saves as you adjust it.", color = colors.secondary)
-      Button(onClick = { highlightHelp = false; pen = true }) { Text("Turn on continuous highlighting") }
+      Text("Press and hold a word, then adjust the handles. Your selection is highlighted and saved automatically. Choose a color below; tap Done to leave highlighting.")
+      Text("Copy, Share and your device’s text actions stay available outside continuous highlighting.", color = colors.secondary)
+      Button(onClick = { highlightHelp = false; pen = true }) { Text("Start highlighting") }
     }
   }
   if (navigationSheet != null) ModalBottomSheet(onDismissRequest = { navigationSheet = null }, containerColor = colors.background, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {

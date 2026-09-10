@@ -36,6 +36,12 @@ data class ReaderSettings(
   val searchTitlesOnly: Boolean = false,
   /** One-time gestures coach shown on the first Archive visit. */
   val archiveCoachShown: Boolean = false,
+  /**
+   * One-time continuous-highlighting explanation. New installs show it on the
+   * first Highlight tap; installs that already have preferences start seen so
+   * the user who has already highlighted is not re-taught.
+   */
+  val highlightCoachSeen: Boolean = false,
 ) {
   fun lineHeightMultiplier(): Float = when (lineSpacing) {
     LineSpacing.COMPACT -> 1.35f
@@ -62,9 +68,18 @@ class Prefs(private val ctx: Context) {
     val SEARCH_TITLES = booleanPreferencesKey("searchTitlesOnly")
     val BOLD = booleanPreferencesKey("boldText")
     val ARCHIVE_COACH = booleanPreferencesKey("archiveCoachShown")
+    val HIGHLIGHT_COACH = booleanPreferencesKey("highlightCoachSeen")
     val WELCOME = booleanPreferencesKey("welcomeShown")
     val MILESTONES = stringSetPreferencesKey("milestonesDone")
   }
+
+  /**
+   * Any previously saved preference implies an existing install, which marks
+   * the highlight explanation as already seen. A fresh install has no keys.
+   */
+  private fun legacyInstall(d: Preferences): Boolean =
+    listOf(K.FONT, K.FONT_SIZE, K.MARGIN, K.BG, K.THEME, K.SPACING, K.SORT, K.AGE, K.BOLD, K.WELCOME)
+      .any { d.contains(it) }
 
   val flow = ctx.store.data.map(::decode).distinctUntilChanged()
   suspend fun load(): ReaderSettings = flow.first()
@@ -88,6 +103,7 @@ class Prefs(private val ctx: Context) {
       searchCurrentShelf = d[K.SEARCH_CURRENT] == true,
       searchTitlesOnly = d[K.SEARCH_TITLES] == true,
       archiveCoachShown = d[K.ARCHIVE_COACH] == true,
+      highlightCoachSeen = d[K.HIGHLIGHT_COACH] ?: legacyInstall(d),
     )
   }
 
@@ -110,6 +126,7 @@ class Prefs(private val ctx: Context) {
         set(K.SEARCH_CURRENT, s.searchCurrentShelf)
         set(K.SEARCH_TITLES, s.searchTitlesOnly)
         if (s.archiveCoachShown) set(K.ARCHIVE_COACH, true)
+        if (s.highlightCoachSeen) set(K.HIGHLIGHT_COACH, true)
       }
     }
   }

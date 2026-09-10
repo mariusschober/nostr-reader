@@ -655,6 +655,7 @@ class MainActivity : ComponentActivity() {
             if (!com.reader.app.data.HighlightRepository(db).undo(change)) notices.show("Later highlight changes were kept.")
           } },
           onPauseAudio = { ttsController?.pause() },
+          onResumeAudio = { ttsController?.play() },
           speechPlaying = ttsDocId == r.id && ttsState?.playing == true,
           playerVisible = ttsDocId == r.id && ttsState != null,
           player = {
@@ -1073,7 +1074,7 @@ private const val WELCOME_MARKDOWN = """# Welcome to Reader
 
 A quiet place for things worth reading. Your saved article text and highlights are available offline on this phone.
 
-- **Inbox** collects new articles. On the shelf, swipe right to prioritize or left to save for later. Article menus offer the same choices.
+- **Inbox** collects new articles. In **Reader**, swipe right to prioritize or left to save for later. Article menus offer the same choices.
 - **Continue reading** brings you back to your latest unfinished article. **Contents** and **Find in article** help you explore without losing your place.
 - Press and hold a passage, adjust the handles, then choose **Highlight**. Find your saved passages in **Highlights**; mark favorites Important and choose Review when you want to revisit them.
 - **Appearance** changes size, spacing, background and font. **Listen** reads aloud; **Speed** lets you try one word at a time.

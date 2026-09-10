@@ -1,5 +1,7 @@
 # Reader: remaining implementation plan and TCL handover
 
+> **Superseded where they conflict by [FINAL_USABILITY_SPEC_20260911.md](FINAL_USABILITY_SPEC_20260911.md)** (the user's final usability pass: four reading actions, true fullscreen focus, once-only highlight help, e-ink theme, Inter, complete adaptive highlight cards, focused Review, floating Review banner, Reader rename, text-boundary fix). Keep this document for the file map, isolation commands and verification history; follow the new spec for product behavior.
+
 This is the executable plan for the next agent. **Work packages A–E below are now implemented and committed locally on `codex/reliability-finalize`. The installed normal `com.reader.app` debug candidate is `fd1b813` (shelf refinement) with APK SHA-256 `03cdfb15714568f9d63b51ad6fba94806728978bd6d4b502e3bb36d82d4b7916`; the preceding install was `99c5cf9` / `a7cc78a9…`.** Section 9 records the two previously-missing native checks, which now have TCL evidence. Do not interrupt the seven-day trial with unsolicited changes or repeated testing; when the user reports a trial issue, reproduce that exact path, make the smallest complete fix and repeat only the affected checks.
 
 ## 1. Exact starting point

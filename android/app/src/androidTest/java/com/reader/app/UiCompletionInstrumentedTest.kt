@@ -212,7 +212,7 @@ class UiCompletionInstrumentedTest {
       assertTrue(node("Bold text")!!.isChecked)
       tap("Bold text"); waitFor("bold off saved") { !runBlocking { Prefs(context).load().bold } }
       back(); tap("Back"); waitFor("continue entry") { node("Continue reading") != null }
-      tap("Settings"); assertNotNull(node("Reading appearance")); tap("Shelf")
+      tap("Settings"); assertNotNull(node("Reading appearance")); tap("Reader")
       assertNotNull(node("Continue reading"))
     }
   }

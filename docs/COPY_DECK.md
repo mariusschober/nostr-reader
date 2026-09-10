@@ -1,6 +1,6 @@
 # Reader copy and behavior contract
 
-Updated 2026-09-10 for the user-approved focused implementation, then again after the shared-header, compact-search and prominent-Review pass. This replaces the previous P0 deck, milestone messaging and gesture coaching. UI copy and its assertions change together.
+Updated 2026-09-10 for the user-approved focused implementation, then again after the shared-header, compact-search and prominent-Review pass, and again on 2026-09-11 for the final usability pass (Reader rename, four reading actions, once-only highlight help, warmer #FFF1E5 Paper surface). Superseded rows are replaced rather than kept. UI copy and its assertions change together.
 
 ## Voice
 
@@ -10,8 +10,8 @@ Use clear, quiet language. Describe the stored outcome accurately and give a use
 
 | Surface | Copy | Behavioral contract |
 |---|---|---|
-| Bottom navigation | Shelf · Highlights · Settings | Hidden in the reader, quote detail and Review. Re-selecting preserves position. |
-| Destination header | Shelf · Highlights · Settings · Review | One shared row: 52dp minimum height, 20dp leading inset, common headline typography and vertical alignment. The row reserves its height with no trailing actions, so the title baseline never moves between destinations. Height grows with the system text scale instead of clipping. Shelf's Search and Add stay at least 48 × 48dp. |
+| Bottom navigation | Reader · Highlights · Settings | Hidden in the reader, quote detail and Review. Re-selecting preserves position. Visible name only; internal `shelf` ids and routes are unchanged. |
+| Destination header | Reader · Highlights · Settings · Review | One shared row: 52dp minimum height, 20dp leading inset, common headline typography and vertical alignment. The row reserves its height with no trailing actions, so the title baseline never moves between destinations. Height grows with the system text scale instead of clipping. Reader's Search and Add stay at least 48 × 48dp. |
 | Shelves | Inbox · Priority · Later · Archive | All visible, wrapping at enlarged text; counts outside the tabs. |
 | Shelf rows | Title · source · remaining time · Done pill | The title stays dominant: the per-source marker is a short 22dp accent paired with the source name in the meta line, and in-progress progress is a thin muted stroke. Unread, in-progress, At end, Finished and Link only are distinguished by text, never by colour alone. |
 | Resume | Continue reading | Actual reading activity, unfinished and non-archived; hidden while searching, filtering or selecting. |
@@ -20,11 +20,12 @@ Use clear, quiet language. Describe the stored outcome accurately and give a use
 | Capture | Link saved — fetching article | Link accepted, extraction unfinished. Ready feedback follows stored text. |
 | Link fallback | Link only | Does not imply offline article text. Retry uses the existing capture request. |
 | Article state | Unread · At end · Finished | Finished depends on explicit completion, never a scroll percentage alone. |
-| Reading | Back · Appearance · Reading tools · Highlight · Contents | Native selectable text and system selection actions remain available. |
+| Reading controls | Highlight · Contents · Listen · Speed | Four equal-width icon-above-label actions, 20–22dp icons, ~12sp labels, each ≥48dp and the row ~56dp. At enlarged text they wrap to a 2×2 grid; the row never scrolls sideways or shrinks. Listen becomes Pause while speaking; resuming reuses the existing speech session. Speed pauses speech and flushes pending reading/selection changes. The overflow menu keeps the same equivalents. |
+| Highlight help | Keep a passage · Start highlighting | Shown once, on the first Highlight attempt of a new install (`highlightCoachSeen`); installs with existing preferences start seen and skip it. Marked seen when presented, including dismissal. Copy: Press and hold a word, then adjust the handles. Your selection is highlighted and saved automatically. Choose a color below; tap Done to leave highlighting. |
 | Appearance | Text size · Spacing · Background · Font, margins & bold | Bottom sheet; advanced controls scroll; changes apply immediately and retain the passage. |
 | Theme | Follow app theme | Inherits the app theme, which can itself follow the system. |
 | Navigation | Find in article · Return to reading position | Offline across stored parts; inspection does not overwrite the original resume location. |
-| End | Finish & archive · Back to shelf | Reaching the end does not choose either action automatically. |
+| End | Finish & archive · Back to Reader | Reaching the end does not choose either action automatically. |
 | Finish feedback | Finished and archived · Undo | Article remains open; Undo restores prior list/completion and new credit, unless a later deliberate change supersedes it. |
 | Highlight | Important · Copy · Share · Remove | Compact sheet. Single removal is immediate with Undo; multiple removals are confirmed. |
 | Quote inspection | Read full highlight · Open source at this passage | Inspection does not advance Review scheduling. Missing sources retain quote and attribution. |
@@ -32,8 +33,8 @@ Use clear, quiet language. Describe the stored outcome accurately and give a use
 | Review entry | Review highlights · Start review · Continue review · Review again | Primary action on unfiltered Highlights, directly below the title and before search. One read-only state line: Revisit your saved passages. / N remaining in this round / Revisiting Important highlights / Round complete. / Save a passage while reading to start a review. The card reads persisted state only — it never starts, advances or repairs a cycle just to render. It condenses to a compact action while a search is active or Important is filtered. |
 | Review | Review · N remaining in this round · Source · Important · Share · Next | Compact Back + Review header; bottom navigation hidden. Comfortable reading measure on a neutral surface with the saved colour as a 3dp marker. Progress counts the current phase plus its queue, so no fixed "X of Y" is invented while Important bonus items may follow. Exiting halfway resumes later. |
 | Review complete | Review complete · Back to highlights · Review again | Reaching the end of the round says Review complete with the primary Back to highlights and secondary Review again. No congratulatory or streak filler. |
-| Search | All saved articles · Current shelf | Location separate from fields; all saved includes Archive. Shown as one compact context row, e.g. All saved articles · Title and text, plus Filter. |
-| Search field | Search articles · Search highlights | One quiet 48dp surface shared by Shelf and Highlights: 12dp corners, 20dp decorative icon, 16sp editable text, clear action only when nonempty (Clear article search / Clear highlight search). The field carries its own editable accessibility label. It focuses once per deliberate opening, so returning from an article does not reopen the keyboard. |
+| Search | All saved articles · Current list | Location separate from fields; all saved includes Archive. Shown as one compact context row, e.g. All saved articles · Title and text or Current list · Inbox · Title and text, plus Filter. |
+| Search field | Search articles · Search highlights | One quiet 48dp surface shared by Reader and Highlights: 12dp corners, 20dp decorative icon, 16sp editable text, clear action only when nonempty (Clear article search / Clear highlight search). The field carries its own editable accessibility label. It focuses once per deliberate opening, so returning from an article does not reopen the keyboard. |
 | Blank search | Use “quotes” for a phrase or # to choose a label. · Recent searches | Guidance and history show only for an unconstrained blank query. History rows are left-aligned with a history icon, the query and a separate restrained Remove target. |
 | Search fields | Title and text · Titles only | Literal ordinary terms combine with AND; quoted phrases stay contiguous. Same local SQLite search on all devices; no FTS ranking or stemming claims. |
 | Search feedback | Searching saved articles… · Check your search. | Distinguish pending, invalid, no matches and failed results. The active search does not depend on FTS indexing. |

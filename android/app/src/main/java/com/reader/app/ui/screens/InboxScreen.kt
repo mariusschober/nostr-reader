@@ -193,7 +193,7 @@ fun InboxScreen(
     snackbarHost = { SnackbarHost(notice) },
     topBar = {
       Column(Modifier.statusBarsPadding()) {
-        DestinationHeader(title = if (tab == "highlights") "Highlights" else "Shelf") {
+        DestinationHeader(title = if (tab == "highlights") "Highlights" else "Reader") {
           if (tab != "highlights") {
             IconButton(onClick = {
               if (!searchActive) searchFocusArmed = true
@@ -247,7 +247,7 @@ fun InboxScreen(
       Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
           if (searchActive) {
-            val location = if (settings.searchCurrentShelf) "In ${Triage.tabLabel(tab)}" else "All saved articles"
+            val location = if (settings.searchCurrentShelf) "Current list · ${Triage.tabLabel(tab)}" else "All saved articles"
             val fields = if (settings.searchTitlesOnly) "Titles only" else "Title and text"
             "$location · $fields"
           } else "${displayed.size} article${if (displayed.size == 1) "" else "s"}",
@@ -294,7 +294,7 @@ fun InboxScreen(
             } }
           }
         }
-        if (!loaded) item { Text("Loading your shelf…", Modifier.padding(vertical = 24.dp), color = c.secondary) }
+        if (!loaded) item { Text("Loading your library…", Modifier.padding(vertical = 24.dp), color = c.secondary) }
         else if (searchActive && searchText.isBlank() && !constrained) item {
           Column(Modifier.padding(top = 4.dp, bottom = 12.dp)) {
             Text("Use “quotes” for a phrase or # to choose a label.", color = c.secondary, style = MaterialTheme.typography.bodyMedium)
@@ -379,7 +379,7 @@ fun InboxScreen(
           Text("Filter articles", style = MaterialTheme.typography.titleLarge)
           if (searchActive) {
             Text("Search location", style = MaterialTheme.typography.labelLarge)
-            listOf(false to "All saved articles", true to "Current shelf · ${Triage.tabLabel(tab)}").forEach { (current, title) ->
+            listOf(false to "All saved articles", true to "Current list · ${Triage.tabLabel(tab)}").forEach { (current, title) ->
               Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().selectable(settings.searchCurrentShelf == current, onClick = { onLibrarySettings(settings.copy(searchCurrentShelf = current)) })) {
                 RadioButton(settings.searchCurrentShelf == current, null); Text(title, Modifier.padding(start = 8.dp))
               }
@@ -461,7 +461,7 @@ private fun EmptyShelf(
   var secondary: Pair<String, () -> Unit>? = null
   when {
     tab == Triage.INBOX && libraryEmpty -> {
-      title = "Your quiet shelf awaits"
+      title = "Your quiet library awaits"
       body = "Save long reads from Chrome, files, or a paste.\nEverything stays on this device and reads offline."
       primary = "Pair Chrome" to onPair
       secondary = "Add a first piece" to onAdd

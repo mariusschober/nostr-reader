@@ -22,6 +22,14 @@ import com.reader.app.prefs.ArticleFont
 /** Flexoki tokens (kepano/flexoki). Single source per platform. */
 object Flexoki {
   val Paper = Color(0xFFFFFCF0)
+  /**
+   * Reader Paper surface — the warmer Financial Times paper tone (#FFF1E5).
+   * Kept separate from [Paper], which is also used as light text on the dark
+   * Ink/Black themes; only the Paper reading/app surface changes.
+   */
+  val ReaderPaper = Color(0xFFFFF1E5)
+  val ReaderPaperSurface = Color(0xFFFBE7D7)
+  val ReaderPaperDivider = Color(0xFFE9D6C4)
   val Base50 = Color(0xFFF2F0E5)
   val Base100 = Color(0xFFE6E4D9)
   val Base200 = Color(0xFFCECDC3)
@@ -60,7 +68,7 @@ data class ReaderColors(
 )
 
 fun colorsFor(bg: ArticleBackground): ReaderColors = when (bg) {
-  ArticleBackground.FOLLOW_APP, ArticleBackground.PAPER -> ReaderColors(Flexoki.Paper, Flexoki.Base50, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Blue600)
+  ArticleBackground.FOLLOW_APP, ArticleBackground.PAPER -> ReaderColors(Flexoki.ReaderPaper, Flexoki.ReaderPaperSurface, Flexoki.Black, Flexoki.Base700, Flexoki.ReaderPaperDivider, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Blue600)
   ArticleBackground.SOFT -> ReaderColors(Flexoki.Base50, Flexoki.Base100, Flexoki.Black, Flexoki.Base700, Flexoki.Base200, Flexoki.Blue600, Flexoki.Green600, Flexoki.Orange600, Flexoki.Red600, Flexoki.Blue600)
   // Sepia: warm mid-tone for evening reading; contrast pairs still AAA.
   ArticleBackground.SEPIA -> ReaderColors(
