@@ -204,6 +204,23 @@ sequential, 400 ms delay). List: `docs/eval/article-urls-v1.txt` (60 EN + 20 DE 
 This is a smoke-and-properties eval, not precision/recall against human-marked
 cores — the labeled-corpus harness stays the next measurement step.
 
+## 100-article seeding run (2026-09-10, TCL, live fire)
+
+List: `docs/eval/seed-reading-100.txt` (untracked; judgment/thinking, company
+classics, crypto/privacy, science/history, timeless essays, AI papers).
+Sent 100 staggered shares plus a handful of substitutes/resends (107 requests):
+**97 completed, 8 honest link-only, 3 still retrying** (plain-http trio on a
+port-80-blocking carrier — durable by design). Library: 95 articles + 8 links,
+**527,767 words / ~37.5 h**. Zero chrome flags on completed rows; repeats resolve
+to identical hashes. Pre-flight link check replaced 6 dead URLs before seeding.
+
+Load finding: around share ~90, new intents stopped registering until a fresh
+activity start flushed them — each share triggers a full library refresh and the
+storm saturates the main thread. Nothing was lost (durability held), but refresh
+needs debouncing/coalescing; filed under the visible-queue work. (Three
+"missing" parenthesized URLs were a shell-quoting artifact in the harness, not
+the classifier — verified by resending.)
+
 ## 16 KiB page-size close-out
 
 Yes — the emulator was set up locally instead of waiting for hardware: the SDK
