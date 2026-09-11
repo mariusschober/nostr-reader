@@ -5,8 +5,13 @@ import android.graphics.Color
 import android.os.SystemClock
 import android.text.SpannableString
 import android.text.style.StyleSpan
+import android.view.ActionMode
 import android.view.InputDevice
+import android.view.Menu
+import android.view.MenuInflater
 import android.view.MotionEvent
+import android.view.View
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +43,7 @@ class HighlightMenuGateInstrumentedTest {
       }
     }
     val reference = AtomicReference<TextView>()
+    val native = AtomicReference<com.reader.app.ui.screens.NativeArticleView>()
     val started = SystemClock.elapsedRealtime()
     ActivityScenario.launch(MainActivity::class.java).use { scenario ->
       scenario.onActivity { activity -> activity.setContent {
@@ -48,6 +54,7 @@ class HighlightMenuGateInstrumentedTest {
               com.reader.app.prefs.ReaderSettings(), Color.rgb(16, 15, 15), Color.rgb(255, 252, 240), 24,
               com.reader.app.cursor.SemanticCursor.start("menu-gate-fixture"))
             setPenMode(true)
+            native.set(this)
             reference.set((0 until childCount).map { getChildAt(it) }.filterIsInstance<TextView>().first { it.isTextSelectable })
           }
         })
@@ -60,6 +67,47 @@ class HighlightMenuGateInstrumentedTest {
       val view = reference.get()
       val firstLayoutMillis = SystemClock.elapsedRealtime() - started
       assertFalse(view.onCheckIsTextEditor())
+      // Both-modes gate. The spec requires the native menu/handle gate to
+      // assert ordinary selection *and* continuous highlighting. The floating
+      // text-action popup is not guaranteed to appear in rootInActiveWindow,
+      // so drive the exact ActionMode.Callback the view installs instead: the
+      // menu decision is deterministic and does not depend on the popup tree.
+      fun menuHas(menu: Menu, title: String) = (0 until menu.size()).any { menu.getItem(it)?.title?.toString() == title }
+      val callback = view.customSelectionActionModeCallback
+      val fakeMenu = PopupMenu(view.context, null).menu
+      val fakeMode = object : ActionMode() {
+        override fun getMenuInflater(): MenuInflater = MenuInflater(view.context)
+        override fun getMenu(): Menu = fakeMenu
+        override fun getTitle(): CharSequence? = null
+        override fun getSubtitle(): CharSequence? = null
+        override fun setTitle(title: CharSequence?) {}
+        override fun setTitle(resId: Int) {}
+        override fun setSubtitle(subtitle: CharSequence?) {}
+        override fun setSubtitle(resId: Int) {}
+        override fun setTitleOptionalHint(titleOptional: Boolean) {}
+        override fun isTitleOptional(): Boolean = false
+        override fun getCustomView(): View? = null
+        override fun setCustomView(view: View?) {}
+        override fun setType(type: Int) {}
+        override fun getType(): Int = 0
+        override fun invalidate() {}
+        override fun finish() {}
+      }
+      runner.runOnMainSync {
+        native.get().setPenMode(false)
+        fakeMenu.clear(); fakeMenu.add("Copy")
+        callback.onCreateActionMode(fakeMode, fakeMenu)
+        assertTrue("Ordinary selection must keep Android's text-action menu", fakeMenu.size() >= 1)
+        assertTrue("Ordinary selection must offer the app's Highlight action", menuHas(fakeMenu, "Highlight"))
+        callback.onDestroyActionMode(fakeMode)
+      }
+      runner.runOnMainSync {
+        native.get().setPenMode(true)
+        fakeMenu.clear(); fakeMenu.add("Copy")
+        callback.onCreateActionMode(fakeMode, fakeMenu)
+        assertEquals("Continuous highlighting must clear Android's text-action menu", 0, fakeMenu.size())
+        callback.onDestroyActionMode(fakeMode)
+      }
       fun point(offset: Int, handle: Boolean = false): Pair<Float, Float> {
         var result = 0f to 0f
         runner.runOnMainSync {

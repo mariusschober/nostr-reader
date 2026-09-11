@@ -69,6 +69,13 @@ Checks: `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:lintDebug` and `:a
 
 In-place `com.reader.app` install from **`f20828b3e2b4c255419f5436523d5b5de7d49104`**: APK SHA-256 `8928ca661fad20f49cd14e3fe8a6c7640826534521bd5674ee08fdbe1347c107`, installed hash verified identical from the device `base.apk`, owner data preserved across 8 tables plus preferences (schema v13; documents 2, highlights 2, channels 1 before and after), no FATAL EXCEPTION on launch, and the owner's dark theme and saved article retained (`normal-post-install-eink.png`). Detail in `evidence/focused-20260910/installation-20260911c.json`.
 
+The native menu/handle gate now asserts **both** modes, as §5 required. `HighlightMenuGateInstrumentedTest` drives the exact `ActionMode.Callback` the view installs: ordinary selection keeps Android's text-action menu and adds the app's **Highlight** action, while continuous highlighting clears the menu; it still drives pen-mode handles and edge-autoscroll. It passes on `com.reader.app.qa` (1 test, 0 failed). This is test-only, so the shipped APK is unaffected.
+
+Two honest caveats from the same run:
+
+- A fresh `assembleDebug` of the normal variant is **content-identical** to `8928ca66` (all 1329 zip entries match on name, method, sizes and CRC-32; compressed-size sum identical) but **not byte-identical** — the archived build carries ~636 KB more container padding, so the file hash differs. Byte identity earlier in this pass held only because Gradle skipped re-packaging. Treat entry-level content equality as the reproducibility check here. Canonical installed artifact archived at `artifacts/hardening/focused-20260910/reader-debug-f20828b.apk` (`8928ca66…`).
+- The gate run's `connectedDebugAndroidTest` uninstalled `com.reader.app.qa` afterwards (AGP default) and discarded the QA corpus data. A fresh QA APK from `f20828b` (`2ef7bec9…`, `artifacts/hardening/focused-20260910/reader-qa-f20828b.apk`) was reinstalled so the QA target exists; its data is empty. Pass `-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true` on future connected runs to keep QA data. The owner's `com.reader.app` was not touched (`8928ca66…` before and after).
+
 ## Installed candidate — 2026-09-11b
 
 In-place `com.reader.app` install from **`0d3c0859a98548f2d6ad1b4274da4b117c0cef46`**: APK SHA-256 `64a0cf406b730fe858e1805d9233ee7b400f5d50b139a357719b4cf12e6fce16`, installed hash verified identical from the device `base.apk`, owner data preserved across 8 tables plus preferences (schema v13), and no FATAL EXCEPTION on launch. This is the first install containing Inter, the refined Find sheet and the Chrome boundary fix. Detail in `evidence/focused-20260910/installation-20260911b.json`.
