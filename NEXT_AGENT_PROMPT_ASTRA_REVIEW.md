@@ -6,7 +6,7 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 
 - Repo: `/Users/schober/Projects/Nostr Reader`
 - Branch: `codex/reliability-finalize` - work stays local. Do not push, merge or release.
-- Audited revision (check this out): **`f20828b3e2b4c255419f5436523d5b5de7d49104`** - `fix(android): underline Compose links and monochrome highlight swatches in E-ink`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme and its fidelity fixes. The branch tip is the docs-only commit `16ed4f21a505f6d3d490c37f371fa5f13caec41` (`docs: repoint E-ink evidence at the final candidate f20828b`) above it, which only updates this prompt and the handover, so check out `f20828b` for the code under audit and read this prompt and the handover from the working tree.
+- Audited revision (check this out): **`f20828b3e2b4c255419f5436523d5b5de7d49104`** - `fix(android): underline Compose links and monochrome highlight swatches in E-ink`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme and its fidelity fixes. The branch tip is a later **docs-only** commit above it (documentation, evidence and this prompt), so check out `f20828b` for the code under audit and read this prompt and the handover from the working tree.
 - Feature and test commits in scope, newest first:
   - `f20828b` fix(android): underline Compose links and monochrome highlight swatches in E-ink
   - `6ca2a4d` feat(android): app-wide E-ink / NXTPAPER monochrome theme
