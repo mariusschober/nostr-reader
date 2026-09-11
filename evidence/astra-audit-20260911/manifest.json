@@ -1,0 +1,282 @@
+{
+  "audited_source": "f20828b3e2b4c255419f5436523d5b5de7d49104",
+  "checkout_tip_at_start": "f53bb8c",
+  "branch": "codex/reliability-finalize",
+  "device": {
+    "serial": "ZXKRS4VKGQ8PWGEQ",
+    "model": "T807D",
+    "android": 16,
+    "sdk": 36,
+    "pixels": "1080x2340",
+    "density": 456,
+    "font_scale": 1.0,
+    "enlarged_check": 1.4,
+    "font_scale_restored": true
+  },
+  "normal_apk_sha256": "8928ca661fad20f49cd14e3fe8a6c7640826534521bd5674ee08fdbe1347c107",
+  "qa_apk_sha256": "2ef7bec9b355b6343d53569dd7ae71eb053256751143c54ca9276dba95b1bcbc",
+  "scope": "Audit only. Normal app not launched, changed or installed. One optional sample article created through QA UI; three highlights observed after two selections and one handle expansion. QA place highlight then removed; Undo attempt did not restore it and timing was not isolated. Remaining QA state has two highlights, one Important. No intake repeated.",
+  "test_results": {
+    "android_focused": {
+      "tests": 23,
+      "failed": 0
+    },
+    "chrome_existing_extraction": {
+      "tests": 8,
+      "failed": 0
+    },
+    "chrome_new_counterexamples": "Both expose defects in original helpers; live DOM unchanged."
+  },
+  "performance": "NOT MEASURED: no profiler, gfxinfo benchmark, battery or timing campaign. No visible app stall observed in brief interactions.",
+  "screen_limit": "Screenshots show software output on TCL. Physical NXTPAPER panel mode, reflectance, ghosting and true electrophoretic refresh are not measured.",
+  "artifacts": [
+    {
+      "file": "00-start.png",
+      "sha256": "a4721530eef5356c7456f30d7fb0e6e4a7b7f7b219d2dd760562bcde4abcb390"
+    },
+    {
+      "file": "00-start.xml",
+      "sha256": "ac26404443e254dbcc00787d116620575d07a0e5600908096f2dde8b6567cdee"
+    },
+    {
+      "file": "01-sample.png",
+      "sha256": "d8c22a42e2dcb9abdb4b004eef7840b08edc5f8baa44c02dae907ce617c7f711"
+    },
+    {
+      "file": "01-sample.xml",
+      "sha256": "ec6b1ab8dba230531ae5904b2f659cba4d36460725845cfa2c943883f218d052"
+    },
+    {
+      "file": "02-focus.png",
+      "sha256": "02e50a6f444dc4d973058084c0548276da8a2c1fe7fb6c4ccbdecf001db9b67e"
+    },
+    {
+      "file": "02-focus.xml",
+      "sha256": "814069d5cd1572ac304e659f884385c8e7ee088080a5fe4926e54d058f2dcfbd"
+    },
+    {
+      "file": "04-pen-selection.png",
+      "sha256": "958d3b6132cabd80ba807fc137c3fafa6674c958fb6eb63725cb42e3fda0519b"
+    },
+    {
+      "file": "04-pen-selection.xml",
+      "sha256": "d62873b0d8252beb5562c8f045c5e1adf3d621153ff1fd47835786e7233deb35"
+    },
+    {
+      "file": "06-highlights-one.png",
+      "sha256": "b35a934b9611fef18515de51002bb6638a8c6ec6ddf1ae4d9035048c9a506d43"
+    },
+    {
+      "file": "06-highlights-one.xml",
+      "sha256": "2b7aa2db8029a38dad0ad163ad5d29acbef4b92926cf7ba3a4ec38ed3e37b2c8"
+    },
+    {
+      "file": "09-eink-highlights.png",
+      "sha256": "262232236d68e93beebc7bb3fc6147554bd8bc2510b48c7ad7b1341422c53825"
+    },
+    {
+      "file": "09-eink-highlights.xml",
+      "sha256": "b0942b0de5c0029c24d9626adf27c980e6a78d76c8b335f09f3ebde5a22387dc"
+    },
+    {
+      "file": "10-eink-highlight-actions.png",
+      "sha256": "a9da251bb51fc5653848e535ff100e295579b32d55c7ba2ec62e8cc650b004a2"
+    },
+    {
+      "file": "10-eink-highlight-actions.xml",
+      "sha256": "08e41071679315734b09df207b0cdac7a1ba6895c46d9c6e8facfe65802e29da"
+    },
+    {
+      "file": "14-eink-speed.png",
+      "sha256": "2571be2c4fc5ce10476f857fc43cbe1bb77e2417bb9a2177996c5e87a3b88ad6"
+    },
+    {
+      "file": "14-eink-speed.xml",
+      "sha256": "0ffeba911ad5b0cee141603ea2448e4300649c87ecfc664b4350a5cce69f1590"
+    },
+    {
+      "file": "17-eink-pen.png",
+      "sha256": "54f9e2893651f51ec44acb77ea0a571c395259835e5fc03c8cae66ebcbffc8ab"
+    },
+    {
+      "file": "17-eink-pen.xml",
+      "sha256": "e9a434f8e0b33173a45debd4372a0341d3581874392121668aed1106c6f5c559"
+    },
+    {
+      "file": "19-long-highlight-start.png",
+      "sha256": "c1894b0dc183ca4894e951a777c80bda98293c837111ba6fec0528ddde7df87d"
+    },
+    {
+      "file": "19-long-highlight-start.xml",
+      "sha256": "74c56a9a2fa4fa62b64fcec3b50957f61108696382c94b47112773f34d07464e"
+    },
+    {
+      "file": "20-long-highlight-end.png",
+      "sha256": "015e3471c480b7ef2b155057b272e1daedab9ceab05e1dff8bc327b0cdb92c8a"
+    },
+    {
+      "file": "20-long-highlight-end.xml",
+      "sha256": "74c56a9a2fa4fa62b64fcec3b50957f61108696382c94b47112773f34d07464e"
+    },
+    {
+      "file": "23-feed-top.png",
+      "sha256": "2e6086ac705989ddff1a2e0b4833df01d5418ede2c969e13612f5f6d6203cce7"
+    },
+    {
+      "file": "23-feed-top.xml",
+      "sha256": "6eb604c7364d0ba5468012c2074876a562fb83b5ac6784223e330e2835c91e62"
+    },
+    {
+      "file": "24-review-start.png",
+      "sha256": "c53b28a4b14e27518c1e8be21cbe6eed11965de5cf8b6efc8ec0ed518a8a4db9"
+    },
+    {
+      "file": "24-review-start.xml",
+      "sha256": "e12f7c8c78647943a03794097162122bf0c87516f99767ea36277673f02138f6"
+    },
+    {
+      "file": "25-highlight-search.png",
+      "sha256": "ad485ee7612739476397f05895083d788d829a4a1a0f4177dc572bb594536c84"
+    },
+    {
+      "file": "25-highlight-search.xml",
+      "sha256": "379c5ad7de2c569a5fd1144e782884048b60ae1201f0280417356b85cd5ab38c"
+    },
+    {
+      "file": "26-focused-review-count.png",
+      "sha256": "1bc3502ad367698001cd99421fccc87db8c3ce8e61d1a673310816f01c9f93df"
+    },
+    {
+      "file": "26-focused-review-count.xml",
+      "sha256": "197cc5c63d8b1a0e8ec59659dacdb973da7207ba318b9b8105f79424799e1467"
+    },
+    {
+      "file": "27-review-after-next.png",
+      "sha256": "5e5cacb9cb48b9e1a82962958962a442f0ba239854237a69d35d1499b3257a4c"
+    },
+    {
+      "file": "27-review-after-next.xml",
+      "sha256": "a4a8077807c88dbc18d741cd4268044bf10f60f02317bd7de20840c33e943e0e"
+    },
+    {
+      "file": "28-review-important.png",
+      "sha256": "62f0d50aa1ca4d529702cc627b94aa47b2879f994e5ed046fd96055715873da8"
+    },
+    {
+      "file": "28-review-important.xml",
+      "sha256": "1595eb839049562670b913b068ba304fca0e154ddad631f36837a37996c2e355"
+    },
+    {
+      "file": "29-source-return.png",
+      "sha256": "61646f853a2354effe1c10143147622c1bc4b3bd9e9823f8673ca53a24d80f5d"
+    },
+    {
+      "file": "29-source-return.xml",
+      "sha256": "af576b5a6a6e612d95938e185f9a4a22b8cf718e8f631019c03d56e3a1f77d39"
+    },
+    {
+      "file": "31-find-empty.png",
+      "sha256": "fc0031c76961899e252b8b87fc542f6e3306490a29f3f01fdc57545f9916cc4e"
+    },
+    {
+      "file": "31-find-empty.xml",
+      "sha256": "fa0994d039d24d32712323657e5e5093f87fa0ed84c6af2871af5881aa6f8977"
+    },
+    {
+      "file": "32-find-keyboard.png",
+      "sha256": "7d1f4f9f642ea6b6d065bb7a1430e25b7714baa27e67016c736d33e402a361af"
+    },
+    {
+      "file": "32-find-keyboard.xml",
+      "sha256": "a8fe59a78cf09aea10f66263324058cffd14b511766a9728a463eefd8756be1e"
+    },
+    {
+      "file": "33-find-landing.png",
+      "sha256": "d524e1bea4118cae0adcc49117ffe46a4deda08fab90b5fa1559525ac16b5551"
+    },
+    {
+      "file": "33-find-landing.xml",
+      "sha256": "4ba0e412f669e4027445e0b81e87c3bb7838a750de0c9642a9672bf3af1140ef"
+    },
+    {
+      "file": "34-find-return.png",
+      "sha256": "eb9d5ce11032466da89c70aa8f938d765fc3e98d88130e0b4ca52da7f56af0bb"
+    },
+    {
+      "file": "34-find-return.xml",
+      "sha256": "b8198346d35dcfd16f26974d0651108b42dde6505cd6d344ee83d180058101c2"
+    },
+    {
+      "file": "35-large-reader.png",
+      "sha256": "8c8471dc24d33da906b27a33876e33e8be8e1d2b74d0775426931007af076cf1"
+    },
+    {
+      "file": "35-large-reader.xml",
+      "sha256": "cd67bce7df41c9da84ae07bc0b74e5cfe43ae489ba42e7613652a8558b733f12"
+    },
+    {
+      "file": "36-highlights-return.png",
+      "sha256": "ce7ac31dd5fb3d4102f6eef0fab9468aca726b9721333e66d62c5caabccdc623"
+    },
+    {
+      "file": "36-highlights-return.xml",
+      "sha256": "f13789e87b1d8b8563dba88c112bf9b99418fdea9bf6bdf295ef4e3a5a699fa8"
+    },
+    {
+      "file": "38-remove-notice.png",
+      "sha256": "3985494c8d83238057f0c02cf636f47c83be788712497db0849a753e52a8feab"
+    },
+    {
+      "file": "38-remove-notice.xml",
+      "sha256": "ca1a24fc91c1896c9273439e25572f2621345a0979f9016c11bd0185463e5b56"
+    },
+    {
+      "file": "39-undo-result.png",
+      "sha256": "74d4c30bb4cf835ad4dd801ed343a8992ad25c76ce29ea1257a8e0c5dffba550"
+    },
+    {
+      "file": "39-undo-result.xml",
+      "sha256": "07f19db047680474b173889a5907ff0327181dde54ec8e8e39b36b744126b2aa"
+    },
+    {
+      "file": "40-final-qa.png",
+      "sha256": "212532e73607b896cffa2a920610ca86861b9cef36839eb7ca04586c91b0024f"
+    },
+    {
+      "file": "40-final-qa.xml",
+      "sha256": "d348913a647cc8146cc0c4ebb721d1e1116556d1bd2e56a17c4933c55ea93778"
+    },
+    {
+      "file": "chrome-boundary-counterexamples.jsonl",
+      "sha256": "fba975edb8f195f79a999925966641c065a9d10b2229e6aa361fa424c1d23429"
+    },
+    {
+      "file": "chrome-extraction-tests.txt",
+      "sha256": "1f018600a53d4f417c3744e0987e6acbfd64f9cdafeafeb399e9281eeb697712"
+    },
+    {
+      "file": "focused-unit-results.json",
+      "sha256": "ed1f61ea625f5a5662bec3f3ae8ecc336d2d03383f0754b377a1cdb7f2854727"
+    },
+    {
+      "file": "focused-unit-tests.txt",
+      "sha256": "702eeb3ec33253fbaf09c7ea9153e6b0665a271c1428aac551dc6ec53d083329"
+    },
+    {
+      "file": "qa-crash-log.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "qa-highlight-records.json",
+      "sha256": "c49e0eae9a692e07092d5af70404638cbd50d0dc2a2cd154738a7c2110044922"
+    },
+    {
+      "file": "reproduce-boundary-counterexamples.cjs",
+      "sha256": "a82c175859895f9ff31037cbb8b21893ecac10e9c171c8424ca4e5775dd4cccd"
+    },
+    {
+      "file": "window-focus-excerpt.txt",
+      "sha256": "e4592516797f2a97884bb6b65d74a8896020e53f343595fce22641723cd0f415"
+    }
+  ]
+}

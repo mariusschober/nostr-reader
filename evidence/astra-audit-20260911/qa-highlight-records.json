@@ -1,0 +1,38 @@
+[
+  {
+    "id": "498c6dba-f249-4d6e-855c-c58a5f67dd58",
+    "quote": "place",
+    "startBlockId": "b1",
+    "startOffset": 8,
+    "endBlockId": "b1",
+    "endOffset": 13,
+    "createdAt": 1789114797913,
+    "updatedAt": 1789114797913,
+    "revision": 1,
+    "reviewCount": 0
+  },
+  {
+    "id": "e49f8c71-0242-4aef-89aa-6927eea69f5b",
+    "quote": "and",
+    "startBlockId": "b5",
+    "startOffset": 9,
+    "endBlockId": "b5",
+    "endOffset": 12,
+    "createdAt": 1789115031736,
+    "updatedAt": 1789115031736,
+    "revision": 1,
+    "reviewCount": 0
+  },
+  {
+    "id": "5906f43d-2a1c-4718-9606-0ea024fe61d9",
+    "quote": "and hold a passage, adjust the handles, then choose Highlight. Find your saved passages in Highlights; mark favorites Important and choose Review when you want to revisit them.\n\n\u2022  Appearance changes size, spacing, background and font. Listen reads aloud; Speed lets you try one word at a time.\n\n\u2022  At the end, choose Finish",
+    "startBlockId": "b5",
+    "startOffset": 9,
+    "endBlockId": "b7",
+    "endOffset": 28,
+    "createdAt": 1789115088768,
+    "updatedAt": 1789115088768,
+    "revision": 1,
+    "reviewCount": 0
+  }
+]

@@ -1,5 +1,7 @@
 # Start here — Reader final usability pass
 
+**11 September independent-audit correction:** the installed `f20828b` pass has remaining defects. Read [ASTRA_AUDIT_20260911.md](ASTRA_AUDIT_20260911.md), then execute [READER_POLISH_PLAN_20260911.md](READER_POLISH_PLAN_20260911.md) when asked to implement. Starter: [NEXT_AGENT_PROMPT_DEEPSEEK_POLISH.md](NEXT_AGENT_PROMPT_DEEPSEEK_POLISH.md). Those documents supersede conflicting completion claims below; the audit changed no product source or normal installation. The previous implementation/evidence history follows.
+
 Read **[FINAL_USABILITY_SPEC_20260911.md](FINAL_USABILITY_SPEC_20260911.md)** first: it is the authoritative specification for the current pass (four reading actions, true fullscreen focus, once-only highlight help, e-ink theme, Inter, complete adaptive highlight cards, focused Review, floating Review banner, Reader rename, text-boundary fix). Then read [FOCUSED_HANDOFF_20260910.md](FOCUSED_HANDOFF_20260910.md), [NEXT_AGENT_PLAN.md](NEXT_AGENT_PLAN.md), [docs/COPY_DECK.md](docs/COPY_DECK.md) and [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
 Branch: `codex/reliability-finalize`. Implemented source: `fd1b813` (documentation `f98aa9f`); earlier baseline: clean `15a77ff`. The user's final usability spec supersedes the earlier focused plan where they conflict. Work is local; do not push, merge or release without a new instruction.

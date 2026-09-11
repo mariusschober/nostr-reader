@@ -1,0 +1,27 @@
+Focused QA window evidence. Excerpt of adb dumpsys window; unrelated application state omitted.
+      mDisplayFrame=Rect(0, 0 - 1080, 2340)
+      mDisplayCutout=DisplayCutout{insets=Rect(0, 130 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(505, 0 - 575, 130), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=1080 displayHeight=2340 physicalDisplayWidth=1080 physicalDisplayHeight=2340 density={3.0} cutoutSpec={M -35,0 L -35,130 L 35,130 L 35,0 Z} rotation={0} scale={1.0} physicalPixelDisplaySizeRatio={1.0}}} sideOverrides={}}
+        InsetsSource id=cbdf0001 type=navigationBars frame=[0,2272][1080,2340] visible=false flags=SUPPRESS_SCRIM|ANIMATE_RESIZING sideHint=BOTTOM boundingRects=null
+        InsetsSource id=deda0000 type=statusBars frame=[0,0][1080,130] visible=false flags= sideHint=TOP boundingRects=null
+        mSource=InsetsSource id=deda0000 type=statusBars frame=[0,0][1080,130] visible=false flags= sideHint=TOP boundingRects=null
+        mSource=InsetsSource id=cbdf0001 type=navigationBars frame=[0,2272][1080,2340] visible=false flags=SUPPRESS_SCRIM|ANIMATE_RESIZING sideHint=BOTTOM boundingRects=null
+  Window #13 Window{e206de8 u0 com.reader.app.qa/com.reader.app.ui.MainActivity}:
+    mDisplayId=0 taskId=10586 mSession=Session{8102cc9 20663:u0a10730} mClient=android.os.BinderProxy@cefb0b
+    mOwnerUid=10730 showForAllUsers=false package=com.reader.app.qa appop=NONE
+    mAttrs={(0,0)(fillxfill) sim={adjust=pan} ty=BASE_APPLICATION wanim=0x103030e
+      fl=KEEP_SCREEN_ON LAYOUT_IN_SCREEN LAYOUT_INSET_DECOR SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+      pfl=NO_MOVE_ANIMATION FORCE_DRAW_STATUS_BAR_BACKGROUND FIT_INSETS_CONTROLLED
+      vsysui=LIGHT_STATUS_BAR LIGHT_NAVIGATION_BAR
+      apr=LIGHT_STATUS_BARS LIGHT_NAVIGATION_BARS
+      bhv=SHOW_TRANSIENT_BARS_BY_SWIPE
+      fitSides=
+      frameRateBoostOnTouch=true
+      dvrrWindowFrameRateHint=true}
+    Requested w=1080 h=2210 mLayoutSeq=186164
+    mHasSurface=true isReadyForDisplay()=true mWindowRemovalAllowed=false
+    WindowStateAnimator{672aad8 com.reader.app.qa/com.reader.app.ui.MainActivity}:
+      Surface: shown=true    isOnScreen=true
+    isVisible=true
+    keepClearAreas: restricted=[], unrestricted=[]
+    mPrepareSyncSeqId=0
+QA window frame=[Rect(0, 130 - 1080, 2340)]; contentSize=2210x1080; Letterbox_top frame=[Rect(0, 0 - 1080, 130)]. Extracted from the input-window inventory.

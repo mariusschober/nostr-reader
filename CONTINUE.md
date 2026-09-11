@@ -1,5 +1,15 @@
 # Continue with the final usability pass
 
+## Current next action — independent audit, 11 September
+
+The fresh audit of product source **`f20828b`** found incomplete focus/cutout layout, invisible monochrome Undo and selected navigation icons, indistinguishable highlight choices/focal letters, duplicate pen-selection IDs, weak/conditionally absent Review entry, an incorrect focused Review count, and two capture-boundary counterexamples. See [ASTRA_AUDIT_20260911.md](ASTRA_AUDIT_20260911.md) for severity, source lines and evidence.
+
+The authoritative remaining-work plan is **[READER_POLISH_PLAN_20260911.md](READER_POLISH_PLAN_20260911.md)**; [DeepSeek starter prompt](NEXT_AGENT_PROMPT_DEEPSEEK_POLISH.md). This dated correction supersedes the older “every item implemented” acceptance claim below. Those stages describe prior implementation, not acceptance of the remaining defects. No product source or normal installation changed in the audit.
+
+Normal installed hash remains **`8928ca661fad20f49cd14e3fe8a6c7640826534521bd5674ee08fdbe1347c107`**, read back from TCL. The worktree tip at audit start was `f53bb8c`; product source was identical to `f20828b`. Fresh focused checks:23 Android unit tests and8 existing Chrome extraction tests passed; new helper counterexamples exposed two extraction defects. Performance/physical e-ink quality were not measured. QA now has a sample article and two highlights; no repeated intake. Owner app/data were not used for mutations. Keep the user's seven-day trial and efficient-test boundaries.
+
+## Historical implementation record
+
 Execute **[FINAL_USABILITY_SPEC_20260911.md](FINAL_USABILITY_SPEC_20260911.md)** when asked to continue. Start with [START_HERE.md](START_HERE.md), then [FOCUSED_HANDOFF_20260910.md](FOCUSED_HANDOFF_20260910.md), [NEXT_AGENT_PLAN.md](NEXT_AGENT_PLAN.md) and [docs/COPY_DECK.md](docs/COPY_DECK.md). The new spec supersedes the earlier focused plan and the former batch D/E/F plan where they conflict.
 
 The latest user instruction prioritized conserving usage and installing a trial build. The original plan is not fully accepted: the handoff lists remaining focused checks and refinements. The next product input is the user's seven-day trial. The latest remaining design priorities are title/header consistency, compact beautiful search, and Review as a major feature. When a bug is reported, reproduce that exact path, make the smallest complete fix and repeat only affected checks. Do not create a new broad campaign.

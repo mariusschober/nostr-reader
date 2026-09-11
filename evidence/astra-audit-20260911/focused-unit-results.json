@@ -1,0 +1,26 @@
+[
+  {
+    "name": "com.reader.app.PrefsMigrationTest",
+    "tests": "5",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0",
+    "time": "0.04"
+  },
+  {
+    "name": "com.reader.app.ReviewSchedulerTest",
+    "tests": "14",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0",
+    "time": "0.037"
+  },
+  {
+    "name": "com.reader.app.ArticleNavigationTest",
+    "tests": "4",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0",
+    "time": "0.016"
+  }
+]
