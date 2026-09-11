@@ -2,7 +2,12 @@ package com.reader.app.ui.screens
 
 import androidx.core.view.doOnPreDraw
 import android.content.Context
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.Region
+import android.graphics.RegionIterator
 import android.graphics.Typeface
+import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
@@ -407,7 +412,11 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       false
     }
     body.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
-      if (right - left != oldRight - oldLeft) updateTableStyles()
+      if (right - left != oldRight - oldLeft) {
+        monoRunLayout = null
+        monoRunMarks = null
+        updateTableStyles()
+      }
       val oldHeight = oldBottom - oldTop
       val newHeight = bottom - top
       // Showing reader controls changes the viewport, never the passage.
@@ -448,6 +457,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     stopFling()
     val changed = projection !== value || documentId != id
     if (changed) { flushSelection(); clearSelection() }
+    monoRunLayout = null
+    monoRunMarks = null
     val saved = if (!changed) currentCursor() else initial
     documentId = id
     projection = value
@@ -560,6 +571,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   fun setMarks(marks: List<NativeMark>) {
     if (marks == markRanges) return
     markRanges = marks
+    monoRunLayout = null
+    monoRunMarks = null
     val text = body.text as? Spannable ?: return
     text.getSpans(0, text.length, SavedBackground::class.java).forEach { text.removeSpan(it) }
     text.getSpans(0, text.length, SavedForeground::class.java).forEach { text.removeSpan(it) }
@@ -667,6 +680,12 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     super.onDetachedFromWindow()
   }
   private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+  private var monoRunLayout: Layout? = null
+  private var monoRunMarks: List<NativeMark>? = null
+  private var monoRuns: List<NativeMonoVisualRun> = emptyList()
+  private var monoEffectsDensity = 0f
+  private var monoDashEffect: android.graphics.DashPathEffect? = null
+  private var monoDotEffect: android.graphics.DashPathEffect? = null
   private val monoEdgePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
     color = android.graphics.Color.BLACK
     style = android.graphics.Paint.Style.STROKE
@@ -676,64 +695,193 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     drawMonoEdges(canvas)
   }
   /**
-   * Monochrome saved-mark edge styles drawn from the native Layout's real
-   * positions. Drawing-only: no text inserted, no offsets altered, wrapped
-   * lines and RTL handled per line via primaryHorizontal. 1.5dp strokes sit
-   * below descenders in reserved line-spacing space.
+   * Monochrome saved-mark edge styles drawn from the native Layout's visual
+   * selection path. Each line is clipped to its own selected runs, so a mark
+   * that wraps or contains bidi text never bridges an unselected paragraph or
+   * uses the next line's caret as its endpoint. This is drawing-only: text,
+   * projection offsets and quote anchors remain untouched.
    */
   private fun drawMonoEdges(canvas: android.graphics.Canvas) {
     val layout = body.layout ?: return
     if (body.text.isEmpty()) return
+    if (monoRunLayout !== layout || monoRunMarks != markRanges) {
+      monoRunLayout = layout
+      monoRunMarks = markRanges
+      monoRuns = markRanges.asSequence()
+        .filter { it.edge != "none" && it.start >= 0 && it.end > it.start && it.end <= body.length() }
+        .flatMap { nativeMonoVisualRuns(body.text, it.start, it.end, layout, it.edge).asSequence() }
+        .toList()
+    }
+    if (monoRuns.isEmpty()) return
     val density = resources.displayMetrics.density
     val stroke = 1.5f * density
-    for (m in markRanges) {
-      if (m.edge == "none") continue
-      if (m.start < 0 || m.end > body.length() || m.end <= m.start) continue
-      val startLine = layout.getLineForOffset(m.start.coerceIn(0, body.length()))
-      val endLine = layout.getLineForOffset((m.end - 1).coerceIn(0, body.length()))
-      for (line in startLine..endLine) {
-        val segStart = if (line == startLine) m.start else layout.getLineStart(line)
-        val segEnd = if (line == endLine) m.end else layout.getLineEnd(line)
-        if (segEnd <= segStart) continue
-        var x1 = layout.getPrimaryHorizontal(segStart) + body.paddingLeft + body.left - body.scrollX
-        var x2 = layout.getPrimaryHorizontal(segEnd) + body.paddingLeft + body.left - body.scrollX
-        // getPrimaryHorizontal returns caret edge; for RTL ensure left<right
-        val left = minOf(x1, x2).coerceIn(body.left.toFloat(), (body.left + body.width).toFloat())
-        val right = maxOf(x1, x2).coerceIn(body.left.toFloat(), (body.left + body.width).toFloat())
-        if (right - left < 2f) continue
-        val baseY = (layout.getLineBottom(line) + body.paddingTop + body.top - body.scrollY).toFloat() - 1f * density
-        monoEdgePaint.strokeWidth = stroke
-        when (m.edge) {
-          "solid" -> {
-            monoEdgePaint.pathEffect = null
-            monoEdgePaint.strokeCap = android.graphics.Paint.Cap.SQUARE
-            canvas.drawLine(left, baseY, right, baseY, monoEdgePaint)
-          }
-          "double" -> {
-            monoEdgePaint.pathEffect = null
-            monoEdgePaint.strokeCap = android.graphics.Paint.Cap.SQUARE
-            canvas.drawLine(left, baseY, right, baseY, monoEdgePaint)
-            canvas.drawLine(left, baseY + 3f * density, right, baseY + 3f * density, monoEdgePaint)
-          }
-          "dashed" -> {
-            monoEdgePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(8f * density, 6f * density), 0f)
-            monoEdgePaint.strokeCap = android.graphics.Paint.Cap.BUTT
-            canvas.drawLine(left, baseY, right, baseY, monoEdgePaint)
-            monoEdgePaint.pathEffect = null
-          }
-          "dotted" -> {
-            monoEdgePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(1.5f * density, 4f * density), 0f)
-            monoEdgePaint.strokeCap = android.graphics.Paint.Cap.ROUND
-            canvas.drawLine(left, baseY, right, baseY, monoEdgePaint)
-            monoEdgePaint.pathEffect = null
-          }
+    if (monoEffectsDensity != density) {
+      monoEffectsDensity = density
+      monoDashEffect = android.graphics.DashPathEffect(floatArrayOf(8f * density, 6f * density), 0f)
+      monoDotEffect = android.graphics.DashPathEffect(floatArrayOf(1.5f * density, 4f * density), 0f)
+    }
+    val contentLeft = body.left + body.paddingLeft
+    canvas.save()
+    canvas.clipRect(body.left.toFloat(), body.top.toFloat(), (body.left + body.width).toFloat(), (body.top + body.height).toFloat())
+    for (run in monoRuns) {
+      val runTop = body.top + body.paddingTop + layout.getLineTop(run.line) - body.scrollY
+      val runBottom = body.top + body.paddingTop + layout.getLineBottom(run.line) - body.scrollY
+      if (runBottom < body.top || runTop > body.bottom) continue
+      val left = (run.left + contentLeft - body.scrollX).coerceAtLeast(body.left.toFloat())
+      val right = (run.right + contentLeft - body.scrollX).coerceAtMost((body.left + body.width).toFloat())
+      if (right - left < 2f) continue
+      val ys = nativeMonoUnderlineOffsets(
+        layout = layout,
+        line = run.line,
+        edge = run.edge,
+        stroke = stroke,
+        density = density,
+        lastInset = body.paddingBottom.toFloat(),
+      ) ?: continue
+      val yOffset = body.top + body.paddingTop - body.scrollY
+      monoEdgePaint.strokeWidth = stroke
+      when (run.edge) {
+        "solid" -> {
+          monoEdgePaint.pathEffect = null
+          monoEdgePaint.strokeCap = android.graphics.Paint.Cap.SQUARE
+          canvas.drawLine(left, ys.first + yOffset, right, ys.first + yOffset, monoEdgePaint)
+        }
+        "double" -> {
+          monoEdgePaint.pathEffect = null
+          monoEdgePaint.strokeCap = android.graphics.Paint.Cap.SQUARE
+          canvas.drawLine(left, ys.first + yOffset, right, ys.first + yOffset, monoEdgePaint)
+          ys.second?.let { canvas.drawLine(left, it + yOffset, right, it + yOffset, monoEdgePaint) }
+        }
+        "dashed" -> {
+          monoEdgePaint.pathEffect = monoDashEffect
+          monoEdgePaint.strokeCap = android.graphics.Paint.Cap.BUTT
+          canvas.drawLine(left, ys.first + yOffset, right, ys.first + yOffset, monoEdgePaint)
+          monoEdgePaint.pathEffect = null
+        }
+        "dotted" -> {
+          monoEdgePaint.pathEffect = monoDotEffect
+          monoEdgePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+          canvas.drawLine(left, ys.first + yOffset, right, ys.first + yOffset, monoEdgePaint)
+          monoEdgePaint.pathEffect = null
         }
       }
     }
+    canvas.restore()
   }
+
   companion object {
     private const val HIGHLIGHT_ACTION = 0x52454144
   }
+}
+
+/**
+ * Return safe baseline-relative Y positions for a monochrome mark edge.
+ *
+ * Layout.getLineBottom(line, false) is the metric edge without paragraph
+ * line-spacing on API 34 and newer. It includes the actual line's metric
+ * spans, so descenders and mixed heading/body fonts remain below the rule.
+ * Older releases use the equivalent baseline plus Layout descent. The next
+ * line's top (or the final text inset) bounds the reserved interline gap.
+ * This helper is independent of the view so the geometry contract can be
+ * exercised against a real Layout in a compact instrumented test.
+ */
+internal fun nativeMonoUnderlineOffsets(
+  layout: Layout,
+  line: Int,
+  edge: String,
+  stroke: Float,
+  density: Float,
+  lastInset: Float,
+): Pair<Float, Float?>? {
+  if (line !in 0 until layout.lineCount || stroke <= 0f || density <= 0f) return null
+  val baseline = layout.getLineBaseline(line).toFloat()
+  val glyphBottom = if (android.os.Build.VERSION.SDK_INT >= 34) {
+    // Do not max with baseline + getLineDescent here: that value includes the
+    // layout's added line spacing on affected releases and collapses the gap.
+    layout.getLineBottom(line, false).toFloat()
+  } else {
+    baseline + layout.getLineDescent(line).toFloat()
+  }
+  val lower = if (line < layout.lineCount - 1) layout.getLineTop(line + 1).toFloat()
+    else (layout.height + lastInset).toFloat()
+  val gap = lower - glyphBottom
+  if (gap < stroke * 0.9f) return null
+  val firstOffset = minOf(gap * 0.38f, maxOf(stroke * 0.7f, density))
+  val first = glyphBottom + firstOffset
+  if (first + stroke * 0.5f > lower) return null
+  if (edge != "double") return first to null
+  val available = lower - first - stroke * 0.65f
+  if (available < stroke * 0.8f) return first to null
+  val second = minOf(first + 3f * density, lower - stroke * 0.5f)
+  return if (second - first >= stroke * 0.7f) first to second else first to null
+}
+
+/** Half-open overlap used by selection ownership and its boundary regression. */
+internal fun selectionRangesOverlap(owned: IntRange, candidateStart: Int, candidateEndExclusive: Int): Boolean =
+  candidateStart < owned.last + 1 && candidateEndExclusive > owned.first
+
+internal data class NativeMonoVisualRun(val line: Int, val left: Float, val right: Float, val edge: String)
+
+/**
+ * Extract disjoint horizontal pieces of one saved mark on each visual line.
+ * The selection path is generated by the same Layout used for glyphs and then
+ * clipped to each line; no character-width approximation or bounding-box
+ * bridge can invent a rule through whitespace or a bidi gap.
+ */
+internal fun nativeMonoVisualRuns(
+  text: CharSequence,
+  startOffset: Int,
+  endOffsetExclusive: Int,
+  layout: Layout,
+  edge: String,
+): List<NativeMonoVisualRun> {
+  val start = startOffset.coerceIn(0, text.length)
+  val end = endOffsetExclusive.coerceIn(0, text.length)
+  if (end <= start || layout.lineCount <= 0) return emptyList()
+  val firstLine = layout.getLineForOffset(start)
+  val lastLine = layout.getLineForOffset((end - 1).coerceAtLeast(start))
+  val result = mutableListOf<NativeMonoVisualRun>()
+  for (line in firstLine..lastLine) {
+    val lineStart = layout.getLineStart(line)
+    // getLineVisibleEnd removes trailing whitespace and the explicit line
+    // break. It prevents a selected newline from becoming a rule bridge.
+    val visibleEnd = layout.getLineVisibleEnd(line).coerceAtMost(end)
+    val segmentStart = maxOf(start, lineStart)
+    val segmentEnd = visibleEnd
+    if (segmentEnd <= segmentStart) continue
+
+    val path = Path()
+    layout.getSelectionPath(segmentStart, segmentEnd, path)
+    val lineLeft = kotlin.math.floor(layout.getLineLeft(line).toDouble()).toInt() - 4
+    val lineRight = kotlin.math.ceil(layout.getLineRight(line).toDouble()).toInt() + 4
+    val lineTop = layout.getLineTop(line)
+    val lineBottom = layout.getLineBottom(line).coerceAtLeast(lineTop + 1)
+    if (lineRight <= lineLeft || lineBottom <= lineTop) continue
+    val clipped = Region(lineLeft, lineTop, lineRight, lineBottom)
+    val region = Region()
+    if (!region.setPath(path, clipped) || region.isEmpty) continue
+    val rects = mutableListOf<Rect>()
+    val iterator = RegionIterator(region)
+    val rect = Rect()
+    while (iterator.next(rect)) {
+      if (rect.right > rect.left && rect.bottom > lineTop && rect.top < lineBottom) rects += Rect(rect)
+    }
+    if (rects.isEmpty()) continue
+    rects.sortBy { it.left }
+    var left = rects.first().left
+    var right = rects.first().right
+    for (piece in rects.drop(1)) {
+      // RegionIterator can split one rectangle into horizontal strips. Join
+      // only touching strips; a real bidi gap remains an independent run.
+      if (piece.left <= right + 1) right = maxOf(right, piece.right)
+      else {
+        result += NativeMonoVisualRun(line, left.toFloat(), right.toFloat(), edge)
+        left = piece.left; right = piece.right
+      }
+    }
+    result += NativeMonoVisualRun(line, left.toFloat(), right.toFloat(), edge)
+  }
+  return result
 }
 
 data class NativeMark(val id: String, val start: Int, val end: Int, val createdAt: Long, val background: Int, val foreground: Int, val edge: String = "none")
