@@ -194,7 +194,7 @@ class HighlightSessionInstrumentedTest {
       }
       waitFor("layout") { body.get()?.layout != null && (body.get()?.height ?: 0) > 0 }
       val view = body.get()
-      val callback = native.get().customSelectionActionModeCallback
+      val callback = view.customSelectionActionModeCallback
       val fakeMenu = PopupMenu(view.context, null).menu
       val fakeMode = object : ActionMode() {
         override fun getMenuInflater(): MenuInflater = MenuInflater(view.context)
