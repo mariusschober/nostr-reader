@@ -217,15 +217,17 @@ class UiCompletionInstrumentedTest {
     }
   }
 
-  @Test fun quoteInspectionIsSeparateFromReviewAndSingleRemovalHasUndo() = isolated {
+  @Test fun quoteTapStartsReviewAndSingleRemovalHasUndo() = isolated {
     val d = fixture("Focused quotation")
     val q = quote(d)
-    val reviewBefore = db.review().parts()
+    val reviewCountBefore = q.reviewCount
     ActivityScenario.launch(MainActivity::class.java).use {
-      tap("Highlights"); tap("Newest"); tap("Read full highlight")
-      waitFor("quote detail") { node("Open source at this passage") != null }
-      assertEquals(q.reviewCount, db.highlights().byId(q.id)!!.reviewCount)
-      assertEquals(reviewBefore, db.review().parts())
+      tap("Highlights"); tap("Newest"); tap(d.title)
+      waitFor("review quote") { node("Next") != null && node("Open source") != null }
+      assertEquals(reviewCountBefore, db.highlights().byId(q.id)!!.reviewCount)
+      // Entering Review may persist its focused cursor, but it must not
+      // credit the quote until an explicit Next/source action.
+      tap("Back")
       tap("Highlight options"); tap("Important highlight")
       waitFor("important saved") { runBlocking { db.highlights().byId(q.id)!!.important } }
       tap("Done"); tap("Back to highlights")

@@ -584,6 +584,7 @@ class MainActivity : ComponentActivity() {
             remaining = rs?.let { com.reader.app.core.ReviewScheduler.presentationCount(it) } ?: 0,
             inBonus = rs?.phase == "bonus" && (rs.currentId != null || rs.focusedId != null),
             quoteFont = settings.font,
+            quoteBaseSp = settings.fontSizeSp,
             onBack = { stack.pop(); tick++ },
             onNext = {
               val id = quote?.id

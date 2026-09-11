@@ -59,6 +59,7 @@ fun ReviewScreen(
   remaining: Int = 0,
   inBonus: Boolean = false,
   quoteFont: ArticleFont = ArticleFont.NEWSREADER,
+  quoteBaseSp: Float = 19f,
 ) {
   BackHandler(onBack = onBack)
   val c = appColors()
@@ -159,15 +160,61 @@ fun ReviewScreen(
                   },
                   onHorizontalDrag = { change, amount -> change.consume(); if (!exiting) distance += amount },
                 )
-              }
-              .verticalScroll(scrollState)
-              .padding(horizontal = 20.dp),
+              },
           ) {
             val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
             val dark = com.reader.app.ui.theme.LocalReaderDark.current
             val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
             val pres = com.reader.app.ui.theme.highlightPresentation(quote.color, mono, dark)
-            val reviewSp = com.reader.app.ui.theme.quoteSizeSp(19f, quote.quote.length)
+            val sourceTitle = quote.sourceTitle.ifBlank { "Saved passage" }
+
+            // Source context stays fixed while the quote below scrolls. A
+            // reader can identify the origin and open it immediately without
+            // hunting at the end of a long passage.
+            Row(
+              Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+                .heightIn(min = 48.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Column(Modifier.weight(1f)) {
+                Text("Source", style = MaterialTheme.typography.labelSmall, color = c.secondary)
+                Text(
+                  sourceTitle,
+                  style = MaterialTheme.typography.titleSmall,
+                  color = c.text,
+                  maxLines = 2,
+                  overflow = TextOverflow.Ellipsis,
+                  modifier = Modifier.semantics { contentDescription = "Source $sourceTitle" },
+                )
+                Text(
+                  "${pres.shortId} \u00B7 ${pres.label}",
+                  style = MaterialTheme.typography.labelSmall,
+                  color = c.secondary,
+                  modifier = Modifier.semantics { contentDescription = "Highlight color ${pres.label}" },
+                )
+              }
+              TextButton(
+                enabled = sourceAvailable && !exiting,
+                onClick = onSource,
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
+              ) { Text("Open source", maxLines = 1) }
+            }
+            if (!sourceAvailable) {
+              Text(
+                "The source article is no longer saved. Your highlight and attribution remain here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.secondary,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+              )
+            }
+
+            Column(
+              Modifier.weight(1f).fillMaxWidth()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 20.dp),
+            ) {
+            val reviewSp = com.reader.app.ui.theme.quoteSizeSp(quoteBaseSp, visibleCharacterCount(quote.quote))
             Box(Modifier.fillMaxWidth().padding(top = if (quote.important) 12.dp else 0.dp)) {
               Box(
                 Modifier.fillMaxWidth()
@@ -200,32 +247,8 @@ fun ReviewScreen(
                 }
               }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-              "${pres.shortId} \u00B7 ${pres.label}",
-              style = MaterialTheme.typography.labelSmall, color = c.secondary,
-              modifier = Modifier.semantics { contentDescription = "Highlight color ${pres.label}" },
-            )
-            Spacer(Modifier.height(20.dp))
-            Text("Source", style = MaterialTheme.typography.labelSmall, color = c.secondary)
-            TextButton(
-              enabled = sourceAvailable && !exiting,
-              onClick = onSource,
-              contentPadding = PaddingValues(horizontal = 0.dp),
-            ) {
-              Text(
-                quote.sourceTitle.ifBlank { "Open source" },
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 2, overflow = TextOverflow.Ellipsis,
-              )
-            }
-            if (!sourceAvailable) {
-              Text(
-                "The source article is no longer saved. Your highlight and attribution remain here.",
-                style = MaterialTheme.typography.bodySmall, color = c.secondary,
-              )
-            }
             Spacer(Modifier.height(16.dp))
+            }
           }
           FlowRow(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
@@ -243,4 +266,14 @@ fun ReviewScreen(
       }
     }
   }
+}
+
+/** Count user-visible characters for adaptive quote sizing, keeping emoji and
+ * combining marks together instead of treating their UTF-16 units as letters. */
+private fun visibleCharacterCount(text: String): Int {
+  val iterator = java.text.BreakIterator.getCharacterInstance(java.util.Locale.ROOT)
+  iterator.setText(text)
+  var count = 0
+  while (iterator.next() != java.text.BreakIterator.DONE) count++
+  return count
 }

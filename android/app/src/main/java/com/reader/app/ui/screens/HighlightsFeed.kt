@@ -444,6 +444,33 @@ private fun HighlightSwipeRow(
         val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
         val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
         val pres = com.reader.app.ui.theme.highlightPresentation(quote.color, mono, dark)
+
+        // Source context comes first, so a long passage is identifiable before
+        // the reader starts reading it. The action footer below remains
+        // separate from this card's tap-to-review gesture.
+        Row(
+          Modifier.fillMaxWidth().padding(bottom = 6.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(Modifier.weight(1f)) {
+            val title = quote.sourceTitle.ifBlank { "Saved passage" }
+            Text(
+              title,
+              style = MaterialTheme.typography.titleSmall,
+              color = MaterialTheme.colorScheme.onSurface,
+              maxLines = 2,
+              overflow = TextOverflow.Ellipsis,
+              modifier = Modifier.semantics { contentDescription = "Source $title" },
+            )
+            Text(
+              "${pres.shortId} \u00B7 ${pres.label}",
+              style = MaterialTheme.typography.labelSmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+              modifier = Modifier.semantics { contentDescription = "Highlight color ${pres.label}" },
+            )
+          }
+        }
+
         // Reserve space above so the badge and the text never overlap.
         Box(Modifier.fillMaxWidth().padding(top = if (quote.important) 12.dp else 0.dp)) {
           Box(
@@ -474,26 +501,17 @@ private fun HighlightSwipeRow(
             }
           }
         }
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-          Text(
-            "${pres.shortId} \u00B7 ${pres.label}",
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.semantics { contentDescription = "Highlight color ${pres.label}" },
-          )
-          Spacer(Modifier.width(8.dp))
-          Text(
-            quote.sourceTitle,
-            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).clickable(onClickLabel = "Open source article") { onOpenSource() },
-          )
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // A compact footer keeps both actions immediately reachable without
+        // making the source action look like a second, floating card button.
+        Row(
+          Modifier.fillMaxWidth().padding(top = 2.dp),
+          horizontalArrangement = Arrangement.End,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
           TextButton(
             onClick = onOpenSource,
             contentPadding = PaddingValues(horizontal = 8.dp),
-            modifier = Modifier.heightIn(min = 48.dp).weight(1f),
+            modifier = Modifier.heightIn(min = 48.dp),
           ) {
             Text("Open source", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
           }
