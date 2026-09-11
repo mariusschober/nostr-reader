@@ -43,6 +43,34 @@ describe("generic extraction", () => {
     expect(doc.markdown).toMatch(/capital share\s+The pie/);
   });
 
+  it("keeps shared classes inline in prose while blocking them in legends", async () => {
+    const html = `<!doctype html><html><head><style>.legend .shared{display:block} p .shared{display:inline}</style></head><body><main><article>
+      <h1>Shared class contexts</h1>
+      <div class="legend"><span class="shared">Legend</span></div>
+      <p>micro<span class="shared">scope</span>s and enough body text here to clear the extractor confidence thresholds comfortably for this focused boundary test of shared class handling.</p>
+      <p>Second body paragraph adds enough words that the extractor treats this document as a real article rather than a fragment of navigation chrome or an empty shell for scoring.</p>
+      </article></main></body></html>`;
+    const dom = new JSDOM(html, { url: "https://example.com/shared" });
+    const doc = await extractGeneric(dom.window.document, "https://example.com/shared");
+    expect(doc.markdown).toMatch(/microscopes/);
+    expect(doc.markdown).not.toMatch(/micro scope/);
+  });
+
+  it("separates classless block spans without touching live DOM or leaking markers", async () => {
+    const html = `<!doctype html><html><body><main><article>
+      <h1>Classless blocks</h1>
+      <p><span style="display:block">Knowledge workers</span><span style="display:block">All other workers</span></p>
+      <p>Body paragraph adds enough words that the extractor treats this document as a real article rather than a fragment for scoring and confidence thresholds.</p>
+      </article></main></body></html>`;
+    const dom = new JSDOM(html, { url: "https://example.com/classless" });
+    const live = dom.window.document;
+    const before = live.body.textContent;
+    const doc = await extractGeneric(live, "https://example.com/classless");
+    expect(doc.markdown).toMatch(/Knowledge workers\s+All other workers/);
+    expect(live.body.textContent).toBe(before);
+    expect(doc.markdown).not.toMatch(/data-reader-visual-block/);
+  });
+
   it("leaves genuine inline formatting and punctuation untouched", async () => {
     const html = `<!doctype html><html><head><style>.plain { display: inline; }</style></head><body><main><article>
       <h1>Inline boundaries</h1>

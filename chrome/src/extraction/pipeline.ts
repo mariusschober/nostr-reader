@@ -49,11 +49,47 @@ const BLOCK_DISPLAYS = new Set([
 ]);
 const WORD = /[\p{L}\p{N}]/u;
 
+export const VISUAL_BLOCK_MARKER = "data-reader-visual-block";
+
+/** Explicit inline display that is block-level without needing computed style. */
+function inlineStyleIsBlock(el: Element): boolean {
+  const display = (el as HTMLElement).style?.display?.toLowerCase?.() ?? "";
+  return BLOCK_DISPLAYS.has(display);
+}
+
 /**
- * Class tokens that the live page renders as block-level boxes even though the
- * tag is inline (a <span style="display:block"> eyebrow, flex legend items).
- * Read from real computed style on the live document; applied to the sanitized
- * clone, which cannot resolve styles once detached.
+ * Per-element block identity from the live DOM to the extraction clone.
+ * Read computed display once per candidate node on the live document and mark
+ * only that node's clone(s). Never infer layout from shared class tokens:
+ * the same class can be block in a legend and inline within prose.
+ * Never mutates the live page; the clone-only marker is stripped by sanitize.
+ */
+export function markVisualBlocks(live: Document, cloneRoot: ParentNode): void {
+  const liveEls = [...live.querySelectorAll(INLINE_TAG_SELECTOR)];
+  const cloneEls = [...(cloneRoot as Document | Element).querySelectorAll(INLINE_TAG_SELECTOR)];
+  const view = live.defaultView;
+  const n = Math.min(liveEls.length, cloneEls.length);
+  for (let i = 0; i < n; i++) {
+    const liveEl = liveEls[i] as Element;
+    const cloneEl = cloneEls[i] as Element;
+    try {
+      let isBlock = false;
+      if (view?.getComputedStyle) {
+        try {
+          isBlock = BLOCK_DISPLAYS.has(view.getComputedStyle(liveEl).display);
+        } catch { isBlock = false; }
+      }
+      // Classless `style="display:block"` and explicit inline display survive
+      // even when computed style is unavailable.
+      if (!isBlock) isBlock = inlineStyleIsBlock(liveEl);
+      if (isBlock) cloneEl.setAttribute(VISUAL_BLOCK_MARKER, "1");
+    } catch { /* next node */ }
+  }
+}
+
+/**
+ * @deprecated Use markVisualBlocks per-element correspondence instead.
+ * Kept for compatibility; returns class tokens only as a fallback.
  */
 export function collectVisualBlockClasses(doc: Document): Set<string> {
   const classes = new Set<string>();
@@ -65,6 +101,14 @@ export function collectVisualBlockClasses(doc: Document): Set<string> {
     } catch { /* detached or unsupported node */ }
   }
   return classes;
+}
+
+/** Clone-side predicate: per-element marker or explicit inline display. */
+export function isVisualBlockElement(el: Element): boolean {
+  try {
+    if ((el as Element).hasAttribute?.(VISUAL_BLOCK_MARKER)) return true;
+  } catch { /* ignore */ }
+  return inlineStyleIsBlock(el);
 }
 
 /**
@@ -159,19 +203,17 @@ function score(md: string, sourceText: string): number {
 
 export async function extractGeneric(doc: Document, url: string): Promise<CapturedDocument> {
   const sourceText = doc.body?.innerText ?? doc.body?.textContent ?? "";
-  // Read the real computed display from the live page. Clones are detached and
-  // cannot resolve styles, so carry the visually-block class tokens across.
-  const visualBlockClasses = collectVisualBlockClasses(doc);
-  const isVisualBlock = (el: Element): boolean => {
-    for (const token of el.classList) if (visualBlockClasses.has(token)) return true;
-    return false;
-  };
+  // Read the real computed display from the live page once per node and carry
+  // per-element identity to each clone before stripping. Clones are detached
+  // and cannot resolve styles themselves.
+  const isVisualBlock = (el: Element): boolean => isVisualBlockElement(el);
   // 1. Defuddle on a cleaned clone (primary). Defuddle lifts the article
   // H1 into its title field, so keep it for the title fallback below.
   let defuddleMd = "";
   let defuddleTitle = "";
   try {
     const clone = doc.cloneNode(true) as Document;
+    markVisualBlocks(doc, clone);
     stripNoise(clone);
     separateVisuallyBlockInline(clone, isVisualBlock);
     const parsed = new Defuddle(clone, { markdown: false, url: url }).parse();
@@ -182,6 +224,7 @@ export async function extractGeneric(doc: Document, url: string): Promise<Captur
   let readabilityMd = "";
   try {
     const clone2 = doc.cloneNode(true) as Document;
+    markVisualBlocks(doc, clone2);
     stripNoise(clone2);
     separateVisuallyBlockInline(clone2, isVisualBlock);
     const art = new Readability(clone2 as never).parse();
