@@ -54,7 +54,7 @@ Commit **`0d3c085`** diagnoses and fixes the merged-label defect. Root cause: ch
 
 ## Stage 6 — App-wide E-ink / NXTPAPER theme (§3B)
 
-Commit **`6ca2a4d`** adds `ThemeMode.EINK` and a shared `DisplayPolicy` (monochrome + reduced motion) provided by `ReaderTheme` and inherited by nested reader themes, so the reading surface cannot silently drop the override.
+Commit **`6ca2a4d`** adds `ThemeMode.EINK` and a shared `DisplayPolicy` (monochrome + reduced motion) provided by `ReaderTheme` and inherited by nested reader themes, so the reading surface cannot silently drop the override. Commit **`f20828b`** closes two fidelity gaps: Compose article links now underline in the monochrome theme (native links already did), and the highlight colour pickers plus the Review colour marker render as black/white indicators instead of coloured swatches while keeping their accessible colour names.
 
 - Monochrome palette: white ground `#FFFFFF`, black `#000000` primary, `#333333` secondary, white surfaces with a visible border, and selected-container inversion (black fill, white content) instead of hue. Links already carry an underline in both Compose and the native span builder.
 - Reduced motion: `chromeFadeSpec()`, `settleSpec()`, `revealSpec()` collapse to `snap()` under the policy, and the native swipe-settle animation drops to 0ms; drag physics and direct touch scrolling are untouched.
@@ -67,7 +67,7 @@ Checks: `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:lintDebug` and `:a
 
 ## Installed candidate — 2026-09-11c
 
-In-place `com.reader.app` install from **`6ca2a4d8ba57c05f9fc4eaf08e32865d02f5a8a0`**: APK SHA-256 `f592aa1269fb52942b88bf6eaea050d6e7fccd03714bdbb74c0d568980e4d676`, installed hash verified identical from the device `base.apk`, owner data preserved across 8 tables plus preferences (schema v13; documents 2, highlights 2, channels 1 before and after), no FATAL EXCEPTION on launch, and the owner's dark theme and saved article retained (`normal-post-install-eink.png`). Detail in `evidence/focused-20260910/installation-20260911c.json`.
+In-place `com.reader.app` install from **`f20828b3e2b4c255419f5436523d5b5de7d49104`**: APK SHA-256 `8928ca661fad20f49cd14e3fe8a6c7640826534521bd5674ee08fdbe1347c107`, installed hash verified identical from the device `base.apk`, owner data preserved across 8 tables plus preferences (schema v13; documents 2, highlights 2, channels 1 before and after), no FATAL EXCEPTION on launch, and the owner's dark theme and saved article retained (`normal-post-install-eink.png`). Detail in `evidence/focused-20260910/installation-20260911c.json`.
 
 ## Installed candidate — 2026-09-11b
 
@@ -90,6 +90,6 @@ Every item in `FINAL_USABILITY_SPEC_20260911.md` is now implemented or explicitl
 
 ## Tip commit and independent audit pointer
 
-The branch tip is **`6ca2a4d8ba57c05f9fc4eaf08e32865d02f5a8a0`** (`feat(android): app-wide E-ink / NXTPAPER monochrome theme`), on top of `4317e67` (test-only preference-decode extraction) and the `0d3c085` product chain. It is the installed revision: `com.reader.app` APK SHA-256 `f592aa1269fb52942b88bf6eaea050d6e7fccd03714bdbb74c0d568980e4d676`, verified identical from the device `base.apk`, with owner data preserved.
+The branch tip is **`f20828b3e2b4c255419f5436523d5b5de7d49104`** (`fix(android): underline Compose links and monochrome highlight swatches in E-ink`), on top of `6ca2a4d` (the e-ink theme), `4317e67` (test-only preference-decode extraction) and the `0d3c085` product chain. It is the installed revision: `com.reader.app` APK SHA-256 `8928ca661fad20f49cd14e3fe8a6c7640826534521bd5674ee08fdbe1347c107`, verified identical from the device `base.apk`, with owner data preserved.
 
 The independent review/performance/UI/UX audit prompt for GPT Astra is [NEXT_AGENT_PROMPT_ASTRA_REVIEW.md](NEXT_AGENT_PROMPT_ASTRA_REVIEW.md), pointing at the tip commit and this handover. It asks for findings first (P0–P3) across review, performance, UI and UX, names the installed candidate and its hashes, and lists the guardrails (local only, use `com.reader.app.qa`, do not repeat the 100-article intake, no soak/matrix campaign).

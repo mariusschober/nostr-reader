@@ -6,8 +6,9 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 
 - Repo: `/Users/schober/Projects/Nostr Reader`
 - Branch: `codex/reliability-finalize` - work stays local. Do not push, merge or release.
-- Audited revision (check this out): **`6ca2a4d8ba57c05f9fc4eaf08e32865d02f5a8a0`** - `feat(android): app-wide E-ink / NXTPAPER monochrome theme`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme. The branch tip is a docs-only commit above it that updates this prompt and the handover, so check out `6ca2a4d` for the code under audit and read this prompt from the working tree.
+- Audited revision (check this out): **`f20828b3e2b4c255419f5436523d5b5de7d49104`** - `fix(android): underline Compose links and monochrome highlight swatches in E-ink`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme and its fidelity fixes. The branch tip is a docs-only commit above it that updates this prompt and the handover, so check out `f20828b` for the code under audit and read this prompt from the working tree.
 - Feature and test commits in scope, newest first:
+  - `f20828b` fix(android): underline Compose links and monochrome highlight swatches in E-ink
   - `6ca2a4d` feat(android): app-wide E-ink / NXTPAPER monochrome theme
   - `4317e67` test(prefs): extract decodeSettings and cover preference migration (test-only; no product behavior change)
   - `0d3c085` fix(chrome): keep word boundary between visually-block inline boxes
@@ -20,9 +21,9 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
   - `99c5cf9` feat(android): shared destination headers, compact search, prominent Review
   - `fd1b813` feat(android): quieter shelf markers and progress stroke
 - Base chain: `b14f128c54996515f45218f8d912ef106c174446` on `15a77ff647ac39f4e9165e47504d553504a1ac8b`.
-- Diff to audit: `git diff 15a77ff..6ca2a4d -- android/ chrome/` (use `git show` per commit for exact hunks).
+- Diff to audit: `git diff 15a77ff..f20828b -- android/ chrome/` (use `git show` per commit for exact hunks).
 - Handover: `CONTINUE.md` (running stage-by-stage status, including the one item still unimplemented) and `FOCUSED_HANDOFF_20260910.md` (scope, evidence, state/code map, trial boundaries).
-- Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `f592aa1269fb52942b88bf6eaea050d6e7fccd03714bdbb74c0d568980e4d676`, source commit `6ca2a4d`, installed in place on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ` with the installed file hash verified identical and owner data preserved across 8 tables plus preferences (`evidence/focused-20260910/installation-20260911c.json`). The QA package is `com.reader.app.qa`.
+- Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `8928ca661fad20f49cd14e3fe8a6c7640826534521bd5674ee08fdbe1347c107`, source commit `f20828b`, installed in place on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ` with the installed file hash verified identical and owner data preserved across 8 tables plus preferences (`evidence/focused-20260910/installation-20260911c.json`). The QA package is `com.reader.app.qa`.
 
 ## Read first
 
