@@ -463,8 +463,8 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         player()
         if (pen) FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
           HighlightColor.entries.forEach { color -> IconToggleButton(selectedColor == color.name, { selectedColor = color.name }, modifier = Modifier.semantics { contentDescription = "Highlight color ${color.label}" }) {
-            Box(Modifier.size(28.dp).background(color.background(dark), CircleShape).border(if (selectedColor == color.name) 2.dp else 0.dp, colors.text, CircleShape), contentAlignment = Alignment.Center) {
-              if (selectedColor == color.name) Icon(Icons.Default.Check, null, tint = HighlightColor.text(dark), modifier = Modifier.size(18.dp))
+            Box(Modifier.size(28.dp).background(if (monochrome) colors.surface else color.background(dark), CircleShape).border(if (selectedColor == color.name) 2.dp else 0.dp, colors.text, CircleShape), contentAlignment = Alignment.Center) {
+              if (selectedColor == color.name) Icon(Icons.Default.Check, null, tint = if (monochrome) colors.text else HighlightColor.text(dark), modifier = Modifier.size(18.dp))
             }
           } }
           TextButton(onClick = { view?.flushSelection(); pen = false }) { Text("Done") }

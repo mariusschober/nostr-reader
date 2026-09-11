@@ -161,11 +161,12 @@ fun ReviewScreen(
           ) {
             val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
             val dark = com.reader.app.ui.theme.LocalReaderDark.current
+            val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
             Box(
               Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(c.surface)
-                .drawBehind { drawRect(color = saved.background(dark), size = Size(3.dp.toPx(), size.height)) },
+                .drawBehind { drawRect(color = if (mono) c.text else saved.background(dark), size = Size(3.dp.toPx(), size.height)) },
             ) {
               Text(
                 quote.quote,

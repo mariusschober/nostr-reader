@@ -168,21 +168,30 @@ private fun ArticleText(
   }
 }
 
-private fun annotated(inlines: List<Inline>, colors: ReaderColors): AnnotatedString = buildAnnotatedString {
-  fun walk(items: List<Inline>) {
-    for (i in items) when (i) {
-      is Inline.Text -> append(i.text)
-      is Inline.Strong -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { walk(i.inlines) }
-      is Inline.Emphasis -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { walk(i.inlines) }
-      is Inline.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { walk(i.inlines) }
-      is Inline.InlineCode -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(i.code) }
-      is Inline.Link -> {
-        pushStringAnnotation("url", i.url)
-        withStyle(SpanStyle(color = colors.link)) { walk(i.inlines) }
-        pop()
+@Composable
+private fun annotated(inlines: List<Inline>, colors: ReaderColors): AnnotatedString {
+  // E-ink relies on an underline rather than colour for links; read the policy
+  // here because CompositionLocal reads are not allowed inside the builder.
+  val underlineLinks = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
+  return buildAnnotatedString {
+    fun walk(items: List<Inline>) {
+      for (i in items) when (i) {
+        is Inline.Text -> append(i.text)
+        is Inline.Strong -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { walk(i.inlines) }
+        is Inline.Emphasis -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { walk(i.inlines) }
+        is Inline.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { walk(i.inlines) }
+        is Inline.InlineCode -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(i.code) }
+        is Inline.Link -> {
+          pushStringAnnotation("url", i.url)
+          withStyle(SpanStyle(
+            color = colors.link,
+            textDecoration = if (underlineLinks) TextDecoration.Underline else TextDecoration.None,
+          )) { walk(i.inlines) }
+          pop()
+        }
+        is Inline.FootnoteRef -> append("[${i.label}]")
       }
-      is Inline.FootnoteRef -> append("[${i.label}]")
     }
+    walk(inlines)
   }
-  walk(inlines)
 }

@@ -28,6 +28,7 @@ import com.reader.app.ui.theme.*
 ) {
   val c = appColors()
   val dark = LocalReaderDark.current
+  val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
   val context = LocalContext.current
   ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.background,
     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -40,8 +41,8 @@ import com.reader.app.ui.theme.*
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
         HighlightColor.entries.forEach { color -> IconToggleButton(quote.color == color.name, { onColor(color.name) },
           modifier = Modifier.size(52.dp).semantics { contentDescription = "Highlight color ${color.label}" }) {
-          Box(Modifier.size(30.dp).background(color.background(dark), CircleShape).border(if (quote.color == color.name) 2.dp else 1.dp, c.secondary, CircleShape), contentAlignment = Alignment.Center) {
-            if (quote.color == color.name) Icon(Icons.Default.Check, null, tint = HighlightColor.text(dark), modifier = Modifier.size(18.dp))
+          Box(Modifier.size(30.dp).background(if (mono) c.surface else color.background(dark), CircleShape).border(if (quote.color == color.name) 2.dp else 1.dp, c.secondary, CircleShape), contentAlignment = Alignment.Center) {
+            if (quote.color == color.name) Icon(Icons.Default.Check, null, tint = if (mono) c.text else HighlightColor.text(dark), modifier = Modifier.size(18.dp))
           }
         } }
       }
