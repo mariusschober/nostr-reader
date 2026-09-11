@@ -22,6 +22,38 @@ describe("generic extraction", () => {
     expect(doc.markdown).not.toMatch(/Copyright/);
     expect(doc.markdown).not.toMatch(/User123/);
   });
+
+  // §3D: a CSS-blind converter fuses text from two visually separate boxes when
+  // the source has no whitespace between the tags (chart legends, block eyebrows).
+  it("keeps a word boundary between visually-block inline boxes", async () => {
+    const html = `<!doctype html><html><head><style>
+        .eyebrow { display: block; }
+        .legend { display: flex; }
+      </style></head><body><main><article>
+      <h1>Report on merged labels</h1>
+      <h2><span class="eyebrow">Finding 4: Labor vs. capital share</span>The pie will grow, but a larger share might go to capital</h2>
+      <p>Body paragraph one has enough words that the extractor treats this document as a real article rather than a fragment of navigation chrome or an empty shell. It keeps talking so the word count and the text ratio both clear the confidence thresholds used by the generic extractor scoring function that decides between the primary and fallback candidates for the page.</p>
+      <p><span class="legend">Knowledge workers</span><span class="legend">All other workers</span></p>
+      </article></main></body></html>`;
+    const dom = new JSDOM(html, { url: "https://example.com/report" });
+    const doc = await extractGeneric(dom.window.document, "https://example.com/report");
+    expect(doc.markdown).not.toMatch(/workersAll/);
+    expect(doc.markdown).toMatch(/Knowledge workers\s+All other workers/);
+    expect(doc.markdown).not.toMatch(/shareThe/);
+    expect(doc.markdown).toMatch(/capital share\s+The pie/);
+  });
+
+  it("leaves genuine inline formatting and punctuation untouched", async () => {
+    const html = `<!doctype html><html><head><style>.plain { display: inline; }</style></head><body><main><article>
+      <h1>Inline boundaries</h1>
+      <p>This has <strong>bold</strong> and <em>quiet</em> words inline, plus a <span class="plain">plain</span> word and 12<sup>th</sup> and (parens) intact across enough text to clear the extractor confidence thresholds comfortably and reliably for the generic path here today without any visual block spaces being inserted anywhere in the output.</p>
+      </article></main></body></html>`;
+    const dom = new JSDOM(html, { url: "https://example.com/inline" });
+    const doc = await extractGeneric(dom.window.document, "https://example.com/inline");
+    expect(doc.markdown).toMatch(/This has \*\*bold\*\* and (?:\*quiet\*|_quiet_) words inline/);
+    expect(doc.markdown).toContain("12th");
+    expect(doc.markdown).toContain("(parens)");
+  });
 });
 
 describe("provider adapters", () => {

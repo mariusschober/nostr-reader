@@ -41,6 +41,70 @@ export function meaningfulSelection(text: string): boolean {
   return t.length > 0;
 }
 
+// Inline tags the page can lay out as block-level boxes with CSS.
+const INLINE_TAG_SELECTOR = "span,a,b,strong,i,em,small,sub,sup,label,u,s,code,time";
+const BLOCK_DISPLAYS = new Set([
+  "block", "flex", "grid", "list-item", "flow-root",
+  "table", "table-row", "table-cell", "table-caption",
+]);
+const WORD = /[\p{L}\p{N}]/u;
+
+/**
+ * Class tokens that the live page renders as block-level boxes even though the
+ * tag is inline (a <span style="display:block"> eyebrow, flex legend items).
+ * Read from real computed style on the live document; applied to the sanitized
+ * clone, which cannot resolve styles once detached.
+ */
+export function collectVisualBlockClasses(doc: Document): Set<string> {
+  const classes = new Set<string>();
+  const view = doc.defaultView;
+  if (!view?.getComputedStyle) return classes;
+  for (const el of doc.querySelectorAll(INLINE_TAG_SELECTOR)) {
+    try {
+      if (BLOCK_DISPLAYS.has(view.getComputedStyle(el).display)) el.classList.forEach(c => classes.add(c));
+    } catch { /* detached or unsupported node */ }
+  }
+  return classes;
+}
+
+/**
+ * A CSS-blind Markdown converter fuses text from two visually separate boxes
+ * (e.g. `Knowledge workers` + `All other workers`) into one word when the
+ * source has no whitespace between the tags. Insert a single joining space at
+ * those boundaries only; genuine inline formatting is left untouched.
+ */
+export function separateVisuallyBlockInline(root: ParentNode, isBlock: (el: Element) => boolean): number {
+  let inserted = 0;
+  for (const el of [...root.querySelectorAll(INLINE_TAG_SELECTOR)]) {
+    if (!isBlock(el)) continue;
+    // Never touch fenced code: its whitespace is semantically meaningful.
+    if (el.closest("pre")) continue;
+    if (joinBoundary(el, "before")) inserted++;
+    if (joinBoundary(el, "after")) inserted++;
+  }
+  return inserted;
+}
+
+function edgeChar(node: Node | null, edge: "start" | "end"): string | null {
+  if (!node) return null;
+  const text = node.nodeType === 3 ? node.nodeValue ?? "" : node.textContent ?? "";
+  return edge === "start" ? text.slice(0, 1) : text.slice(-1);
+}
+
+function joinBoundary(el: Element, side: "before" | "after"): boolean {
+  const neighbour = side === "before" ? el.previousSibling : el.nextSibling;
+  if (!neighbour) return false;
+  if (neighbour.nodeType === 3 && (side === "before" ? /\s$/ : /^\s/).test(neighbour.nodeValue ?? "")) return false;
+  const outside = side === "before" ? edgeChar(neighbour, "end") : edgeChar(neighbour, "start");
+  const inside = side === "before" ? edgeChar(el, "start") : edgeChar(el, "end");
+  if (!outside || !inside || !WORD.test(outside) || !WORD.test(inside)) return false;
+  const parent = el.parentNode;
+  const doc = el.ownerDocument;
+  if (!parent || !doc) return false;
+  parent.insertBefore(doc.createTextNode(" "), side === "before" ? el : neighbour);
+  return true;
+}
+
 function sanitizeHtml(html: string): string {
   const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ["p", "h1", "h2", "h3", "h4", "br", "strong", "em", "b", "i", "a", "ul", "ol", "li", "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "th", "td", "img", "hr"],
@@ -95,6 +159,13 @@ function score(md: string, sourceText: string): number {
 
 export async function extractGeneric(doc: Document, url: string): Promise<CapturedDocument> {
   const sourceText = doc.body?.innerText ?? doc.body?.textContent ?? "";
+  // Read the real computed display from the live page. Clones are detached and
+  // cannot resolve styles, so carry the visually-block class tokens across.
+  const visualBlockClasses = collectVisualBlockClasses(doc);
+  const isVisualBlock = (el: Element): boolean => {
+    for (const token of el.classList) if (visualBlockClasses.has(token)) return true;
+    return false;
+  };
   // 1. Defuddle on a cleaned clone (primary). Defuddle lifts the article
   // H1 into its title field, so keep it for the title fallback below.
   let defuddleMd = "";
@@ -102,6 +173,7 @@ export async function extractGeneric(doc: Document, url: string): Promise<Captur
   try {
     const clone = doc.cloneNode(true) as Document;
     stripNoise(clone);
+    separateVisuallyBlockInline(clone, isVisualBlock);
     const parsed = new Defuddle(clone, { markdown: false, url: url }).parse();
     defuddleMd = mdFromHtml(String(parsed.content ?? ""));
     defuddleTitle = String(parsed.title ?? "").trim();
@@ -111,6 +183,7 @@ export async function extractGeneric(doc: Document, url: string): Promise<Captur
   try {
     const clone2 = doc.cloneNode(true) as Document;
     stripNoise(clone2);
+    separateVisuallyBlockInline(clone2, isVisualBlock);
     const art = new Readability(clone2 as never).parse();
     if (art?.content) readabilityMd = mdFromHtml(sanitizeHtml(art.content));
   } catch { readabilityMd = ""; }
