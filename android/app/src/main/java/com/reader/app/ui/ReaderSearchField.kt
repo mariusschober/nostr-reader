@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -56,8 +57,17 @@ fun ReaderSearchField(
   /** Request focus once, after this field's focus node exists in the layout. */
   autoFocus: Boolean = false,
   onAutoFocused: () -> Unit = {},
+  /** Optional reader-surface overrides so the field can live inside the reader. */
+  surfaceColor: Color? = null,
+  textColor: Color? = null,
+  hintColor: Color? = null,
+  cursorColor: Color? = null,
 ) {
   val c = appColors()
+  val surface = surfaceColor ?: c.divider.copy(alpha = .4f)
+  val text = textColor ?: c.text
+  val hint = hintColor ?: c.secondary
+  val cursor = cursorColor ?: c.link
   if (focusRequester != null && autoFocus) {
     // The focus node only exists after the layout pass, so requesting focus
     // straight from a state-change effect can throw "FocusRequester is not
@@ -71,19 +81,19 @@ fun ReaderSearchField(
       onAutoFocused()
     }
   }
-  Surface(color = c.divider.copy(alpha = .4f), shape = RoundedCornerShape(12.dp), modifier = modifier) {
+  Surface(color = surface, shape = RoundedCornerShape(12.dp), modifier = modifier) {
     Row(
       Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp, end = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      Icon(Icons.Default.Search, contentDescription = null, tint = c.secondary, modifier = Modifier.size(20.dp))
+      Icon(Icons.Default.Search, contentDescription = null, tint = hint, modifier = Modifier.size(20.dp))
       Spacer(Modifier.width(10.dp))
       Box(Modifier.weight(1f).padding(vertical = 12.dp)) {
         if (value.isEmpty()) {
           Text(
             placeholder,
             style = MaterialTheme.typography.bodyLarge.copy(fontFamily = ReaderFonts.Ui),
-            color = c.secondary,
+            color = hint,
             maxLines = 1,
           )
         }
@@ -91,8 +101,8 @@ fun ReaderSearchField(
           value = value,
           onValueChange = onValueChange,
           singleLine = true,
-          textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = ReaderFonts.Ui, color = c.text),
-          cursorBrush = SolidColor(c.link),
+          textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = ReaderFonts.Ui, color = text),
+          cursorBrush = SolidColor(cursor),
           keyboardOptions = keyboardOptions,
           keyboardActions = keyboardActions,
           modifier = (if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -102,7 +112,7 @@ fun ReaderSearchField(
       }
       if (value.isNotEmpty()) {
         IconButton(onClick = onClear) {
-          Icon(Icons.Default.Close, contentDescription = clearLabel, tint = c.secondary, modifier = Modifier.size(18.dp))
+          Icon(Icons.Default.Close, contentDescription = clearLabel, tint = hint, modifier = Modifier.size(18.dp))
         }
       }
     }

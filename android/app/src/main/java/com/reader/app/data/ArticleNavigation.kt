@@ -8,6 +8,36 @@ import kotlinx.coroutines.yield
 
 data class ArticleLocation(val part: Int, val cursor: SemanticCursor, val label: String, val end: Int? = null)
 
+/**
+ * A Find result with everything the sheet needs to render and to jump:
+ * the exact location, a context snippet, the snippet-relative match range for
+ * emphasised styling, and the absolute end offset for the landing tint.
+ */
+data class ArticleMatch(
+  val part: Int,
+  val cursor: SemanticCursor,
+  val snippet: String,
+  val textEnd: Int?,
+  val matchStart: Int,
+  val matchEnd: Int,
+) {
+  fun toLocation(): ArticleLocation = ArticleLocation(part, cursor, snippet, textEnd)
+}
+
+/** Snippet text plus the match range measured inside that snippet. */
+data class SnippetWindow(val text: String, val matchStart: Int, val matchEnd: Int)
+
+/**
+ * Builds the context snippet for a match at [at]..[end] in [text]. Newlines
+ * become spaces one-for-one, so the returned match range stays valid.
+ */
+internal fun matchSnippet(text: String, at: Int, end: Int): SnippetWindow {
+  val start = (at - 40).coerceAtLeast(0)
+  val stop = (end + 80).coerceAtMost(text.length)
+  val snippet = text.substring(start, stop).replace('\n', ' ')
+  return SnippetWindow(snippet, at - start, end - start)
+}
+
 /** Builds small navigation metadata from bounded parts; never changes stored text. */
 class ArticleNavigation(private val articles: ArticleRepository, private val db: ReaderDb) {
   suspend fun contents(id: String): List<ArticleLocation> {
@@ -23,7 +53,11 @@ class ArticleNavigation(private val articles: ArticleRepository, private val db:
     }
   }
   suspend fun find(id: String, query: String): List<ArticleLocation> {
-    if (query.isBlank()) return emptyList()
+    return matches(id, query).map { it.toLocation() }
+  }
+  suspend fun matches(id: String, query: String): List<ArticleMatch> {
+    val needle = query.trim()
+    if (needle.isEmpty()) return emptyList()
     val index = articles.index(id)
     return buildList {
       index.sections.indices.forEach { part ->
@@ -31,10 +65,18 @@ class ArticleNavigation(private val articles: ArticleRepository, private val db:
         withContext(Dispatchers.Default) {
           var from = 0
           while (from < p.text.length) {
-            val at = p.text.indexOf(query.trim(), from, ignoreCase = true)
+            val at = p.text.indexOf(needle, from, ignoreCase = true)
             if (at < 0) break
-            val end = at + query.trim().length
-            add(ArticleLocation(part, p.cursor(id, at), p.text.substring((at-40).coerceAtLeast(0), (end+80).coerceAtMost(p.text.length)).replace('\n', ' '), end))
+            val end = at + needle.length
+            val window = matchSnippet(p.text, at, end)
+            add(ArticleMatch(
+              part = part,
+              cursor = p.cursor(id, at),
+              snippet = window.text,
+              textEnd = end,
+              matchStart = window.matchStart,
+              matchEnd = window.matchEnd,
+            ))
             from = end
           }
         }

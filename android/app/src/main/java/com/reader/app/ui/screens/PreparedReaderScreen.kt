@@ -31,12 +31,20 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.viewinterop.AndroidView
 import com.reader.app.ui.ArticleAction
+import com.reader.app.ui.ReaderSearchField
 import com.reader.app.ReaderApp
 import com.reader.app.core.RenderedProjection
 import com.reader.app.core.RENDERED_PROJECTION_VERSION
@@ -117,6 +125,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   val scope = rememberCoroutineScope()
   val colors = readerColors(settings.background)
   val dark = colors.background.luminance() < .5f
+  val keyboard = LocalSoftwareKeyboardController.current
   var part by rememberSaveable(id) { mutableIntStateOf(-1) }
   var prepared by remember(id) { mutableStateOf<PreparedSection?>(null) }
   var content by remember { mutableStateOf<CharSequence?>(null) }
@@ -143,7 +152,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var navigationError by remember(id) { mutableStateOf<String?>(null) }
   var navigationSheet by remember { mutableStateOf<String?>(null) }
   var findText by rememberSaveable(id) { mutableStateOf("") }
-  var findResults by remember(id) { mutableStateOf<List<ArticleLocation>>(emptyList()) }
+  var findResults by remember(id) { mutableStateOf<List<ArticleMatch>>(emptyList()) }
   var findBusy by remember { mutableStateOf(false) }
   var findIndex by rememberSaveable(id) { mutableIntStateOf(0) }
   var inspectionOrigin by rememberSaveable(id, stateSaver = androidx.compose.runtime.saveable.Saver<SemanticCursor?, List<Any>>(
@@ -165,7 +174,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     if (findText.isBlank()) { findBusy = false; return@LaunchedEffect }
     findBusy = true
     delay(150)
-    try { findResults = navigation.find(id, findText); navigationError = null }
+    try { findResults = navigation.matches(id, findText); navigationError = null }
     catch (e: CancellationException) { throw e }
     catch (_: Exception) { navigationError = "Search couldn’t load. Try again." }
     finally { findBusy = false }
@@ -419,9 +428,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       if (inspectionOrigin != null) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = ::returnToReading, modifier = Modifier.weight(1f)) { Text("Return to reading position") }
         if (findResults.isNotEmpty()) {
-          IconButton(enabled = findIndex > 0, onClick = { findIndex--; jump(findResults[findIndex]) }) { Icon(Icons.Default.ChevronLeft, "Previous match") }
-          Text("${findIndex+1}/${findResults.size}", style = MaterialTheme.typography.labelSmall)
-          IconButton(enabled = findIndex < findResults.lastIndex, onClick = { findIndex++; jump(findResults[findIndex]) }) { Icon(Icons.Default.ChevronRight, "Next match") }
+          IconButton(enabled = findIndex > 0, onClick = { findIndex--; jump(findResults[findIndex].toLocation()) }) { Icon(Icons.Default.ChevronLeft, "Previous match") }
+          Text("${findIndex+1} of ${findResults.size}", style = MaterialTheme.typography.labelSmall)
+          IconButton(enabled = findIndex < findResults.lastIndex, onClick = { findIndex++; jump(findResults[findIndex].toLocation()) }) { Icon(Icons.Default.ChevronRight, "Next match") }
         }
       }
       if (finishReceipt != null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -761,21 +770,82 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }
   }
   if (navigationSheet != null) ModalBottomSheet(onDismissRequest = { navigationSheet = null }, containerColor = colors.background, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-    Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).imePadding().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
-      Text(if (navigationSheet == "contents") "Contents" else "Find in article", style = MaterialTheme.typography.titleLarge)
-      navigationError?.let { Text(it, color = colors.error) }
-      if (navigationSheet == "find") {
-        OutlinedTextField(findText, { findText = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-          placeholder = { Text("Find a word or phrase") },
-          keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
-          keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { findResults.firstOrNull()?.let { jump(it) } }))
-        Text(if (findBusy) "Searching all parts…" else if (findText.isBlank()) "Search the article text stored on this device." else "${findResults.size} matches", style = MaterialTheme.typography.bodySmall, color = colors.secondary)
-        androidx.compose.foundation.lazy.LazyColumn {
-          items(findResults.size) { i -> val match = findResults[i]
-            TextButton(onClick = { findIndex = i; jump(match) }) { Text("${i+1}. ${match.label}", maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+    val partCount = prepared?.index?.sections?.size ?: 1
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val largeText = LocalDensity.current.fontScale >= 1.3f
+    val isFind = navigationSheet == "find"
+    val screenH = LocalConfiguration.current.screenHeightDp.dp
+    val sheetHeight = screenH * (if (imeVisible || largeText) 0.9f else 0.55f)
+    Column(
+      Modifier.fillMaxWidth()
+        .then(if (isFind) Modifier.height(sheetHeight) else Modifier.heightIn(max = 560.dp))
+        .imePadding().padding(horizontal = 20.dp).padding(bottom = 20.dp)
+    ) {
+      if (isFind) {
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+          Text("Find in article", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+          IconButton(onClick = { navigationSheet = null }) { Icon(Icons.Default.Close, contentDescription = "Close") }
+        }
+        ReaderSearchField(
+          value = findText,
+          onValueChange = { findText = it },
+          placeholder = "Word or phrase",
+          clearLabel = "Clear search",
+          modifier = Modifier.fillMaxWidth(),
+          surfaceColor = colors.divider.copy(alpha = .4f),
+          textColor = colors.text,
+          hintColor = colors.secondary,
+          cursorColor = colors.link,
+          keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = {
+            val target = findResults.getOrNull(findIndex) ?: findResults.firstOrNull()
+            target?.let { keyboard?.hide(); jump(it.toLocation()) }
+          }),
+        )
+        navigationError?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
+        when {
+          findText.isBlank() -> Text("Search the article text stored on this device.", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
+          findBusy -> Text("Searching all parts…", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
+          findResults.isEmpty() -> Text("No matches for “$findText”.", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
+          else -> {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+              Text("${findIndex + 1} of ${findResults.size}", style = MaterialTheme.typography.labelLarge, color = colors.secondary, modifier = Modifier.weight(1f))
+              IconButton(enabled = findIndex > 0, onClick = { findIndex--; jump(findResults[findIndex].toLocation()) }) { Icon(Icons.Default.ChevronLeft, "Previous match") }
+              IconButton(enabled = findIndex < findResults.lastIndex, onClick = { findIndex++; jump(findResults[findIndex].toLocation()) }) { Icon(Icons.Default.ChevronRight, "Next match") }
+            }
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f)) {
+              items(findResults.size) { i ->
+                val match = findResults[i]
+                Surface(
+                  color = if (i == findIndex) colors.surface else colors.background,
+                  shape = RoundedCornerShape(12.dp),
+                  modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { findIndex = i; keyboard?.hide(); jump(match.toLocation()) },
+                ) {
+                  Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    if (partCount > 1) Text("Part ${match.part + 1}", style = MaterialTheme.typography.labelSmall, color = colors.secondary)
+                    val snippet = match.snippet
+                    val ms = match.matchStart.coerceIn(0, snippet.length)
+                    val me = match.matchEnd.coerceIn(ms, snippet.length)
+                    Text(
+                      buildAnnotatedString {
+                        append(snippet.substring(0, ms))
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, background = colors.link.copy(alpha = .18f))) { append(snippet.substring(ms, me)) }
+                        append(snippet.substring(me))
+                      },
+                      style = MaterialTheme.typography.bodyMedium,
+                      color = colors.text,
+                      maxLines = 3,
+                      overflow = TextOverflow.Ellipsis,
+                    )
+                  }
+                }
+              }
+            }
           }
         }
-      } else androidx.compose.foundation.lazy.LazyColumn {
+      } else {
+        Text("Contents", style = MaterialTheme.typography.titleLarge)
+        navigationError?.let { Text(it, color = colors.error) }
+        androidx.compose.foundation.lazy.LazyColumn {
         val index = prepared?.index
         if (index != null) index.sections.indices.forEach { n ->
           if (index.sections.size > 1 || contents.none { it.part == n }) item {
@@ -791,6 +861,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             TextButton(onClick = { jump(location) }) { Text((if (current == location) "• " else "") + location.label,
               fontWeight = if (current == location) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal) }
           } }
+        }
         }
       }
     }
