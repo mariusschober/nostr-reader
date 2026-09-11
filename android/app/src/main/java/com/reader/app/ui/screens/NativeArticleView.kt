@@ -59,6 +59,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onTap: () -> Unit = {}
   var gestureActive = false
     private set
+  /** E-ink / reduced motion: swap the swipe-settle animation for an instant snap. */
+  var reducedMotion = false
   var onTable: (Int) -> Unit = {}
   /** Viewport position for overlay affordances (e.g. back-to-top). */
   var onAtEnd: (Boolean) -> Unit = {}
@@ -178,7 +180,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (swiping) {
         val commit = event.actionMasked == MotionEvent.ACTION_UP && swipeEligible && swipeArmed
         val later = body.translationX > 0
-        body.animate().translationX(0f).setDuration(160).start()
+        body.animate().translationX(0f).setDuration(if (reducedMotion) 0L else 160L).start()
         swiping = false; swipeEligible = false; swipeArmed = false
         swipeLabel.text = ""
         swipeLabel.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)

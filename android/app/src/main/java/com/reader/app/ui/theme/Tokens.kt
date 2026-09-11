@@ -79,7 +79,38 @@ fun colorsFor(bg: ArticleBackground): ReaderColors = when (bg) {
   ArticleBackground.BLACK -> ReaderColors(Flexoki.Black, Flexoki.Black, Flexoki.Base100, Flexoki.Base400, Flexoki.Base800, Flexoki.Blue400, Flexoki.Green400, Flexoki.Orange400, Flexoki.Red400, Flexoki.Blue400)
 }
 
+/**
+ * E-ink / NXTPAPER monochrome palette: a pure white ground, black primary
+ * text and a #333 secondary, white surfaces with a visible border rather than
+ * tinted fills, and black links that also carry an underline. Hue never
+ * carries meaning in this theme.
+ */
+val EinkColors = ReaderColors(
+  background = Color(0xFFFFFFFF),
+  surface = Color(0xFFFFFFFF),
+  text = Color(0xFF000000),
+  secondary = Color(0xFF333333),
+  divider = Color(0xFF000000),
+  link = Color(0xFF000000),
+  success = Color(0xFF000000),
+  warning = Color(0xFF000000),
+  error = Color(0xFF000000),
+  focal = Color(0xFF000000),
+)
+
+/**
+ * Effective presentation policy for the current theme. [monochrome] drives
+ * the e-ink palette and non-colour state indicators; [reducedMotion] swaps
+ * animated transitions for instant changes while leaving native drag physics
+ * and direct touch scrolling intact.
+ */
+data class DisplayPolicy(
+  val monochrome: Boolean = false,
+  val reducedMotion: Boolean = false,
+)
+
 val LocalReaderDark = staticCompositionLocalOf { false }
+val LocalDisplayPolicy = staticCompositionLocalOf { DisplayPolicy() }
 
 fun resolvedBackground(background: ArticleBackground, dark: Boolean): ArticleBackground =
   if (background == ArticleBackground.FOLLOW_APP) {
@@ -87,33 +118,60 @@ fun resolvedBackground(background: ArticleBackground, dark: Boolean): ArticleBac
   } else background
 
 @Composable
-fun readerColors(background: ArticleBackground): ReaderColors = colorsFor(resolvedBackground(background, LocalReaderDark.current))
+fun readerColors(background: ArticleBackground): ReaderColors =
+  if (LocalDisplayPolicy.current.monochrome) EinkColors
+  else colorsFor(resolvedBackground(background, LocalReaderDark.current))
 
 @Composable
-fun appColors(): ReaderColors = colorsFor(if (LocalReaderDark.current) ArticleBackground.INK else ArticleBackground.PAPER)
+fun appColors(): ReaderColors =
+  if (LocalDisplayPolicy.current.monochrome) EinkColors
+  else colorsFor(if (LocalReaderDark.current) ArticleBackground.INK else ArticleBackground.PAPER)
 
 @Composable
 fun ReaderTheme(mode: ThemeMode, content: @Composable () -> Unit) {
-  val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.LIGHT -> false; ThemeMode.DARK -> true }
-  val c = colorsFor(if (dark) ArticleBackground.INK else ArticleBackground.PAPER)
-  val accentSurface = if (dark) Color(0xFF153E5A) else Color(0xFFD8E8F2)
-  val scheme = if (dark) darkColorScheme(
-    primary = c.link, onPrimary = c.background, primaryContainer = accentSurface, onPrimaryContainer = c.text,
-    secondaryContainer = accentSurface, onSecondaryContainer = c.text,
-    inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = if (dark) Flexoki.Blue600 else Flexoki.Blue400,
-    secondary = c.link, onSecondary = c.background, background = c.background, onBackground = c.text,
-    surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
-    outline = c.secondary, error = c.error,
-  ) else lightColorScheme(
-    primary = c.link, onPrimary = c.background, primaryContainer = accentSurface, onPrimaryContainer = c.text,
-    secondaryContainer = accentSurface, onSecondaryContainer = c.text,
-    inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = if (dark) Flexoki.Blue600 else Flexoki.Blue400,
-    secondary = c.link, onSecondary = c.background, background = c.background, onBackground = c.text,
-    surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
-    outline = c.secondary, error = c.error,
-  )
-  CompositionLocalProvider(LocalReaderDark provides dark) { MaterialTheme(colorScheme = scheme, typography = readerTypography(), content = content) }
+  val outer = LocalDisplayPolicy.current
+  val systemReduceMotion = rememberReduceMotion()
+  val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.DARK -> true; else -> false }
+  // A nested ReaderTheme (the reading surface re-themes itself LIGHT/DARK)
+  // must not silently drop an active e-ink override, so inherit it.
+  val monochrome = mode == ThemeMode.EINK || outer.monochrome
+  val reducedMotion = monochrome || systemReduceMotion || outer.reducedMotion
+  val c = if (monochrome) EinkColors else colorsFor(if (dark) ArticleBackground.INK else ArticleBackground.PAPER)
+  val accentSurface = if (monochrome) Color(0xFFFFFFFF) else if (dark) Color(0xFF153E5A) else Color(0xFFD8E8F2)
+  val scheme = when {
+    monochrome -> lightColorScheme(
+      // Selected containers invert to a black fill with white content so a
+      // chosen chip or indicator is unambiguous without relying on hue.
+      primary = c.text, onPrimary = c.background, primaryContainer = c.text, onPrimaryContainer = c.background,
+      secondaryContainer = c.text, onSecondaryContainer = c.background,
+      inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = c.text,
+      secondary = c.text, onSecondary = c.background, background = c.background, onBackground = c.text,
+      surface = c.surface, onSurface = c.text, surfaceVariant = c.surface, onSurfaceVariant = c.secondary,
+      outline = c.secondary, error = c.error,
+    )
+    dark -> darkColorScheme(
+      primary = c.link, onPrimary = c.background, primaryContainer = accentSurface, onPrimaryContainer = c.text,
+      secondaryContainer = accentSurface, onSecondaryContainer = c.text,
+      inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = if (dark) Flexoki.Blue600 else Flexoki.Blue400,
+      secondary = c.link, onSecondary = c.background, background = c.background, onBackground = c.text,
+      surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
+      outline = c.secondary, error = c.error,
+    )
+    else -> lightColorScheme(
+      primary = c.link, onPrimary = c.background, primaryContainer = accentSurface, onPrimaryContainer = c.text,
+      secondaryContainer = accentSurface, onSecondaryContainer = c.text,
+      inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = if (dark) Flexoki.Blue600 else Flexoki.Blue400,
+      secondary = c.link, onSecondary = c.background, background = c.background, onBackground = c.text,
+      surface = c.surface, onSurface = c.text, surfaceVariant = c.divider, onSurfaceVariant = c.secondary,
+      outline = c.secondary, error = c.error,
+    )
+  }
+  CompositionLocalProvider(
+    LocalReaderDark provides dark,
+    LocalDisplayPolicy provides DisplayPolicy(monochrome = monochrome, reducedMotion = reducedMotion),
+  ) { MaterialTheme(colorScheme = scheme, typography = readerTypography(), content = content) }
 }
+
 
 @Composable
 private fun readerTypography(): androidx.compose.material3.Typography {

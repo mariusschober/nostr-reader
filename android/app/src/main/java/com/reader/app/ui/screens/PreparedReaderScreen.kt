@@ -125,6 +125,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   val scope = rememberCoroutineScope()
   val colors = readerColors(settings.background)
   val dark = colors.background.luminance() < .5f
+  val monochrome = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
   val keyboard = LocalSoftwareKeyboardController.current
   var part by rememberSaveable(id) { mutableIntStateOf(-1) }
   var prepared by remember(id) { mutableStateOf<PreparedSection?>(null) }
@@ -566,7 +567,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       }
       if (saveError != null) TextButton(onClick = { transition { } }) { Text("Save failed — Retry", color = colors.error) }
       if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)
-      else if (ready == null || text == null) CircularProgressIndicator(Modifier.padding(24.dp))
+      else if (ready == null || text == null) {
+        if (com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome) Text("Opening article…", Modifier.padding(24.dp), color = colors.text)
+        else CircularProgressIndicator(Modifier.padding(24.dp))
+      }
       else {
         if (ready.index.sections.size > 1) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
           // Per-part positions: leaving a part bookmarks it, returning restores
@@ -639,6 +643,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             native.tag = styleKey
           }
           native.deleteTint = colors.error.toArgb()
+          native.reducedMotion = monochrome
           native.articleList = null
           native.onArticleSwipe = { action -> transition { onArticleAction(action) } }
           native.setPenMode(pen)

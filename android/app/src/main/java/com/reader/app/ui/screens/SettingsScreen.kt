@@ -38,7 +38,11 @@ data class LibraryStats(val total: Int = 0, val weekMinutes: Int = 0, val weekFi
       Text("App theme", style = MaterialTheme.typography.labelMedium, color = c.secondary)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         com.reader.app.prefs.ThemeMode.entries.forEach { mode -> FilterChip(settings.themeMode == mode,
-          { onSettingsChange(settings.copy(themeMode = mode)) }, { Text(if (mode == com.reader.app.prefs.ThemeMode.SYSTEM) "Follow system" else mode.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
+          { onSettingsChange(settings.copy(themeMode = mode)) }, { Text(when (mode) {
+            com.reader.app.prefs.ThemeMode.SYSTEM -> "Follow system"
+            com.reader.app.prefs.ThemeMode.EINK -> "E-ink / NXTPAPER"
+            else -> mode.name.lowercase().replaceFirstChar { it.uppercase() }
+          }) }) }
       }
       HorizontalDivider(color = c.divider)
       TextButton(onClick = onLabels) { Text("Labels", style = MaterialTheme.typography.titleMedium) }

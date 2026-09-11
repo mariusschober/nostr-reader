@@ -87,7 +87,11 @@ fun ReviewScreen(
           Text(error)
           TextButton(onClick = onRestart) { Text("Start a new review") }
         }
-        loading || state == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        loading || state == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+          // Static progress text on e-ink instead of a continuously animated spinner.
+          if (com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome) Text("Preparing review…", color = c.text)
+          else CircularProgressIndicator()
+        }
         presented == null -> Column(Modifier.fillMaxSize().padding(24.dp)) {
           if (state.members.isEmpty()) {
             Text("No highlights yet", style = MaterialTheme.typography.headlineSmall)
@@ -112,7 +116,7 @@ fun ReviewScreen(
           val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
           val translation by animateFloatAsState(
             targetValue = distance,
-            animationSpec = if (dragging) snap() else Motion.Reveal,
+            animationSpec = if (dragging) snap() else com.reader.app.ui.theme.revealSpec(),
             label = "Review card",
             finishedListener = { if (exiting && !advanced) { advanced = true; next() } },
           )

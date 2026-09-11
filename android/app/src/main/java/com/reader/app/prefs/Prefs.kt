@@ -12,7 +12,7 @@ private val Context.store by preferencesDataStore("reader_settings")
 enum class ArticleFont { NEWSREADER, CRIMSON_PRO, ASUL, ATKINSON, ABEEZEE, INTER }
 enum class ArticleMargin { NARROW, DEFAULT, WIDE }
 enum class ArticleBackground { FOLLOW_APP, PAPER, SOFT, SEPIA, INK, BLACK }
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class ThemeMode { SYSTEM, LIGHT, DARK, EINK }
 enum class LineSpacing { COMPACT, COMFORT, AIRY }
 enum class LibrarySort { NEWEST, OLDEST, QUICKEST, LONGEST, TITLE }
 enum class AgeFilter { ANY, TODAY, WEEK, MONTH, OLDER }

@@ -105,7 +105,7 @@ fun ReaderScreen(
   Scaffold(
     containerColor = c.background,
     topBar = {
-      AnimatedVisibility(visible = controlsVisible, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150))) {
+      AnimatedVisibility(visible = controlsVisible, enter = fadeIn(animationSpec = com.reader.app.ui.theme.chromeFadeSpec()), exit = fadeOut(animationSpec = com.reader.app.ui.theme.chromeFadeSpec())) {
         Row(Modifier.fillMaxWidth().padding(8.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
           IconButton(onClick = onBack) {
             Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = c.text)
@@ -237,9 +237,16 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
         }
       }
       Text("Background", style = MaterialTheme.typography.labelMedium, color = c.secondary)
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ArticleBackground.entries.forEach { b -> FilterChip(settings.background == b, { onChange(settings.copy(background = b)) },
-          { Text(when(b) { ArticleBackground.FOLLOW_APP -> "Follow app theme"; else -> b.name.lowercase().replaceFirstChar { it.uppercase() } }) }) }
+      if (com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome) {
+        Text(
+          "The app-wide E-ink theme controls the background. Change it in Settings under App theme.",
+          color = c.secondary,
+        )
+      } else {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          ArticleBackground.entries.forEach { b -> FilterChip(settings.background == b, { onChange(settings.copy(background = b)) },
+            { Text(when(b) { ArticleBackground.FOLLOW_APP -> "Follow app theme"; else -> b.name.lowercase().replaceFirstChar { it.uppercase() } }) }) }
+        }
       }
       TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Fewer options ▴" else "Font, margins & bold ▾") }
       if (expanded) {

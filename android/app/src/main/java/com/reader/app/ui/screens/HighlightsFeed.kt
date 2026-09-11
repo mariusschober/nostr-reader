@@ -289,6 +289,9 @@ private fun ReviewBanner(summary: ReviewSummary, modifier: Modifier = Modifier, 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+// The detector false-positives on the keyed produceState overload below; the
+// producer does assign `value` from the loaded full quote.
+@Suppress("ProduceStateDoesNotAssignValue")
 private fun HighlightSwipeRow(
   quote: HighlightSummary,
   selecting: Boolean,
@@ -311,7 +314,7 @@ private fun HighlightSwipeRow(
   var gestureDrag by remember { mutableStateOf(false) }
   var armedAction by remember { mutableStateOf<HighlightAction?>(null) }
   val view = androidx.compose.ui.platform.LocalView.current
-  val displayedOffset by animateFloatAsState(offset, if (gestureDrag) snap() else Motion.Settle, label = "Highlight swipe")
+  val displayedOffset by animateFloatAsState(offset, if (gestureDrag) snap() else com.reader.app.ui.theme.settleSpec(), label = "Highlight swipe")
 
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val density = LocalDensity.current
@@ -338,7 +341,8 @@ private fun HighlightSwipeRow(
       ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
           if (action == HighlightAction.Important) {
-            Icon(Icons.Default.Star, contentDescription = null, tint = Flexoki.StarYellow, modifier = Modifier.size(18.dp))
+            val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
+            Icon(Icons.Default.Star, contentDescription = null, tint = if (mono) com.reader.app.ui.theme.EinkColors.text else Flexoki.StarYellow, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
           } else {
             Icon(Icons.Default.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
@@ -399,13 +403,15 @@ private fun HighlightSwipeRow(
           else -> 0f
         }
         val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
+        val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
         // Reserve space above so the badge and the text never overlap.
         Box(Modifier.fillMaxWidth().padding(top = if (quote.important) 12.dp else 0.dp)) {
           Box(
             Modifier.fillMaxWidth()
               .clip(RoundedCornerShape(8.dp))
-              .background(saved.background(dark).copy(alpha = if (dark) .32f else .55f))
-              .drawBehind { drawRect(color = saved.background(dark), size = Size(3.dp.toPx(), size.height)) },
+              .background(if (mono) com.reader.app.ui.theme.EinkColors.surface else saved.background(dark).copy(alpha = if (dark) .32f else .55f))
+              .drawBehind { drawRect(color = if (mono) com.reader.app.ui.theme.EinkColors.divider else saved.background(dark), size = Size(if (mono) 2.dp.toPx() else 3.dp.toPx(), size.height)) }
+              .semantics { if (mono) contentDescription = "Highlight color ${saved.label}" },
           ) {
             Text(
               full,
@@ -414,17 +420,17 @@ private fun HighlightSwipeRow(
                 fontSize = quoteSp.sp,
                 lineHeight = (quoteSp * 1.5f).sp,
               ),
-              color = com.reader.app.ui.theme.HighlightColor.text(dark),
+              color = if (mono) com.reader.app.ui.theme.EinkColors.text else com.reader.app.ui.theme.HighlightColor.text(dark),
               modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
             )
           }
           if (quote.important) {
             Box(
-              Modifier.align(Alignment.TopEnd).offset(y = (-12).dp).size(24.dp).background(Flexoki.Base800, CircleShape)
+              Modifier.align(Alignment.TopEnd).offset(y = (-12).dp).size(24.dp).background(if (mono) com.reader.app.ui.theme.EinkColors.surface else Flexoki.Base800, CircleShape)
                 .semantics { contentDescription = "Important highlight" },
               contentAlignment = Alignment.Center,
             ) {
-              Icon(Icons.Default.Star, contentDescription = null, tint = Flexoki.StarYellow, modifier = Modifier.size(15.dp))
+              Icon(Icons.Default.Star, contentDescription = null, tint = if (mono) com.reader.app.ui.theme.EinkColors.text else Flexoki.StarYellow, modifier = Modifier.size(15.dp))
             }
           }
         }

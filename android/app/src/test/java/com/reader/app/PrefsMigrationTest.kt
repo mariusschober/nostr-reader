@@ -43,4 +43,9 @@ class PrefsMigrationTest {
     assertEquals(ArticleFont.NEWSREADER, s.font)
     assertEquals(ThemeMode.SYSTEM, s.themeMode)
   }
+
+  @Test fun einkThemeModeDecodesFromStorage() {
+    assertEquals("The e-ink theme must persist without renaming existing values",
+      ThemeMode.EINK, decodeSettings(preferencesOf(Prefs.K.THEME to "EINK")).themeMode)
+  }
 }

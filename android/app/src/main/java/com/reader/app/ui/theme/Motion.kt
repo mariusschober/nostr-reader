@@ -1,7 +1,10 @@
 package com.reader.app.ui.theme
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import android.provider.Settings
 import androidx.compose.runtime.Composable
@@ -49,3 +52,17 @@ fun rememberReduceMotion(): Boolean {
     }.getOrDefault(false)
   }
 }
+
+/**
+ * True while animated transitions must become instant swaps: the e-ink theme
+ * or the system accessibility "remove animations" switch. Drag physics and
+ * direct touch scrolling must never consult this.
+ */
+@Composable
+fun reduceMotionActive(): Boolean = LocalDisplayPolicy.current.reducedMotion
+
+@Composable fun settleSpec(): AnimationSpec<Float> = if (reduceMotionActive()) snap() else Motion.Settle
+@Composable fun revealSpec(): AnimationSpec<Float> = if (reduceMotionActive()) snap() else Motion.Reveal
+@Composable fun celebrateSpec(): AnimationSpec<Float> = if (reduceMotionActive()) snap() else Motion.Celebrate
+@Composable fun navSpec(): AnimationSpec<Float> = if (reduceMotionActive()) snap() else Motion.Nav
+@Composable fun chromeFadeSpec(): FiniteAnimationSpec<Float> = if (reduceMotionActive()) snap() else Motion.Fade

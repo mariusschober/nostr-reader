@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
@@ -232,10 +233,11 @@ class MainActivity : ComponentActivity() {
         val bg = windowColors.background
         window.statusBarColor = bg.toArgb()
         window.navigationBarColor = bg.toArgb()
-        WindowCompat.getInsetsController(window, window.decorView)
-          .isAppearanceLightStatusBars =
-          windowColors.text == com.reader.app.ui.theme.Flexoki.Black
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = windowColors.text == com.reader.app.ui.theme.Flexoki.Black
+        // Light system-bar icons are unreadable on the white e-ink ground and
+        // on Paper/Soft; decide from the background's luminance, not the text token.
+        val lightBars = bg.luminance() > 0.5f
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = lightBars
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = lightBars
       }
 
       suspend fun computeLibraryStats(summaries: List<com.reader.app.data.DocumentSummary>): com.reader.app.ui.screens.LibraryStats =
@@ -701,6 +703,7 @@ class MainActivity : ComponentActivity() {
             androidx.compose.material3.Surface(modifier = Modifier.fillMaxSize(), color = colors.background, contentColor = colors.text) {
               androidx.compose.foundation.layout.Column(Modifier.padding(androidx.compose.ui.unit.Dp(24f))) {
                 if (error != null) androidx.compose.material3.Text(error!!, color = colors.error)
+                else if (com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome) androidx.compose.material3.Text("Opening speed reader…", color = colors.text)
                 else androidx.compose.material3.CircularProgressIndicator(color = colors.text)
                 androidx.compose.material3.TextButton(onClick = { stack.pop(); tick++ }) {
                   androidx.compose.material3.Text("Back to article", color = colors.text)

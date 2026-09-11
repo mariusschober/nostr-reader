@@ -577,7 +577,7 @@ private fun SwipeRow(
   var armed by remember { mutableStateOf(false) }
   val displayedOffset by animateFloatAsState(
     offset,
-    if (gestureDrag) snap() else Motion.Settle,
+    if (gestureDrag) snap() else com.reader.app.ui.theme.settleSpec(),
     label = "Article swipe",
   )
   BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -780,7 +780,7 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
   var wasArmed by remember { mutableStateOf(false) }
   val displayedOffset by animateFloatAsState(
     offset,
-    if (dragging) snap() else Motion.Settle,
+    if (dragging) snap() else com.reader.app.ui.theme.settleSpec(),
     label = "Archive swipe",
   )
   BoxWithConstraints(Modifier.fillMaxWidth()) {
