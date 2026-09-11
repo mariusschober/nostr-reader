@@ -22,4 +22,20 @@ Stage 1 is committed on `codex/reliability-finalize` as **`5dbb98a`** ("final-pa
 
 Verified in stage 1: `testDebugUnitTest`, `assembleDebug`, `lintDebug` and `verify16KbAlignment` all **PASS**. Not yet re-run on the TCL device, and the normal `com.reader.app` was **not** reinstalled (still the `fd1b813` build / `03cdfb15…`).
 
-Still to implement from the spec: true fullscreen focus mode with immersive system bars; native text-action menu suppression inside continuous highlighting; the search-landing-only "up" button provenance; the Find-in-article sheet refinement; Inter; the app-wide e-ink display policy; full-width adaptive highlight cards with the Important badge; Review-from-a-tapped-quote with round preservation; the floating Review banner; and the merged-label/heading boundary diagnosis. Then device verification, the copy-deck/current-state update and the final in-place normal install with fresh owner-preservation evidence.
+Still to implement from the spec: the Find-in-article sheet refinement; Inter; the app-wide e-ink display policy; and the merged-label/heading boundary diagnosis.
+
+## Stage 2 — Review from a tapped quote, full-quote cards, refreshed install
+
+Commit **`18c9ac2`** (on top of `9fa220d`, `bdf17fc`, `5dbb98a`) implements the full-quote adaptive highlight card and **Review from a tapped quote without losing the unfinished round** (spec §4A/§4B):
+
+- `ReviewState` gains backward-readable `focusedId` / `focusedReviewed` with defaults, so older persisted state still decodes; no Room schema migration.
+- New `ReviewScheduler.presentedId()` and `ReviewScheduler.focus()`; `advance` reviews a focused quote once and then resumes the preserved round; a legitimate later Important bonus for the same quote is not consumed. `refresh` drops a focused quote that is no longer eligible.
+- `ReviewRepository.focus()`; `advance`/`openedSource` credit the focused presentation once; the Highlights summary counts the focused quote plus the queue.
+- Highlight cards show the full quote with adaptive type (base +6sp up to 160 graphemes, base +3sp up to 450, otherwise base), the 24dp over-border Important badge and a compact footer (source title · Open source · More). A card tap enters Review; the footer controls do not.
+- Eight new `ReviewSchedulerTest` cases cover focus, resume, single consumption, preservation of later bonuses, refresh, missing quotes, serialization and legacy decode.
+
+Checks for this stage: `testDebugUnitTest` **234 passed, 0 failures**; `assembleDebug` passed for both the normal package and `-PreaderQa=true`.
+
+Installed candidate (in place, `com.reader.app`): source `18c9ac203c1a11e216417c8a7cef160a246dd70b`, APK SHA-256 `8052b8a1d1d43a4188a727f69fc57b2fbe3120ce301b214ee507838b3c6680d3`, installed hash verified identical from the device `base.apk`, updated 2026-09-11 00:51:23. Owner integrity: 8 tables plus preferences identical before and after (`owner-ebefore.json` / `owner-eafter.json`), schema v13. Full detail in `evidence/focused-20260910/installation-20260911.json`.
+
+Two native checks on the refreshed QA package (built from the same revision): end of article reaches `100% · End of article` with the Finish card and a byte-stable viewport; one press-and-hold plus one handle adjustment produces exactly one saved range (7 → 8) with the native Copy/Highlight/Share menu intact outside continuous highlighting.

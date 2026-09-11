@@ -1,0 +1,30 @@
+{
+  "sourceCommit": "18c9ac203c1a11e216417c8a7cef160a246dd70b",
+  "sourceCommitSubject": "feat(android): review from a tapped quote without losing the round",
+  "branch": "codex/reliability-finalize",
+  "package": "com.reader.app",
+  "versionName": "0.9.0-beta.1",
+  "versionCode": 2,
+  "device": "TCL T807D",
+  "androidVersion": "16",
+  "androidSdk": 36,
+  "serial": "ZXKRS4VKGQ8PWGEQ",
+  "apkPath": "artifacts/hardening/focused-20260910/reader-debug-18c9ac2.apk",
+  "apkSha256": "8052b8a1d1d43a4188a727f69fc57b2fbe3120ce301b214ee507838b3c6680d3",
+  "installedApkSha256": "8052b8a1d1d43a4188a727f69fc57b2fbe3120ce301b214ee507838b3c6680d3",
+  "previousInstalledApkSha256": "03cdfb15714568f9d63b51ad6fba94806728978bd6d4b502e3bb36d82d4b7916",
+  "installedPath": "/data/app/~~JGr6sjJ2rb-8ZkOaLSN2sQ==/com.reader.app-WtV1Lo-HilysEmL_r95YVQ==/base.apk",
+  "installedAtLocal": "2026-09-11 00:51:23",
+  "inPlaceInstall": true,
+  "ownerDataPreserved": true,
+  "ownerEvidence": "owner-ebefore.json / owner-eafter.json — 8 tables plus preferences identical; schema v13; before-install counts documents 2, highlights 2, channels 1",
+  "qaApkPath": "artifacts/hardening/focused-20260910/reader-qa-18c9ac2.apk",
+  "qaApkSha256": "468f99d163acc8b8156dd72c2429c6ac0f454504f9d5fb2b72c1a78a8f647554",
+  "qaPackage": "com.reader.app.qa",
+  "postInstallLaunch": "MainActivity started with no FATAL EXCEPTION; the owner's dark theme and Inbox/Priority/Later/Archive with the renamed Reader header render (normal-post-install-18c9ac2.png)",
+  "checks": {
+    "nativeEndOfText": "PASS — scrolling to the end shows 100% / End of article with Finish & archive and Back to Reader (native-end-of-text-18c9ac2.png); two consecutive no-input screenshots are byte-identical (fb94b431...), so the viewport is stable",
+    "nativeSelection": "PASS — one press-and-hold plus one handle adjustment, then Highlight, created exactly one range (highlights 7 to 8; newest row '<a>one word</'); native Copy/Highlight/Share/Select all menu present outside continuous highlighting (native-selection-18c9ac2-a/b/c.png)"
+  },
+  "note": "Supersedes installation.json (the fd1b813 install). The owner's data was preserved in place; the isolated QA package was refreshed from the same revision only to run the two native checks."
+}
