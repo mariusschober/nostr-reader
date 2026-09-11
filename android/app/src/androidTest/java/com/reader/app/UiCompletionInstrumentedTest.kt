@@ -235,12 +235,20 @@ class UiCompletionInstrumentedTest {
       tap("Back")
       tap("Highlight options"); tap("Important highlight")
       waitFor("important saved") { runBlocking { db.highlights().byId(q.id)!!.important } }
-      tap("Done"); tap("Back to highlights")
+      // Done dismisses the options sheet and leaves us in the Highlights
+      // feed; the old quote-detail route exposed a separate “Back to
+      // highlights” action, which no longer exists in this flow.
+      tap("Done")
       waitFor("highlight options") { node("Highlight options") != null }
       tap("Highlight options"); tap("Remove")
       waitFor("removed") { runBlocking { db.highlights().byId(q.id) == null } }
       // Importance may still own the active Undo; dismiss its notice first.
-      if (node("Importance updated") != null) tap("Dismiss")
+      if (node("Importance updated") != null) when {
+        node("Dismiss") != null -> tap("Dismiss")
+        // Material's Snackbar close action is localized on the S23 test
+        // profile ("Schließen"); do not make the behavior assertion English-only.
+        node("Schließen") != null -> tap("Schließen")
+      }
       waitFor("removal notice") { node("Highlight removed") != null }
       tap("Undo"); waitFor("restored") { runBlocking { db.highlights().byId(q.id) != null } }
       assertTrue(db.highlights().byId(q.id)!!.important)
