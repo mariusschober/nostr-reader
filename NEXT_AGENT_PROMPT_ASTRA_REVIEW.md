@@ -6,7 +6,7 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 
 - Repo: `/Users/schober/Projects/Nostr Reader`
 - Branch: `codex/reliability-finalize` - work stays local. Do not push, merge or release.
-- Audited revision (check this out): **`f20828b3e2b4c255419f5436523d5b5de7d49104`** - `fix(android): underline Compose links and monochrome highlight swatches in E-ink`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme and its fidelity fixes. The branch tip is a later **docs-only** commit above it (documentation, evidence and this prompt), so check out `f20828b` for the code under audit and read this prompt and the handover from the working tree.
+- Audited revision (check this out): **`f20828b3e2b4c255419f5436523d5b5de7d49104`** - `fix(android): underline Compose links and monochrome highlight swatches in E-ink`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme and its fidelity fixes. The branch tip is a later **test- and docs-only** commit above it (an instrumented gate test plus documentation and this prompt; no product source changes), so check out `f20828b` for the code under audit and read this prompt and the handover from the working tree.
 - Feature and test commits in scope, newest first:
   - `f20828b` fix(android): underline Compose links and monochrome highlight swatches in E-ink
   - `6ca2a4d` feat(android): app-wide E-ink / NXTPAPER monochrome theme
@@ -66,6 +66,7 @@ Android (all in the audited revision):
 - `ui/screens/InboxScreen.kt`, `ui/screens/SettingsScreen.kt`, `ui/MainActivity.kt` - wiring, one-time search focus, Back-closes-search, Reader rename, warmer Paper surface, one-time highlight help.
 - `ui/theme/Tokens.kt`, `ui/theme/Motion.kt`, `prefs/Prefs.kt` (installed revision `6ca2a4d`) - `ThemeMode.EINK`, the `EinkColors` palette, the `DisplayPolicy`/`LocalDisplayPolicy` (monochrome + reduced motion) and the `settleSpec`/`revealSpec`/`chromeFadeSpec` helpers. `ReaderTheme` now inherits an outer monochrome override so the nested reader theme cannot drop it; `appColors`/`readerColors` return the e-ink palette when monochrome. System bars follow background luminance. E-ink state reaches the Important badge and highlight cards, static loading text, and the native swipe settle.
 - Tests: `ReviewSchedulerTest.kt`, `ArticleNavigationTest.kt`, `ReaderFlowInstrumentedTest.kt`, `UiCompletionInstrumentedTest.kt`, and `PrefsMigrationTest.kt` (new: fresh install sees the highlight explanation once, an existing install is treated as already seen, an explicit flag beats the legacy-install guess, unknown stored values fall back to defaults).
+- `HighlightMenuGateInstrumentedTest.kt` (above the audited revision, test-only): asserts **both** native selection modes through the `ActionMode.Callback` the view installs - ordinary selection keeps Android's text-action menu plus the app's Highlight action; continuous highlighting clears it.
 
 Chrome extension:
 
