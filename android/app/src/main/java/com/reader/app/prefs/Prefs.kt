@@ -51,7 +51,7 @@ data class ReaderSettings(
 }
 
 class Prefs(private val ctx: Context) {
-  private object K {
+  internal object K {
     val FONT = stringPreferencesKey("font")
     val FONT_SIZE = floatPreferencesKey("fontSize")
     val MARGIN = stringPreferencesKey("margin")
@@ -73,39 +73,10 @@ class Prefs(private val ctx: Context) {
     val MILESTONES = stringSetPreferencesKey("milestonesDone")
   }
 
-  /**
-   * Any previously saved preference implies an existing install, which marks
-   * the highlight explanation as already seen. A fresh install has no keys.
-   */
-  private fun legacyInstall(d: Preferences): Boolean =
-    listOf(K.FONT, K.FONT_SIZE, K.MARGIN, K.BG, K.THEME, K.SPACING, K.SORT, K.AGE, K.BOLD, K.WELCOME)
-      .any { d.contains(it) }
-
   val flow = ctx.store.data.map(::decode).distinctUntilChanged()
   suspend fun load(): ReaderSettings = flow.first()
 
-  private fun decode(d: Preferences): ReaderSettings {
-    return ReaderSettings(
-      font = runCatching { ArticleFont.valueOf(d[K.FONT] ?: "NEWSREADER") }.getOrDefault(ArticleFont.NEWSREADER),
-      fontSizeSp = (d[K.FONT_SIZE] ?: 19f).coerceIn(14f, 32f),
-      margin = runCatching { ArticleMargin.valueOf(d[K.MARGIN] ?: "DEFAULT") }.getOrDefault(ArticleMargin.DEFAULT),
-      // Existing explicit backgrounds survive; only new/unset installs follow the app.
-      background = runCatching { ArticleBackground.valueOf(d[K.BG] ?: "FOLLOW_APP") }.getOrDefault(ArticleBackground.FOLLOW_APP),
-      themeMode = runCatching { ThemeMode.valueOf(d[K.THEME] ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM),
-      ttsSpeed = (d[K.TTS] ?: 1f).coerceIn(0.75f, 2.5f),
-      rsvpWpm = (d[K.WPM] ?: 300).coerceIn(100, 1200),
-      lineSpacing = runCatching { LineSpacing.valueOf(d[K.SPACING] ?: "COMFORT") }.getOrDefault(LineSpacing.COMFORT),
-      sort = runCatching { LibrarySort.valueOf(d[K.SORT] ?: "NEWEST") }.getOrDefault(LibrarySort.NEWEST),
-      age = runCatching { AgeFilter.valueOf(d[K.AGE] ?: "ANY") }.getOrDefault(AgeFilter.ANY),
-      bold = d[K.BOLD] == true,
-      labelIds = d[K.LABELS].orEmpty(),
-      unlabeled = d[K.UNLABELED] == true,
-      searchCurrentShelf = d[K.SEARCH_CURRENT] == true,
-      searchTitlesOnly = d[K.SEARCH_TITLES] == true,
-      archiveCoachShown = d[K.ARCHIVE_COACH] == true,
-      highlightCoachSeen = d[K.HIGHLIGHT_COACH] ?: legacyInstall(d),
-    )
-  }
+  private fun decode(d: Preferences): ReaderSettings = decodeSettings(d)
 
   suspend fun save(s: ReaderSettings) {
     ctx.store.updateData {
@@ -148,4 +119,40 @@ class Prefs(private val ctx: Context) {
     }
     return took
   }
+}
+
+/**
+ * Pure decode so the migration rules are testable without a Context.
+ *
+ * Any previously saved preference implies an existing install, which marks the
+ * one-time highlight explanation as already seen so an established reader is
+ * not re-taught. A fresh install has no keys and starts unseen. An explicitly
+ * stored flag always wins.
+ */
+internal fun decodeSettings(d: Preferences): ReaderSettings {
+  fun legacyInstall(): Boolean =
+    listOf(
+      Prefs.K.FONT, Prefs.K.FONT_SIZE, Prefs.K.MARGIN, Prefs.K.BG, Prefs.K.THEME,
+      Prefs.K.SPACING, Prefs.K.SORT, Prefs.K.AGE, Prefs.K.BOLD, Prefs.K.WELCOME,
+    ).any { d.contains(it) }
+  return ReaderSettings(
+    font = runCatching { ArticleFont.valueOf(d[Prefs.K.FONT] ?: "NEWSREADER") }.getOrDefault(ArticleFont.NEWSREADER),
+    fontSizeSp = (d[Prefs.K.FONT_SIZE] ?: 19f).coerceIn(14f, 32f),
+    margin = runCatching { ArticleMargin.valueOf(d[Prefs.K.MARGIN] ?: "DEFAULT") }.getOrDefault(ArticleMargin.DEFAULT),
+    // Existing explicit backgrounds survive; only new/unset installs follow the app.
+    background = runCatching { ArticleBackground.valueOf(d[Prefs.K.BG] ?: "FOLLOW_APP") }.getOrDefault(ArticleBackground.FOLLOW_APP),
+    themeMode = runCatching { ThemeMode.valueOf(d[Prefs.K.THEME] ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM),
+    ttsSpeed = (d[Prefs.K.TTS] ?: 1f).coerceIn(0.75f, 2.5f),
+    rsvpWpm = (d[Prefs.K.WPM] ?: 300).coerceIn(100, 1200),
+    lineSpacing = runCatching { LineSpacing.valueOf(d[Prefs.K.SPACING] ?: "COMFORT") }.getOrDefault(LineSpacing.COMFORT),
+    sort = runCatching { LibrarySort.valueOf(d[Prefs.K.SORT] ?: "NEWEST") }.getOrDefault(LibrarySort.NEWEST),
+    age = runCatching { AgeFilter.valueOf(d[Prefs.K.AGE] ?: "ANY") }.getOrDefault(AgeFilter.ANY),
+    bold = d[Prefs.K.BOLD] == true,
+    labelIds = d[Prefs.K.LABELS].orEmpty(),
+    unlabeled = d[Prefs.K.UNLABELED] == true,
+    searchCurrentShelf = d[Prefs.K.SEARCH_CURRENT] == true,
+    searchTitlesOnly = d[Prefs.K.SEARCH_TITLES] == true,
+    archiveCoachShown = d[Prefs.K.ARCHIVE_COACH] == true,
+    highlightCoachSeen = d[Prefs.K.HIGHLIGHT_COACH] ?: legacyInstall(),
+  )
 }
