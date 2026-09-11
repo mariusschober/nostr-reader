@@ -163,7 +163,7 @@ private fun FocalWord(token: String, font: FontFamily, colors: com.reader.app.ui
     content = {
       Text(left, style = segmentStyle, color = colors.text, maxLines = 1)
       Text(
-        focal, style = segmentStyle,
+        focal,
         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         // Keep the normal-theme accent that makes the focal grapheme easy to
         // track. Monochrome/e-ink deliberately collapses this role to the
