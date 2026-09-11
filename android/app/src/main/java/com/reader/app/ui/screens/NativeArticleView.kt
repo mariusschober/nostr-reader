@@ -50,6 +50,15 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var sessionRange: IntRange? = null
   private var selectionSequence = 0L
   private var selectionCommitted = false
+  /**
+   * ActionMode may be recreated while Android is moving a selection handle. We
+   * keep the committed bit out of the live callback while the old mode is
+   * being torn down, then restore it only until a fresh article selection
+   * begins. A new gesture clears this candidate before a new ordinary
+   * selection can inherit an old saved session.
+   */
+  private var pendingActionModeContinuation = false
+  private var pendingCommittedContinuation = false
   private var pendingSelection: Runnable? = null
   private var pen = false
   private var restoring = false
@@ -92,6 +101,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   private fun hasSelection() = actionMode != null || body.selectionStart != body.selectionEnd
+  private fun validSelection(start: Int, endExclusive: Int): Boolean =
+    start >= 0 && endExclusive > start && endExclusive <= body.length()
   private fun maxScrollY() = ((body.layout?.height ?: 0) + body.totalPaddingTop + body.totalPaddingBottom - body.height).coerceAtLeast(0)
   private fun isAtEnd(): Boolean {
     val layout = body.layout ?: return false
@@ -128,6 +139,18 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         velocity = VelocityTracker.obtain().also { it.addMovement(event) }
         flingEligible = !pen && !hasSelection()
         swipeX = event.x; swipeY = event.y; swiping = false; swipeArmed = false
+        if (pendingActionModeContinuation && actionMode == null) {
+          // A touch delivered to the article while no ActionMode is active is
+          // the fresh-selection boundary. Handle popups continue through the
+          // platform controller and do not dispatch this parent event, so
+          // their ActionMode recreation retains the candidate below. A new
+          // ordinary long-press, including one overlapping the old passage,
+          // receives a fresh session and stays unsaved until Highlight.
+          pendingActionModeContinuation = false
+          pendingCommittedContinuation = false
+          selectionSession = null; sessionRange = null; lastSelection = null
+          selectionCommitted = false
+        }
         val insets = androidx.core.view.ViewCompat.getRootWindowInsets(this)
           ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemGestures())
         val edge = maxOf(dp(24), insets?.left ?: 0, insets?.right ?: 0)
@@ -244,16 +267,70 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // from Android's handle controller and prevents edge autoscrolling.
     addView(body, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     body.changed = { start, end -> selectionChanged(start, end) }
-    body.scrolled = { y, h -> if (!body.isInLayout) { onViewport(y, h); if (!restoring && h > 0) onAtEnd(isAtEnd()) } }
+    body.scrolled = { y, h ->
+      if (!body.isInLayout) {
+        // Edge rules are drawn by this parent over the scrolling TextView;
+        // invalidate it whenever the child viewport moves so cached runs are
+        // translated with the glyphs on hardware and software canvases.
+        if (markRanges.any { it.edge != "none" }) invalidate()
+        onViewport(y, h)
+        if (!restoring && h > 0) onAtEnd(isAtEnd())
+      }
+    }
+    body.setOnLongClickListener {
+      // A second long-press is a new intentional selection even when Android
+      // keeps the existing ActionMode alive. Flush the old pen/committed range
+      // once, clear its owner, and return false so TextView retains its native
+      // selection handles and default long-press behavior.
+      if (actionMode != null || body.selectionStart != body.selectionEnd || selectionSession != null) {
+        flushSelection()
+        resetSelectionOwner()
+      }
+      false
+    }
     body.customSelectionActionModeCallback = object : ActionMode.Callback {
       override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
         stopFling()
+        val start = body.selectionStart
+        val end = body.selectionEnd
+        val previousSession = selectionSession
+        val previousRange = sessionRange
+        val previousCommitted = pendingCommittedContinuation || selectionCommitted
+        val continuingHandle = pendingActionModeContinuation &&
+          previousSession != null && previousRange != null &&
+          (!validSelection(start, end) || selectionRangesOverlap(previousRange, start, end))
+        // Pen selection can notify onSelectionChanged before Android creates
+        // its ActionMode. Preserve that pre-mode owner instead of minting a
+        // second id when the mode finally appears.
+        val preModePen = pen && !pendingActionModeContinuation &&
+          previousSession != null && previousRange != null && validSelection(start, end)
+        pendingActionModeContinuation = false
+        pendingCommittedContinuation = false
         actionMode = mode
-        selectionCommitted = false
-        // Reuse the id for one live selection: Android can destroy and
-        // recreate the ActionMode during a handle drag, and minting a new id
-        // here would persist the same selection as a second highlight.
-        if (selectionSession == null) selectionSession = UUID.randomUUID().toString()
+        if (validSelection(start, end)) {
+          // A first ordinary selection starts ownership before the menu is
+          // shown. A recreated mode keeps that ownership only when the touch
+          // began as a continuation; a new overlapping long-press is a
+          // separate gesture and must not autosave an old committed mark.
+          if (!continuingHandle && !preModePen) {
+            selectionSession = UUID.randomUUID().toString()
+            lastSelection = null
+          } else if (continuingHandle || preModePen) {
+            selectionSession = previousSession
+          }
+          sessionRange = start until end
+          selectionCommitted = continuingHandle && previousCommitted
+        } else {
+          if (selectionSession == null) selectionSession = UUID.randomUUID().toString()
+          selectionCommitted = continuingHandle && previousCommitted
+        }
+        // A handle can deliver its final range while ActionMode is between
+        // instances. Re-arm the same coalesced callback after restoration so
+        // that pen and already-committed ordinary selections do not lose the
+        // last adjustment merely because onSelectionChanged arrived early.
+        if ((continuingHandle || preModePen) && validSelection(start, end) && (pen || selectionCommitted)) {
+          selectionChanged(start, end)
+        }
         if (pen) {
           // Continuous highlighting: keep the action mode (so handles,
           // magnifier and edge autoscroll keep working) but suppress the
@@ -273,6 +350,14 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       }
       override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
         if (item.itemId != HIGHLIGHT_ACTION) return false
+        val start = body.selectionStart
+        val end = body.selectionEnd
+        if (!validSelection(start, end)) return false
+        // Establish ownership before the first repository emission. Without
+        // this, the first ordinary Highlight click had a null range and the
+        // next handle callback minted a second session id.
+        if (selectionSession == null) selectionSession = UUID.randomUUID().toString()
+        sessionRange = start until end
         selectionCommitted = true
         emitSelection()
         return true
@@ -281,12 +366,19 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         flushSelection()
         pendingSelection?.let { removeCallbacks(it) }
         pendingSelection = null
+        // The platform may briefly collapse the selection while it tears down
+        // the mode for a handle drag. Keep the owner/range candidate whenever
+        // this mode had one; a fresh article ACTION_DOWN clears it before a
+        // new ordinary or pen selection can inherit it.
+        val keepForContinuation = selectionSession != null && sessionRange != null
+        val committedForContinuation = selectionCommitted
+        pendingActionModeContinuation = keepForContinuation
+        pendingCommittedContinuation = committedForContinuation
         actionMode = null
         selectionCommitted = false
-        // The session id deliberately survives ActionMode teardown: a handle
-        // drag can recreate the mode while the same selection is still live.
-        // It is rotated only for a genuinely new selection (below) or an
-        // explicit clear.
+        // Keep the id/range as a candidate, but keep the committed bit cleared
+        // until onCreate proves that the next touch is an existing-handle
+        // recreation. This prevents Copy-only selections from saving later.
       }
     }
     var downX = 0f; var downY = 0f
@@ -443,6 +535,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       flushSelection()
       pendingSelection?.let { removeCallbacks(it) }
       pendingSelection = null
+      pendingActionModeContinuation = false
+      pendingCommittedContinuation = false
       selectionSession = null; sessionRange = null; lastSelection = null
       selectionCommitted = false
     } else {
@@ -451,6 +545,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       // allocates a fresh session.
       pendingSelection?.let { removeCallbacks(it) }
       pendingSelection = null
+      pendingActionModeContinuation = false
+      pendingCommittedContinuation = false
       selectionSession = null; sessionRange = null; lastSelection = null
       selectionCommitted = false
       actionMode?.finish()
@@ -480,8 +576,23 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   fun highlightSelection(): Boolean {
-    if (!hasSelection() || body.selectionEnd <= body.selectionStart) return false
+    val start = body.selectionStart
+    val end = body.selectionEnd
+    if (!validSelection(start, end)) return false
+    if (selectionSession == null) selectionSession = UUID.randomUUID().toString()
+    sessionRange = start until end
     selectionCommitted = true; emitSelection(); return true
+  }
+
+  private fun resetSelectionOwner() {
+    pendingSelection?.let { removeCallbacks(it) }
+    pendingSelection = null
+    pendingActionModeContinuation = false
+    pendingCommittedContinuation = false
+    selectionSession = null
+    sessionRange = null
+    lastSelection = null
+    selectionCommitted = false
   }
 
   fun clearSelection(): Boolean {
@@ -489,7 +600,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     pendingSelection?.let { removeCallbacks(it) }
     actionMode?.finish()
     (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
-    selectionSession = null; sessionRange = null; lastSelection = null
+    resetSelectionOwner()
     return active
   }
 
@@ -512,17 +623,18 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     if (start >= 0 && end > start) stopFling()
     pendingSelection?.let { removeCallbacks(it) }
     // A collapsed selection (including the transient collapse while a handle is
-    // grabbed) does not end the session; only a selection that starts clear of
-    // the range this session already covers is treated as a new highlight.
-    if (start < 0 || end < 0 || end == start) return
-    if (!pen && !selectionCommitted) return
-    val owned = sessionRange
-    if (selectionSession == null || owned == null || start >= owned.last || end <= owned.first) {
-      selectionSession = UUID.randomUUID().toString()
-      sessionRange = start until end
-    } else {
-      sessionRange = minOf(owned.first, start) until maxOf(owned.last, end)
-    }
+    // grabbed) does not end the session. The next ActionMode creation decides
+    // whether a valid range is a handle continuation or a new gesture.
+    if (!validSelection(start, end)) return
+    // Before ActionMode is created, ordinary Android selection is intentionally
+    // unsaved. Do not let a new long-press mutate a committed session while the
+    // old mode is being dismissed.
+    if (!pen && actionMode == null) return
+    if (selectionSession == null) selectionSession = UUID.randomUUID().toString()
+    // While this mode owns the selection, the range is the latest actual
+    // half-open selection. Replacing it (rather than unioning endpoints) lets a
+    // handle shrink a quote as well as extend it.
+    sessionRange = start until end
     val expectedStart = start; val expectedEnd = end
     pendingSelection = Runnable {
       if ((pen || selectionCommitted) && body.selectionStart == expectedStart && body.selectionEnd == expectedEnd) emitSelection()

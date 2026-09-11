@@ -4,8 +4,13 @@ import android.graphics.Color
 import android.os.SystemClock
 import android.text.Selection
 import android.text.Spannable
+import android.view.ActionMode
 import android.view.InputDevice
+import android.view.Menu
+import android.view.MenuInflater
 import android.view.MotionEvent
+import android.view.View
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -148,6 +153,110 @@ class HighlightSessionInstrumentedTest {
       assertTrue("The handle drag must extend the saved range", last.last > firstEnd)
       assertEquals("The saved quote equals the final selected range",
         projection.text.substring(last.first, last.last + 1), rows.single().quote)
+    }
+  }
+
+  /**
+   * The ordinary Android menu commits immediately, then a handle adjustment
+   * must update that same row. The old path had no owned range at first commit
+   * and treated a shared-boundary adjustment as a second session.
+   */
+  @Test fun ordinaryMenuHighlightThenBoundaryAdjustmentPersistsOneRow() {
+    val runner = InstrumentationRegistry.getInstrumentation()
+    val app = ApplicationProvider.getApplicationContext<ReaderApp>()
+    val db = ReaderDb.get(app)
+    val repo = HighlightRepository(db)
+    val run = System.currentTimeMillis()
+    val docId = "ordinary-session-gate-$run"
+    val text = "Ordinary menu selection keeps one identity when its end handle moves across a shared boundary."
+    val projection = RenderedText.project(ArticleParser.parseWithSources(text))
+    val doc = DocumentEntity(docId, "Ordinary session", "test", null, null, null, null, run, "en", text,
+      text.split(' ').size, 1, "reading", "inbox", null, 0, 0f, run, run, run)
+    val emissions = ConcurrentLinkedQueue<Triple<String, Long, IntRange>>()
+    val native = AtomicReference<NativeArticleView>()
+    val body = AtomicReference<TextView>()
+    ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+      scenario.onActivity { activity -> activity.setContent {
+        AndroidView(modifier = Modifier.fillMaxSize(), factory = { context ->
+          NativeArticleView(context).apply {
+            display(docId, projection, com.reader.app.ui.screens.nativeArticleText(projection, Color.BLUE),
+              com.reader.app.prefs.ReaderSettings(), Color.rgb(16, 15, 15), Color.rgb(255, 252, 240), 24,
+              SemanticCursor.start(docId))
+            onSelection = { session, sequence, range -> emissions.add(Triple(session, sequence, range)) }
+            native.set(this)
+            body.set((0 until childCount).map { getChildAt(it) }.filterIsInstance<TextView>().first { it.isTextSelectable })
+          }
+        })
+      } }
+      fun waitFor(label: String, check: () -> Boolean) {
+        repeat(200) { if (check()) return; SystemClock.sleep(50) }
+        error("Timed out: $label")
+      }
+      waitFor("layout") { body.get()?.layout != null && (body.get()?.height ?: 0) > 0 }
+      val view = body.get()
+      val callback = native.get().customSelectionActionModeCallback
+      val fakeMenu = PopupMenu(view.context, null).menu
+      val fakeMode = object : ActionMode() {
+        override fun getMenuInflater(): MenuInflater = MenuInflater(view.context)
+        override fun getMenu(): Menu = fakeMenu
+        override fun getTitle(): CharSequence? = null
+        override fun getSubtitle(): CharSequence? = null
+        override fun setTitle(title: CharSequence?) {}
+        override fun setTitle(resId: Int) {}
+        override fun setSubtitle(subtitle: CharSequence?) {}
+        override fun setSubtitle(resId: Int) {}
+        override fun setTitleOptionalHint(titleOptional: Boolean) {}
+        override fun isTitleOptional(): Boolean = false
+        override fun getCustomView(): View? = null
+        override fun setCustomView(view: View?) {}
+        override fun setType(type: Int) {}
+        override fun getType(): Int = 0
+        override fun invalidate() {}
+        override fun finish() {}
+      }
+      val firstStart = 5
+      val firstEndExclusive = 12
+      val adjustedStart = firstEndExclusive - 1 // one shared selected character
+      val adjustedEndExclusive = 28
+      runner.runOnMainSync {
+        Selection.setSelection(view.text as Spannable, firstStart, firstEndExclusive)
+        fakeMenu.clear(); fakeMenu.add("Copy")
+        check(callback.onCreateActionMode(fakeMode, fakeMenu))
+        val highlight = (0 until fakeMenu.size()).map { fakeMenu.getItem(it) }.first { it.title == "Highlight" }
+        check(callback.onActionItemClicked(fakeMode, highlight))
+        Selection.setSelection(view.text as Spannable, adjustedStart, adjustedEndExclusive)
+      }
+      waitFor("ordinary adjustment emission") { emissions.size >= 2 }
+      runner.runOnMainSync { callback.onDestroyActionMode(fakeMode) }
+      val savedIds = mutableListOf<String>()
+      for ((session, _, range) in emissions) {
+        runBlocking { repo.saveSelection(HighlightAnchors.create(session, doc, projection, range.first, range.last + 1, run)) }
+        savedIds += session
+      }
+      val rows = runBlocking { db.highlights().observeForDocument(docId).first() }
+      val last = emissions.last().third
+      assertEquals("Ordinary menu and handle adjustment share one id", 1, savedIds.distinct().size)
+      assertEquals("One intentional selection persists one row", 1, rows.size)
+      assertEquals("Final adjusted range is stored", projection.text.substring(last.first, last.last + 1), rows.single().quote)
+      assertEquals("The adjustment starts at the requested shared boundary", adjustedStart, last.first)
+
+      // Dismissing that committed mode and selecting an overlapping passage
+      // for Copy must not inherit the committed bit or autosave. A real touch
+      // away from the old handle clears the pending continuation; this fake
+      // callback path models the same non-handle recreation boundary.
+      val beforeCopy = emissions.size
+      runner.runOnMainSync {
+        // Explicitly end the old selection before the next ordinary gesture;
+        // this is the ownership boundary that separates a Copy-only passage
+        // from a transient ActionMode recreation.
+        native.get().clearSelection()
+        Selection.setSelection(view.text as Spannable, adjustedStart, adjustedStart + 6)
+        fakeMenu.clear(); fakeMenu.add("Copy")
+        check(callback.onCreateActionMode(fakeMode, fakeMenu))
+        callback.onDestroyActionMode(fakeMode)
+      }
+      SystemClock.sleep(250)
+      assertEquals("Copy-only overlapping selection must not autosave", beforeCopy, emissions.size)
     }
   }
 }
