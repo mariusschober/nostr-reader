@@ -94,7 +94,11 @@ class NativeMonoGeometryInstrumentedTest {
       // the added spacing and returned no underline Y at all.
       val density = view.resources.displayMetrics.density
       val underline = wrapped.asSequence()
-        .mapNotNull { run -> nativeMonoUnderlineOffsets(layout, run.line, run.edge, 1.5f * density, density, 8f) }
+        .mapNotNull { run ->
+          nativeMonoUnderlineOffsets(
+            layout, run.line, run.edge, 1.5f * density, density, 8f, view.text, view.paint,
+          )
+        }
         .firstOrNull()
       assertTrue("wrapped mark must have a visible underline position", underline != null)
       val ys = checkNotNull(underline)

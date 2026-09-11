@@ -11,6 +11,7 @@ import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.TextPaint
 import android.text.style.*
 import android.view.ActionMode
 import android.view.Menu
@@ -737,6 +738,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         stroke = stroke,
         density = density,
         lastInset = body.paddingBottom.toFloat(),
+        text = body.text,
+        paint = body.paint,
       ) ?: continue
       val yOffset = body.top + body.paddingTop - body.scrollY
       monoEdgePaint.strokeWidth = stroke
@@ -780,8 +783,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
  * Layout.getLineBottom(line, false) is the metric edge without paragraph
  * line-spacing on API 34 and newer. It includes the actual line's metric
  * spans, so descenders and mixed heading/body fonts remain below the rule.
- * Older releases use the equivalent baseline plus Layout descent. The next
- * line's top (or the final text inset) bounds the reserved interline gap.
+ * Older releases derive the descent from the TextPaint and every
+ * MetricAffectingSpan run on that line, deliberately excluding added layout
+ * spacing. The next line's top (or the final text inset) bounds the reserved
+ * interline gap.
  * This helper is independent of the view so the geometry contract can be
  * exercised against a real Layout in a compact instrumented test.
  */
@@ -792,6 +797,8 @@ internal fun nativeMonoUnderlineOffsets(
   stroke: Float,
   density: Float,
   lastInset: Float,
+  text: CharSequence,
+  paint: TextPaint,
 ): Pair<Float, Float?>? {
   if (line !in 0 until layout.lineCount || stroke <= 0f || density <= 0f) return null
   val baseline = layout.getLineBaseline(line).toFloat()
@@ -800,7 +807,7 @@ internal fun nativeMonoUnderlineOffsets(
     // layout's added line spacing on affected releases and collapses the gap.
     layout.getLineBottom(line, false).toFloat()
   } else {
-    baseline + layout.getLineDescent(line).toFloat()
+    baseline + nativeMonoFallbackLineDescent(layout, line, text, paint)
   }
   val lower = if (line < layout.lineCount - 1) layout.getLineTop(line + 1).toFloat()
     else (layout.height + lastInset).toFloat()
@@ -814,6 +821,46 @@ internal fun nativeMonoUnderlineOffsets(
   if (available < stroke * 0.8f) return first to null
   val second = minOf(first + 3f * density, lower - stroke * 0.5f)
   return if (second - first >= stroke * 0.7f) first to second else first to null
+}
+
+/**
+ * The descent that belongs to the glyphs on one line on API < 34. Layout's
+ * public line descent is allowed to include paragraph spacing on those
+ * releases, so measure the actual TextPaint and each metric-affecting span
+ * run instead. The pure max helper is intentionally separate for a small
+ * SDK-independent regression test.
+ */
+internal fun nativeMonoFallbackDescent(baseDescent: Float, spanDescents: Iterable<Float>): Float =
+  maxOf(baseDescent, spanDescents.maxOrNull() ?: baseDescent)
+
+private fun nativeMonoFallbackLineDescent(layout: Layout, line: Int, text: CharSequence, paint: TextPaint): Float {
+  val baseDescent = paint.fontMetricsInt.descent.toFloat()
+  if (text !is Spanned) return baseDescent
+  val lineStart = layout.getLineStart(line).coerceIn(0, text.length)
+  val lineEnd = layout.getLineVisibleEnd(line).coerceIn(lineStart, text.length)
+  if (lineEnd <= lineStart) return baseDescent
+  val spans = text.getSpans(lineStart, lineEnd, MetricAffectingSpan::class.java)
+  if (spans.isEmpty()) return baseDescent
+  val boundaries = buildList {
+    add(lineStart)
+    add(lineEnd)
+    spans.forEach {
+      add(text.getSpanStart(it).coerceIn(lineStart, lineEnd))
+      add(text.getSpanEnd(it).coerceIn(lineStart, lineEnd))
+    }
+  }.distinct().sorted()
+  val descents = mutableListOf<Float>()
+  for ((start, end) in boundaries.zipWithNext()) {
+    if (end <= start) continue
+    val runPaint = TextPaint(paint)
+    text.getSpans(start, end, MetricAffectingSpan::class.java).forEach { span ->
+      val spanStart = text.getSpanStart(span)
+      val spanEnd = text.getSpanEnd(span)
+      if (spanStart <= start && spanEnd >= end) span.updateMeasureState(runPaint)
+    }
+    descents += runPaint.fontMetricsInt.descent.toFloat()
+  }
+  return nativeMonoFallbackDescent(baseDescent, descents)
 }
 
 /** Half-open overlap used by selection ownership and its boundary regression. */
