@@ -6,8 +6,9 @@ You are a rigorous, independent reviewer and auditor for an Android reader app. 
 
 - Repo: `/Users/schober/Projects/Nostr Reader`
 - Branch: `codex/reliability-finalize` — work stays local. Do not push, merge or release.
-- Audited revision (HEAD): **`9fa220d98150d01cab0b63014807b313c5551679`** — `feat(android): floating Review banner replaces the top entry card`.
+- Audited revision (HEAD): **`18c9ac203c1a11e216417c8a7cef160a246dd70b`** — `feat(android): review from a tapped quote without losing the round`.
 - Feature commits in scope, newest first:
+  - `18c9ac2` review from a tapped quote without losing the round
   - `9fa220d` floating Review banner replaces the top entry card
   - `bdf17fc` fullscreen focus, search-only up button, native menu suppression while highlighting
   - `5dbb98a` final-pass stage 1 — Reader rename, four reading actions, warmer Paper, one-time highlight help
@@ -15,7 +16,7 @@ You are a rigorous, independent reviewer and auditor for an Android reader app. 
   - `fd1b813` quieter shelf markers and progress stroke
 - Base chain: `b14f128c54996515f45218f8d912ef106c174446` on `15a77ff647ac39f4e9165e47504d553504a1ac8b`.
 - Diff to audit: `git diff 15a77ff..9fa220d -- android/ docs/` (use `git show` per commit for exact hunks).
-- Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `03cdfb15714568f9d63b51ad6fba94806728978bd6d4b502e3bb36d82d4b7916`, source commit `fd1b813`, on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ`. **The installed build predates the audited revision** — `bdf17fc`, `5dbb98a` and `9fa220d` are local-only and not yet installed. The QA package is `com.reader.app.qa`.
+- Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `8052b8a1d1d43a4188a727f69fc57b2fbe3120ce301b214ee507838b3c6680d3`, source commit `18c9ac2`, installed in place on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ` with the installed file hash verified identical and owner data preserved (`evidence/focused-20260910/installation-20260911.json`). The QA package is `com.reader.app.qa`.
 
 ## Read first
 
@@ -29,15 +30,16 @@ You are a rigorous, independent reviewer and auditor for an Android reader app. 
 
 ## Scope note
 
-The working tree may contain uncommitted work-in-progress (quote-tap Review with round preservation across `ReviewScheduler.kt`, `HighlightRepository.kt`, `HighlightsFeed.kt`, `ReviewScreen.kt`, `MainActivity.kt`). Audit the **committed revision `9fa220d`**; treat any uncommitted diff as out of scope unless the operator re-points you after committing it, and say so plainly if it changes your conclusion.
+The working tree is clean at the audited revision; review only committed code. The two native checks already recorded for this revision are the end-of-article finish state and the single adjusted native selection (`installation-20260911.json`); do not repeat the 100-article intake.
 
 ## What changed (audit targets)
 
 - `ui/DestinationHeader.kt` — shared 52dp header row for Reader/Shelf, Highlights, Settings and Review.
 - `ui/ReaderSearchField.kt` — compact 48dp search surface.
 - `ui/screens/PreparedReaderScreen.kt`, `ui/screens/NativeArticleView.kt` — four reading actions (Highlight · Contents · Listen · Speed), fullscreen focus (immersive bars), native text-action menu suppression while highlighting.
-- `ui/screens/HighlightsFeed.kt` — full-quote adaptive cards, Important badge, floating Review banner.
+- `ui/screens/HighlightsFeed.kt` — full-quote adaptive cards, Important badge, floating Review banner, and the card tap that enters Review.
 - `ui/screens/ReviewScreen.kt` — compact header, truthful phase progress, Newsreader measure, Source action, completion state.
+- `core/ReviewScheduler.kt` — focused presentation (`focusedId` / `focusedReviewed`, `presentedId`, `focus`) that preserves an unfinished round.
 - `data/HighlightRepository.kt`, `data/Highlights.kt` — read-only `observeSummary()` / `ReviewDao.observeParts()`.
 - `ui/screens/InboxScreen.kt`, `ui/screens/SettingsScreen.kt`, `ui/MainActivity.kt` — wiring, one-time search focus, Back-closes-search, Reader rename, warmer Paper surface, one-time highlight help.
 - `ReaderFlowInstrumentedTest.kt`, `UiCompletionInstrumentedTest.kt` — updated completion-copy expectations.
