@@ -72,3 +72,9 @@ Evidence: `evidence/focused-20260910/qa-retest-20260911.json` and `qa-find-*.png
 - **§3B E-ink / NXTPAPER theme — NOT DONE.** No `eink`, `nxpaper`, or `monochrome` markers exist under `android/app/src/main/java`. This is the largest remaining item: an app-wide display policy with a monochrome palette, reduced motion and per-theme rendering across the reader, dialogs, sheets, native spans, Review, Speed, search fields and system bars.
 
 Everything else in the spec is implemented or explicitly superseded in this file. §3C (Inter), §2E (Find) and §3D (text boundaries) are now implemented as stages 3–5 above and shipped in the installed candidate.
+
+## Tip commit and independent audit pointer
+
+The branch tip is **`4317e67156f9e47261f2e66bc16d5ed9b8acdbb8`** (`test(prefs): extract decodeSettings and cover preference migration`), on top of the installed-revision chain `0d3c085` and its docs/evidence commits. It is a test-only, behavior-preserving change: the private preference `decode` is extracted into a top-level `internal fun decodeSettings(Preferences)` so the migration rules can be unit-tested without a `Context`, `Prefs.K` is widened to `internal`, and `PrefsMigrationTest` covers the once-only highlight explanation plus the fallback rules. No stored key is renamed, no default changes and no product behavior changes; the worktree is clean and `:app:testDebugUnitTest` is green. The installed `com.reader.app` candidate remains the `0d3c085` build (`64a0cf40…`) because the refactor does not change device behavior.
+
+The independent review/performance/UI/UX audit prompt for GPT Astra is [NEXT_AGENT_PROMPT_ASTRA_REVIEW.md](NEXT_AGENT_PROMPT_ASTRA_REVIEW.md), pointing at the tip commit and this handover. It asks for findings first (P0–P3) across review, performance, UI and UX, names the installed candidate and its hashes, and lists the guardrails (local only, use `com.reader.app.qa`, do not repeat the 100-article intake, no soak/matrix campaign).
