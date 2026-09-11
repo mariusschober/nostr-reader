@@ -58,6 +58,15 @@ In-place `com.reader.app` install from **`0d3c0859a98548f2d6ad1b4274da4b117c0cef
 
 The installed artifact itself was opened and checked: the on-device `base.apk` contains `res/font/inter_regular.ttf`, `res/font/inter_bold.ttf` and the refined Find strings (`Word or phrase`, `No matches for`, `Return to reading position`) in its dex, so the shipped binary matches the source, not just the build inputs. The Inter commit's only change to `NativeArticleView.kt` is the typeface selection (`inter_regular` / `inter_bold`); selection handling, the native text-action mode and the 8dp inset are untouched, so the `18c9ac2` native end-of-text and native-selection results still describe this build. The copy contract was extended for Inter and the refined Find sheet in `9c3c58c`.
 
+### Retest of the changed paths (isolated QA package)
+
+The two paths that changed after the last device check were retested on `com.reader.app.qa` (QA APK `0d028a99aae3df0d1c37ee893e83a69a1681e3a49c75355d99130fcaf43f0248`, installed in place with the 98-article corpus preserved; the owner app was not touched):
+
+- **Find** on a multi-part article: the blank state (`Word or phrase`, "Search the article text stored on this device."), the no-match state, and the results state (`document` -> `1 of 42` with Previous match / Next match and full-width snippet rows) all render; Next advances to `2 of 42` and moves the reader; dismissing the sheet leaves the compact match strip with Return to reading position; Return restores the original `2%` position.
+- **Inter**: the Appearance font list offers Newsreader, Crimson Pro, Asul, Atkinson Hyperlegible, ABeeZee and Inter; selecting Inter persists `INTER` to the DataStore preferences and the article renders with no FATAL EXCEPTION.
+
+Evidence: `evidence/focused-20260910/qa-retest-20260911.json` and `qa-find-*.png`, `qa-appearance-fonts-scrolled.png`, `qa-inter-article.png`. The normal `app-debug.apk` rebuild is byte-identical to the installed candidate (`64a0cf40…`), so its archived copy `artifacts/hardening/focused-20260910/reader-debug-0d3c085.apk` still matches.
+
 ## Remaining spec items — verified against the code (2026-09-11)
 
 - **§3B E-ink / NXTPAPER theme — NOT DONE.** No `eink`, `nxpaper`, or `monochrome` markers exist under `android/app/src/main/java`. This is the largest remaining item: an app-wide display policy with a monochrome palette, reduced motion and per-theme rendering across the reader, dialogs, sheets, native spans, Review, Speed, search fields and system bars.

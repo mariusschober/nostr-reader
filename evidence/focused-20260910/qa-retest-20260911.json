@@ -1,0 +1,35 @@
+{
+  "sourceCommit": "0d3c0859a98548f2d6ad1b4274da4b117c0cef46",
+  "device": "TCL T807D / Android 16 (SDK 36) / serial ZXKRS4VKGQ8PWGEQ",
+  "packages": {
+    "owner": {
+      "id": "com.reader.app",
+      "touched": false,
+      "note": "Not touched by this retest; the owner app stays at the 0d3c085 install."
+    },
+    "qa": {
+      "id": "com.reader.app.qa",
+      "apkSha256": "0d028a99aae3df0d1c37ee893e83a69a1681e3a49c75355d99130fcaf43f0248",
+      "installedInPlace": true,
+      "corpusPreserved": true,
+      "corpusSize": 98
+    }
+  },
+  "article": "Document structure | web.dev (multi-part, QA corpus)",
+  "scope": "Only the two paths changed since the last device check: the refined Find-in-article sheet and the Inter reading font. The 100-article intake, soak testing and the exhaustive matrix were not repeated.",
+  "checks": {
+    "findBlank": "PASS - 'Find in article' header, Close control, placeholder 'Word or phrase', and 'Search the article text stored on this device.' (qa-find-1-blank.png)",
+    "findNoMatch": "PASS - query 'heading' shows the no-match copy naming the query, and the Clear search action is present (qa-find-2-nomatch.png)",
+    "findResults": "PASS - query 'document' shows '1 of 42' with Previous match and Next match controls and full-width snippet rows; the active row uses the selected surface",
+    "findNext": "PASS - Next advances the counter to '2 of 42' and moves the reader",
+    "findJumpAndStrip": "PASS - dismissing the sheet leaves a compact match strip with Return to reading position, Previous match, '2 of 42' and Next match (qa-find-3-jump.png)",
+    "findReturn": "PASS - Return to reading position restores '2% - about 15 min left' and the strip disappears",
+    "interListed": "PASS - Appearance font list shows Newsreader, Crimson Pro, Asul, Atkinson Hyperlegible, ABeeZee and Inter (qa-appearance-fonts-scrolled.png)",
+    "interSelectedAndPersisted": "PASS - selecting Inter writes INTER to files/datastore/reader_settings.preferences_pb, the radio shows selected, and the article still renders with no FATAL EXCEPTION (qa-inter-article.png)"
+  },
+  "notRun": [
+    "native end-of-text and native selection (code paths unchanged; the Inter commit only changes the typeface selection in NativeArticleView.kt)",
+    "100-article intake, scale data, soak, 120-minute session, exhaustive matrix"
+  ],
+  "note": "QA package only; the owner's com.reader.app was not touched. The QA font preference is left on INTER as evidence that the selection persisted."
+}
