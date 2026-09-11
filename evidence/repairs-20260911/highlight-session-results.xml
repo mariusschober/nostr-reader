@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.reader.app.HighlightSessionInstrumentedTest" tests="2" failures="0" errors="0" skipped="0" time="95.318" timestamp="2026-09-11T14:01:53" hostname="localhost">
+  <properties>
+    <property name="device" value="T807D - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="oneHandleDragPersistsExactlyOneHighlight" classname="com.reader.app.HighlightSessionInstrumentedTest" time="48.811" />
+  <testcase name="ordinaryMenuHighlightThenBoundaryAdjustmentPersistsOneRow" classname="com.reader.app.HighlightSessionInstrumentedTest" time="46.105" />
+</testsuite>

@@ -1,0 +1,267 @@
+{
+  "schema": "reader-focused-repair-evidence-v2",
+  "date": "2026-09-11",
+  "branch": "codex/reliability-finalize",
+  "branchTip": "eca253a",
+  "productSourceCommit": "75b369b",
+  "testOnlyTip": "eca253a",
+  "scope": "Focused QA and owner-preserving installation only; no 100-article intake, scale corpus, soak session, exhaustive device matrix, or statistical performance campaign.",
+  "artifacts": {
+    "normalBaseline": {
+      "path": "artifacts/repairs-20260911/reader-debug-pre-repairs.apk",
+      "sha256": "8dc3d733635189852151f908de4c0b261fc131b0a130c974f0e7df8430c0b6e1",
+      "status": "preserved-before-repair-build"
+    },
+    "normalLatest": {
+      "path": "artifacts/repairs-20260911/reader-debug-75b369b.apk",
+      "sourceCommit": "75b369b",
+      "sha256": "d3bdcdae7dc1dae525d5b04805fe31aaf331eb4cb98420df8163dd8278ea0236",
+      "status": "installed on TCL com.reader.app; exact local source artifact"
+    },
+    "normalConvenienceCopy": {
+      "path": "artifacts/reader-debug.apk",
+      "sourceCommit": "75b369b",
+      "sha256": "d3bdcdae7dc1dae525d5b04805fe31aaf331eb4cb98420df8163dd8278ea0236",
+      "status": "copy of the installed normal candidate; ignored local binary"
+    },
+    "qaLatest": {
+      "path": "artifacts/repairs-20260911/reader-qa-75b369b.apk",
+      "sourceCommit": "75b369b",
+      "sha256": "825277511e2d74a0ed531f52ca99b7004694c00bfdf794227c8216c6205f79db",
+      "status": "installed on S23 com.reader.app.qa for focused checks"
+    },
+    "historicalCandidates": [
+      {
+        "path": "artifacts/repairs-20260911/reader-debug-108d882.apk",
+        "sourceCommit": "108d882",
+        "sha256": "db7bf6415f18dcb8ce0f9669faf3d6a628aca38d0ed1b5531cc17295f4e740bc"
+      },
+      {
+        "path": "artifacts/repairs-20260911/reader-qa-108d882.apk",
+        "sourceCommit": "108d882",
+        "sha256": "1d664824f4792484af3f41a05a23b8f68defabf999d1cea5d452fc30a325b69e"
+      },
+      {
+        "path": "artifacts/repairs-20260911/reader-debug-33d450b.apk",
+        "sourceCommit": "b9995be + 33d450b",
+        "sha256": "53a5337b02d8886d27d4d271d99232996faa5f4960fb370876afc0c23a77201e"
+      },
+      {
+        "path": "artifacts/repairs-20260911/reader-qa-33d450b.apk",
+        "sourceCommit": "b9995be + 33d450b",
+        "sha256": "3af1f3889f61c345dee3d13e9eed9cf9f8b6d3ee04955cdba3d7af3e7d7830b9"
+      }
+    ],
+    "normalCertificateSha256": "3af50cab6e0515f478413e79786958671913b2cae67037defe537bb1e7465069",
+    "nativeAlignment": {
+      "status": "PASS",
+      "scope": "12 native library entries",
+      "wholeApkZipAlignment": "NOT MEASURED"
+    }
+  },
+  "hostChecks": [
+    {
+      "check": "Android fast unit suite",
+      "status": "PASS",
+      "result": "PASS at fa1bea7",
+      "notes": "The exact aggregate count is not reasserted here; NativeMonoFallbackTest was 1/1 after 108d882. The 75b stroke-only delta did not justify a full rerun."
+    },
+    {
+      "check": "lintDebug",
+      "status": "PASS",
+      "notes": "Current product source; the existing RsvpScreen.kt:106 condition warning remains."
+    },
+    {
+      "check": "normal and QA debug builds",
+      "status": "PASS",
+      "notes": "Normal assembleDebug and assembleDebug -PreaderQa=true completed for 75b369b."
+    },
+    {
+      "check": "Native 16 KB alignment",
+      "status": "PASS",
+      "notes": "All 12 native libraries page-aligned; this does not certify ZIP/container alignment."
+    },
+    {
+      "check": "Chrome extraction/typecheck/build",
+      "status": "PASS_HISTORICAL",
+      "notes": "Earlier 8b89a7f evidence; no new 50 + 50 intake was run in this repair pass."
+    }
+  ],
+  "deviceChecks": {
+    "tcl": {
+      "serial": "ZXKRS4VKGQ8PWGEQ",
+      "model": "T807D",
+      "os": "Android 16/API 36",
+      "qaPackage": "com.reader.app.qa",
+      "normalPackage": "com.reader.app",
+      "qaInstall": {
+        "status": "PASS_HISTORICAL",
+        "artifact": "reader-qa-108d882.apk",
+        "sha256": "1d664824f4792484af3f41a05a23b8f68defabf999d1cea5d452fc30a325b69e",
+        "notes": "Earlier isolated TCL QA run; latest 75b QA was not installed on TCL."
+      },
+      "normalInstall": {
+        "status": "PASS",
+        "artifact": "artifacts/repairs-20260911/reader-debug-75b369b.apk",
+        "localSha256": "d3bdcdae7dc1dae525d5b04805fe31aaf331eb4cb98420df8163dd8278ea0236",
+        "installedBaseSha256": "d3bdcdae7dc1dae525d5b04805fe31aaf331eb4cb98420df8163dd8278ea0236",
+        "hashEvidence": "evidence/repairs-20260911/tcl-normal-installed-base-sha256.txt",
+        "ownerBefore": "evidence/focused-20260910/owner-final75b-before.json",
+        "ownerAfter": "evidence/focused-20260910/owner-final75b-after.json",
+        "ownerSummary": "8 Room tables, schema 13, preferences digest and counts matched; ownerDataPreserved=true",
+        "keyDigestBefore": "evidence/repairs-20260911/tcl-owner-key-digest-before.txt",
+        "keyDigestAfter": "evidence/repairs-20260911/tcl-owner-key-digest-after.txt",
+        "keyDigestSha256": "c076b845a4eab1d06b2797df4c946c54a59c396b90d72aab8df59118b4596203",
+        "launch": "Launched once after before/after owner comparison",
+        "launchEvidence": "evidence/repairs-20260911/tcl-normal-post-install.png"
+      },
+      "checks": [
+        {
+          "name": "HighlightSessionInstrumentedTest",
+          "status": "PASS",
+          "result": "2/2",
+          "evidence": "evidence/repairs-20260911/highlight-session-results.xml",
+          "notes": "One native handle adjustment and one ordinary-menu Highlight plus boundary adjustment retained one persisted row. This was on the historical 108d QA package."
+        },
+        {
+          "name": "Corrected NativeMonoGeometryInstrumentedTest",
+          "status": "NOT RUN ON TCL",
+          "notes": "The corrected bidi endpoint exists in 24b3cca and passed on S23; no second TCL run was needed."
+        },
+        {
+          "name": "Reader/Highlights/Review/Paste walkthrough",
+          "status": "PARTIAL",
+          "evidence": [
+            "evidence/repairs-20260911/highlights-latest.png",
+            "evidence/repairs-20260911/reader-from-highlight.png",
+            "evidence/repairs-20260911/add-sheet.png",
+            "evidence/repairs-20260911/paste-sheet.png"
+          ],
+          "notes": "QA-only source-unavailable treatment, Review entry and add/paste surfaces were inspected. QA session/orphan residue remains; no text was submitted."
+        }
+      ],
+      "qaState": "Historical QA fixture/orphan rows only; normal owner data was not used for QA mutations."
+    },
+    "s23": {
+      "serial": "R3CW404GVBL",
+      "model": "SM-S918B",
+      "qaPackage": "com.reader.app.qa",
+      "normalPackageChanged": false,
+      "qaInstall": {
+        "status": "PASS",
+        "artifact": "artifacts/repairs-20260911/reader-qa-75b369b.apk",
+        "sha256": "825277511e2d74a0ed531f52ca99b7004694c00bfdf794227c8216c6205f79db"
+      },
+      "checks": [
+        {
+          "name": "NativeMonoGeometryInstrumentedTest",
+          "status": "PASS",
+          "result": "1/1",
+          "evidence": [
+            "evidence/repairs-20260911/s23-native-mono-results.xml",
+            "evidence/repairs-20260911/s23-native-mono-test-results.log"
+          ]
+        },
+        {
+          "name": "UiCompletionInstrumentedTest#quoteTapStartsReviewAndSingleRemovalHasUndo",
+          "status": "PASS",
+          "result": "1/1",
+          "evidence": [
+            "evidence/repairs-20260911/s23-ui-completion-results-pass.xml",
+            "evidence/repairs-20260911/s23-ui-completion-test-results-pass.log"
+          ],
+          "notes": "The initial timeout was a stale test tap for Back to highlights; eca253a corrected the sheet route and localized close action."
+        },
+        {
+          "name": "Ordinary wrapped monochrome highlight",
+          "status": "PASS",
+          "evidence": "evidence/repairs-20260911/s23-native-wrapped-mono.png",
+          "notes": "Native long-press, handle extension, Highlight and Back produced a wrapped two-line mark whose fill and edge geometry agree."
+        },
+        {
+          "name": "Green/double wrapped E-ink mark after 75b",
+          "status": "NOT MEASURED",
+          "evidence": "evidence/repairs-20260911/s23-native-wrapped-double.png",
+          "notes": "The available screenshot predates the 75b thinner-stroke repair and still looks single-line."
+        },
+        {
+          "name": "Review source and Back round trip",
+          "status": "PASS",
+          "evidence": [
+            "evidence/repairs-20260911/s23-review-source.png",
+            "evidence/repairs-20260911/s23-review-open-source.png",
+            "evidence/repairs-20260911/s23-review-back.png"
+          ],
+          "notes": "Card tap started Review at the quote, Open source landed at the saved passage, and Back returned to the same quote."
+        },
+        {
+          "name": "Important removal",
+          "status": "PASS",
+          "evidence": "evidence/repairs-20260911/s23-highlight-removed.png",
+          "notes": "Review → feed More → Remove left zero quotes in the QA fixture."
+        },
+        {
+          "name": "Manual Snackbar Undo tap",
+          "status": "NOT MEASURED",
+          "evidence": "evidence/repairs-20260911/s23-highlight-undo.png",
+          "notes": "Automation delay outlasted the notice; the single UiCompletion test is the available focused Undo proof."
+        },
+        {
+          "name": "Speed focal cue after b9995be/33d450b",
+          "status": "NOT MEASURED",
+          "evidence": "evidence/repairs-20260911/s23-speed-normal.png",
+          "notes": "The screenshot records the pre-fix blue focal n baseline defect. Post-fix normal and E-ink views were not captured."
+        },
+        {
+          "name": "ACTION_SEND text fixture",
+          "status": "BLOCKED",
+          "evidence": [
+            "evidence/repairs-20260911/s23-share-saved.png",
+            "evidence/repairs-20260911/s23-share-one-line.png"
+          ],
+          "notes": "Shell quoting split the one-line payload and no article was saved; this is not intake proof."
+        }
+      ],
+      "qaState": "One sample Welcome article and temporary QA quote were used; the normal S23 package was never changed."
+    }
+  },
+  "ownerIntegrity": {
+    "status": "PASS_LOGICAL_SUMMARY",
+    "normalPackage": "com.reader.app",
+    "qaPackage": "com.reader.app.qa",
+    "device": "ZXKRS4VKGQ8PWGEQ",
+    "summaryBefore": "evidence/focused-20260910/owner-final75b-before.json",
+    "summaryAfter": "evidence/focused-20260910/owner-final75b-after.json",
+    "comparison": "8 tables, schema 13, counts, table digests and preferences digest equal; ownerDataPreserved=true",
+    "keyDigest": "On-device before/after digest equal: c076b845a4eab1d06b2797df4c946c54a59c396b90d72aab8df59118b4596203; file contents were never exported",
+    "guardrail": "Never clear, uninstall, seed or destructive-test com.reader.app. Never pull, print or export reader_keys.xml or any private key."
+  },
+  "pending": [
+    {
+      "item": "Green/double wrapped E-ink visual after 75b369b",
+      "status": "NOT MEASURED",
+      "next": "At most one isolated QA screenshot when a quiet device is available; repeat only if a defect is observed."
+    },
+    {
+      "item": "Speed focal cue after b9995be/33d450b",
+      "status": "NOT MEASURED",
+      "next": "One paused word in normal and E-ink; an 18–20 letter token is optional, not a matrix."
+    },
+    {
+      "item": "Enlarged-system-text layout spot check",
+      "status": "NOT MEASURED",
+      "next": "One enlarged-text look at the affected reading/highlight rows only; no font or device matrix."
+    },
+    {
+      "item": "Seven-day user trial",
+      "status": "PENDING USER OBSERVATION",
+      "next": "Leave the normal TCL build in place and collect only concrete visible regressions or comfort feedback."
+    }
+  ],
+  "preservedUntracked": [
+    "evidence/polish-20260911/21-feed.xml",
+    "evidence/polish-20260911/22-feed.xml",
+    "evidence/polish-20260911/22-reader-tab.xml",
+    "evidence/polish-20260911/23-archive.xml"
+  ]
+}

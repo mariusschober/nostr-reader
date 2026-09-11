@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.reader.app.NativeMonoGeometryInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="1.253" timestamp="2026-09-11T15:08:49" hostname="localhost">
+  <properties>
+    <property name="device" value="SM-S918B - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="wrappedAndBidiRunsStayVisibleAndIndependent" classname="com.reader.app.NativeMonoGeometryInstrumentedTest" time="0.957" />
+</testsuite>

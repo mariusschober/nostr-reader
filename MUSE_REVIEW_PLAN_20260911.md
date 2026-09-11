@@ -1,8 +1,10 @@
-# Reader — review of Muse's polish pass and final repair plan
+# Reader — historical audit and repair plan after Muse's polish pass
 
-Date: 11 September 2026. Baseline: `80f39c4d60574a487a44b27e33c05a3648391d9d` on `codex/reliability-finalize`.
+Date: 11 September 2026. Baseline reviewed: `80f39c4d60574a487a44b27e33c05a3648391d9d` on `codex/reliability-finalize`.
 
-This is an audit and implementation plan, not a claim that the repairs below have shipped. The present review changes documentation and evidence only. It supersedes the remaining-work/completion statements in the earlier polish handover where they conflict. Keep the older specification for requirements that this plan does not change.
+**Current implementation pointer (updated after execution):** the planned Android repairs are implemented through product commit `75b369b` (`eca253a` is the current test-only tip), and the normal `com.reader.app` build is installed on TCL `ZXKRS4VKGQ8PWGEQ` with verified SHA-256 `d3bdcdae7dc1dae525d5b04805fe31aaf331eb4cb98420df8163dd8278ea0236`. Focused evidence, owner-preservation proof, the three post-fix visual gaps and the seven-day trial handoff are maintained in [IMPLEMENTATION_HANDOFF_20260911.md](IMPLEMENTATION_HANDOFF_20260911.md) and [evidence/repairs-20260911/manifest.json](evidence/repairs-20260911/manifest.json).
+
+The sections below are the historical audit and design record that led to the repair chain. Their old findings and “next action” wording are retained for traceability, but the current executable state is the handoff linked above. The final visual gaps are intentionally **NOT MEASURED**, not silently promoted to passes. Keep the older specification for requirements that this plan does not change.
 
 ## 1. Findings first
 

@@ -1,0 +1,78 @@
+INSTRUMENTATION_STATUS: class=com.reader.app.UiCompletionInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+com.reader.app.UiCompletionInstrumentedTest:
+INSTRUMENTATION_STATUS: test=quoteTapStartsReviewAndSingleRemovalHasUndo
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.reader.app.UiCompletionInstrumentedTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stack=java.lang.IllegalStateException: Timed out: Back to highlights
+at com.reader.app.UiCompletionInstrumentedTest.waitFor(UiCompletionInstrumentedTest.kt:59)
+at com.reader.app.UiCompletionInstrumentedTest.waitFor$default(UiCompletionInstrumentedTest.kt:52)
+at com.reader.app.UiCompletionInstrumentedTest.tap(UiCompletionInstrumentedTest.kt:77)
+at com.reader.app.UiCompletionInstrumentedTest.access$tap(UiCompletionInstrumentedTest.kt:29)
+at com.reader.app.UiCompletionInstrumentedTest$quoteTapStartsReviewAndSingleRemovalHasUndo$1.invokeSuspend(UiCompletionInstrumentedTest.kt:238)
+at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+at com.reader.app.UiCompletionInstrumentedTest.isolated(UiCompletionInstrumentedTest.kt:184)
+at com.reader.app.UiCompletionInstrumentedTest.quoteTapStartsReviewAndSingleRemovalHasUndo(UiCompletionInstrumentedTest.kt:220)
+
+INSTRUMENTATION_STATUS: stream=
+Error in quoteTapStartsReviewAndSingleRemovalHasUndo(com.reader.app.UiCompletionInstrumentedTest):
+java.lang.IllegalStateException: Timed out: Back to highlights
+at com.reader.app.UiCompletionInstrumentedTest.waitFor(UiCompletionInstrumentedTest.kt:59)
+at com.reader.app.UiCompletionInstrumentedTest.waitFor$default(UiCompletionInstrumentedTest.kt:52)
+at com.reader.app.UiCompletionInstrumentedTest.tap(UiCompletionInstrumentedTest.kt:77)
+at com.reader.app.UiCompletionInstrumentedTest.access$tap(UiCompletionInstrumentedTest.kt:29)
+at com.reader.app.UiCompletionInstrumentedTest$quoteTapStartsReviewAndSingleRemovalHasUndo$1.invokeSuspend(UiCompletionInstrumentedTest.kt:238)
+at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+at com.reader.app.UiCompletionInstrumentedTest.isolated(UiCompletionInstrumentedTest.kt:184)
+at com.reader.app.UiCompletionInstrumentedTest.quoteTapStartsReviewAndSingleRemovalHasUndo(UiCompletionInstrumentedTest.kt:220)
+
+INSTRUMENTATION_STATUS: test=quoteTapStartsReviewAndSingleRemovalHasUndo
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 19,438
+There was 1 failure:
+1) quoteTapStartsReviewAndSingleRemovalHasUndo(com.reader.app.UiCompletionInstrumentedTest)
+java.lang.IllegalStateException: Timed out: Back to highlights
+at com.reader.app.UiCompletionInstrumentedTest.waitFor(UiCompletionInstrumentedTest.kt:59)
+at com.reader.app.UiCompletionInstrumentedTest.waitFor$default(UiCompletionInstrumentedTest.kt:52)
+at com.reader.app.UiCompletionInstrumentedTest.tap(UiCompletionInstrumentedTest.kt:77)
+at com.reader.app.UiCompletionInstrumentedTest.access$tap(UiCompletionInstrumentedTest.kt:29)
+at com.reader.app.UiCompletionInstrumentedTest$quoteTapStartsReviewAndSingleRemovalHasUndo$1.invokeSuspend(UiCompletionInstrumentedTest.kt:238)
+at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-dd3420858d902b94dcc3d602ff00330e5a2d896b:1)
+at com.reader.app.UiCompletionInstrumentedTest.isolated(UiCompletionInstrumentedTest.kt:184)
+at com.reader.app.UiCompletionInstrumentedTest.quoteTapStartsReviewAndSingleRemovalHasUndo(UiCompletionInstrumentedTest.kt:220)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1
+
