@@ -248,7 +248,7 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
           Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(settings.font == font, role = Role.RadioButton,
             onClick = { onChange(settings.copy(font = font)) }), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(settings.font == font, null)
-            Text(when(font) { ArticleFont.NEWSREADER -> "Newsreader"; ArticleFont.CRIMSON_PRO -> "Crimson Pro"; ArticleFont.ASUL -> "Asul"; ArticleFont.ATKINSON -> "Atkinson Hyperlegible"; ArticleFont.ABEEZEE -> "ABeeZee" }, fontFamily = fontFor(font), color = c.text)
+            Text(when(font) { ArticleFont.NEWSREADER -> "Newsreader"; ArticleFont.CRIMSON_PRO -> "Crimson Pro"; ArticleFont.ASUL -> "Asul"; ArticleFont.ATKINSON -> "Atkinson Hyperlegible"; ArticleFont.ABEEZEE -> "ABeeZee"; ArticleFont.INTER -> "Inter" }, fontFamily = fontFor(font), color = c.text)
           }
         }
         Text("Margins", style = MaterialTheme.typography.labelMedium, color = c.secondary)

@@ -153,6 +153,10 @@ object ReaderFonts {
     Font(R.font.asul_regular, FontWeight.Normal),
     Font(R.font.asul_bold, FontWeight.Bold),
   )
+  val Inter = FontFamily(
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_bold, FontWeight.Bold),
+  )
   val Atkinson = FontFamily(
     Font(R.font.atkinson_regular, FontWeight.Normal),
     Font(R.font.atkinson_bold, FontWeight.Bold),
@@ -170,6 +174,7 @@ fun fontFor(f: ArticleFont): FontFamily = when (f) {
   ArticleFont.ASUL -> ReaderFonts.Asul
   ArticleFont.ATKINSON -> ReaderFonts.Atkinson
   ArticleFont.ABEEZEE -> ReaderFonts.ABeeZee
+  ArticleFont.INTER -> ReaderFonts.Inter
 }
 
 fun marginDp(m: com.reader.app.prefs.ArticleMargin, isWide: Boolean): Int {

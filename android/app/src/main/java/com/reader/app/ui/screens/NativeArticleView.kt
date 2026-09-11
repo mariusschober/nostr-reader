@@ -351,22 +351,22 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     projection = value
     body.textSize = settings.fontSizeSp
     body.setLineSpacing(0f, settings.lineHeightMultiplier())
-    val font = when (settings.font) {      ArticleFont.NEWSREADER -> R.font.newsreader_var
-      ArticleFont.CRIMSON_PRO -> R.font.crimsonpro_var
-      ArticleFont.ASUL -> R.font.asul_regular
-      ArticleFont.ATKINSON -> R.font.atkinson_regular
-      ArticleFont.ABEEZEE -> R.font.abeezee_regular
-    }
-    val base = ResourcesCompat.getFont(context, when (settings.font) {
+    val font = when (settings.font) {
       ArticleFont.NEWSREADER -> R.font.newsreader_var
       ArticleFont.CRIMSON_PRO -> R.font.crimsonpro_var
       ArticleFont.ASUL -> R.font.asul_regular
       ArticleFont.ATKINSON -> R.font.atkinson_regular
       ArticleFont.ABEEZEE -> R.font.abeezee_regular
-    })
-    // Bold text is a real weight instance of the variable font, not a
-    // synthetic stroke-widening pass.
-    body.typeface = if (settings.bold) android.graphics.Typeface.create(base, android.graphics.Typeface.BOLD) else base
+      ArticleFont.INTER -> R.font.inter_regular
+    }
+    // Inter ships a real bold face; the other reading fonts use a synthetic
+    // weight of the regular file.
+    val boldFont = when (settings.font) {
+      ArticleFont.INTER -> R.font.inter_bold
+      else -> null
+    }
+    val base = ResourcesCompat.getFont(context, if (settings.bold && boldFont != null) boldFont else font)
+    body.typeface = if (settings.bold && boldFont == null) android.graphics.Typeface.create(base, android.graphics.Typeface.BOLD) else base
     body.setTextColor(foreground)
     setBackgroundColor(background)
     body.setBackgroundColor(background)

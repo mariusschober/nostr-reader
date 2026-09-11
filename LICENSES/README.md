@@ -49,9 +49,10 @@ status is **NOT MEASURED** rather than assumed clean.
 
 ## Bundled fonts and visual tokens
 
-The APK contains ABeeZee, Asul, Atkinson Hyperlegible, Crimson Pro, and
+The APK contains ABeeZee, Asul, Atkinson Hyperlegible, Crimson Pro, Inter, and
 Newsreader font files. Their source projects distribute them under SIL Open
-Font License 1.1. Flexoki color values are design data from `kepano/flexoki`.
+Font License 1.1; the Inter OFL text is bundled at `LICENSES/INTER-OFL.txt`.
+Flexoki color values are design data from `kepano/flexoki`.
 
 Before any public/store release, include the complete applicable license and
 notice texts in the distributed app/package and recheck the actual release

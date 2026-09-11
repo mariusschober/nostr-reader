@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 private val Context.store by preferencesDataStore("reader_settings")
 
-enum class ArticleFont { NEWSREADER, CRIMSON_PRO, ASUL, ATKINSON, ABEEZEE }
+enum class ArticleFont { NEWSREADER, CRIMSON_PRO, ASUL, ATKINSON, ABEEZEE, INTER }
 enum class ArticleMargin { NARROW, DEFAULT, WIDE }
 enum class ArticleBackground { FOLLOW_APP, PAPER, SOFT, SEPIA, INK, BLACK }
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
