@@ -6,7 +6,7 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 
 - Repo: `/Users/schober/Projects/Nostr Reader`
 - Branch: `codex/reliability-finalize` - work stays local. Do not push, merge or release.
-- Audited revision (check this out): **`f20828b3e2b4c255419f5436523d5b5de7d49104`** - `fix(android): underline Compose links and monochrome highlight swatches in E-ink`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme and its fidelity fixes. The branch tip is a docs-only commit above it that updates this prompt and the handover, so check out `f20828b` for the code under audit and read this prompt from the working tree.
+- Audited revision (check this out): **`f20828b3e2b4c255419f5436523d5b5de7d49104`** - `fix(android): underline Compose links and monochrome highlight swatches in E-ink`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme and its fidelity fixes. The branch tip is the docs-only commit `16ed4f21a505f6d3d490c37f371fa5f13caec41` (`docs: repoint E-ink evidence at the final candidate f20828b`) above it, which only updates this prompt and the handover, so check out `f20828b` for the code under audit and read this prompt and the handover from the working tree.
 - Feature and test commits in scope, newest first:
   - `f20828b` fix(android): underline Compose links and monochrome highlight swatches in E-ink
   - `6ca2a4d` feat(android): app-wide E-ink / NXTPAPER monochrome theme
@@ -32,8 +32,8 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 - `FOCUSED_HANDOFF_20260910.md` - implemented scope, evidence, state/code map, trial boundaries.
 - `NEXT_AGENT_PLAN.md` - the earlier plan (work packages A-E); superseded where it conflicts with the new spec.
 - `docs/COPY_DECK.md` - the copy/behavior contract.
-- `evidence/focused-20260910/installation-20260911b.json` - the current installed build, hashes and the checks actually run.
-- `evidence/focused-20260910/installation-20260911c.json` - the current installed build (installed-revision `6ca2a4d`), its hashes and the e-ink UI observations.
+- `evidence/focused-20260910/installation-20260911b.json` - the previous installed build (source `0d3c085`), kept for comparison.
+- `evidence/focused-20260910/installation-20260911c.json` - the current installed build (source `f20828b`), its hashes, the fresh native menu-gate result and the e-ink UI observations.
 - `evidence/focused-20260910/qa-retest-20260911.json` - the isolated-QA retest of the two paths changed after the last device check: the refined Find sheet and the Inter reading font.
 - `evidence/focused-20260910/hdr-*.png`, `qa-*.png` (including `qa-eink-settings.png`, `qa-eink-inbox.png`), `ux-*.png`, `normal-post-install-eink.png`, `walkthrough.jsonl` - real TCL observations (not mockups).
 - `android/app/src/test/java/com/reader/app/PrefsMigrationTest.kt` - the test added by the tip commit.
@@ -42,7 +42,7 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 
 Review only committed code at the audited revision. The worktree at handoff is **clean**.
 
-Do not repeat the completed 100-article intake. The only native checks recorded for the app are the end-of-article finish state and one adjusted native selection (`installation-20260911.json`, taken at `18c9ac2`). They were intentionally not re-run: `a60c7cd` changes only the typeface selection inside `NativeArticleView.kt` (not the selection handling, the native text-action mode or the 8dp inset), and `728b863` / `0d3c085` do not touch those paths. Treat them as prior evidence for this build, not as a fresh pass. Do not restage the 100-article exercise, generate scale data, or run a 120-minute / soak / exhaustive-matrix campaign.
+Do not repeat the completed 100-article intake. The native checks on record: the end-of-article finish state and one adjusted native selection (`installation-20260911.json`, taken at `18c9ac2`), not re-run since `a60c7cd` changes only the typeface selection inside `NativeArticleView.kt` (not the selection handling, the native text-action mode or the 8dp inset) and `728b863` / `0d3c085` do not touch those paths; plus a fresh `HighlightMenuGateInstrumentedTest` pass at `f20828b` on the QA package (`installation-20260911c.json`), which re-confirms the native selection handles, scroll-while-extending and text-action-menu suppression after the one `NativeArticleView.kt` change (typeface selection and the reduced-motion swipe settle; selection handling, native text-action mode and the 8dp inset untouched). Treat the end-of-article/native-selection results as prior evidence for this build, not a fresh pass. Do not restage the 100-article exercise, generate scale data, or run a 120-minute / soak / exhaustive-matrix campaign.
 
 The Chrome boundary fix (`0d3c085`) is **not** part of the APK. It changes future captures at extraction time and deliberately leaves the owner's already-stored text intact.
 

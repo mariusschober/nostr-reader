@@ -23,6 +23,7 @@
   "qaPackage": "com.reader.app.qa",
   "qaInstall": "in place, corpus preserved (98 articles); owner package untouched",
   "hostChecks": ":app:testDebugUnitTest, :app:assembleDebug, :app:lintDebug and :app:verify16KbAlignment all BUILD SUCCESSFUL on this revision",
+  "nativeGate": "HighlightMenuGateInstrumentedTest PASS on com.reader.app.qa after the NativeArticleView change: pen-mode handles, scroll while extending the selection and the menu-suppression behaviour are unchanged (1 test, 0 failed). Text selection handling, pen mode and the 8dp inset were not modified; only the swipe-settle duration reads the new reduced-motion flag.",
   "uiChecks": {
     "einkSettings": "Settings shows the App theme chips Follow system / Light / Dark plus E-ink / NXTPAPER; selecting E-ink renders a white ground with black text and black-outlined chips (qa-eink-settings.png)",
     "einkInbox": "After reinstall the persisted EINK preference still renders the Reader/Inbox in monochrome: white ground, black text, inverted black primary button and bottom-navigation indicator, no colour (qa-eink-inbox.png)",
