@@ -155,7 +155,11 @@ private fun FocalWord(token: String, font: FontFamily, colors: com.reader.app.ui
       Text(
         focal, fontFamily = font, fontSize = wordSize,
         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-        color = colors.text,
+        // Keep the normal-theme accent that makes the focal grapheme easy to
+        // track. Monochrome/e-ink deliberately collapses this role to the
+        // same black as the surrounding word; its bold + underline cue is
+        // the reliable distinction on a panel without colour.
+        color = if (mono) colors.text else colors.focal,
         style = androidx.compose.material3.MaterialTheme.typography.displayLarge.copy(
           textDecoration = if (mono) androidx.compose.ui.text.style.TextDecoration.Underline else null,
         ),
