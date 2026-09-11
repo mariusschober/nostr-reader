@@ -20,6 +20,28 @@ object ReviewScheduler {
   fun presentedId(state: ReviewState): String? = state.focusedId ?: state.currentId
 
   /**
+   * Presentations left in the active pass, including the current display.
+   * A focused quote already inside the base/bonus queue is counted once, not
+   * twice; a focused quote outside the queue counts as its explicit extra
+   * presentation plus the preserved round.
+   */
+  fun presentationCount(state: ReviewState): Int {
+    val presented = presentedId(state) ?: return 0
+    val queue = when (state.phase) {
+      "base" -> state.baseRemaining
+      "bonus" -> state.bonusRemaining
+      else -> emptyList()
+    }
+    var count = queue.size
+    if (state.currentId != null) count += 1
+    if (state.focusedId != null) {
+      count += 1
+      if (state.focusedId in queue) count -= 1
+    }
+    return count
+  }
+
+  /**
    * Present `chosen` without discarding an unfinished round. With no unfinished
    * round this starts a normal cycle at `chosen`; when `chosen` is already the
    * current quote it simply resumes. Entering does not record a review.

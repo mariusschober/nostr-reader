@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -21,12 +22,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
@@ -64,7 +70,9 @@ fun ReaderSearchField(
   cursorColor: Color? = null,
 ) {
   val c = appColors()
-  val surface = surfaceColor ?: c.divider.copy(alpha = .4f)
+  val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
+  var focused by remember { mutableStateOf(false) }
+  val surface = surfaceColor ?: if (mono) c.background else c.divider.copy(alpha = .4f)
   val text = textColor ?: c.text
   val hint = hintColor ?: c.secondary
   val cursor = cursorColor ?: c.link
@@ -81,7 +89,12 @@ fun ReaderSearchField(
       onAutoFocused()
     }
   }
-  Surface(color = surface, shape = RoundedCornerShape(12.dp), modifier = modifier) {
+  Surface(
+    color = surface,
+    shape = RoundedCornerShape(12.dp),
+    border = if (mono) androidx.compose.foundation.BorderStroke(if (focused) 2.dp else 1.dp, c.text) else null,
+    modifier = modifier,
+  ) {
     Row(
       Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp, end = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -107,6 +120,7 @@ fun ReaderSearchField(
           keyboardActions = keyboardActions,
           modifier = (if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
             .semantics { contentDescription = placeholder },
         )
       }

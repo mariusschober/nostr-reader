@@ -139,6 +139,9 @@ fun InboxScreen(
   labelIdsByDoc: Map<String, Set<String>> = emptyMap(),
   onManageLabels: () -> Unit = {},
   onSample: () -> Unit = {},
+  highlightReviewSummary: com.reader.app.data.ReviewSummary = com.reader.app.data.ReviewSummary(),
+  onStartHighlightReview: (Boolean) -> Unit = {},
+  highlightFilterActive: Boolean = false,
   librarySearch: com.reader.app.data.LibrarySearchResult = com.reader.app.data.LibrarySearchResult(),
   onMoreResults: () -> Unit = {},
   captures: List<com.reader.app.capture.CaptureRequestEntity> = emptyList(),
@@ -193,13 +196,29 @@ fun InboxScreen(
     snackbarHost = { SnackbarHost(notice) },
     topBar = {
       Column(Modifier.statusBarsPadding()) {
-        DestinationHeader(title = if (tab == "highlights") "Highlights" else "Reader") {
-          if (tab != "highlights") {
-            IconButton(onClick = {
-              if (!searchActive) searchFocusArmed = true
-              onToggleSearch()
-            }) { Icon(if (searchActive) Icons.Default.Close else Icons.Default.Search, if (searchActive) "Close search" else "Search saved articles") }
-            IconButton(onClick = { sheet = "add" }) { Icon(Icons.Default.Add, "Add article") }
+        val largeHeader = LocalDensity.current.fontScale > 1.3f
+        if (tab == "highlights" && largeHeader) {
+          DestinationHeader(title = "Highlights") {}
+          Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(
+              onClick = { onStartHighlightReview(highlightReviewSummary.finished) },
+              modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(if (highlightFilterActive) "Review all" else "Review") }
+          }
+        } else {
+          DestinationHeader(title = if (tab == "highlights") "Highlights" else "Reader") {
+            if (tab == "highlights") {
+              TextButton(
+                onClick = { onStartHighlightReview(highlightReviewSummary.finished) },
+                modifier = Modifier.heightIn(min = 48.dp),
+              ) { Text(if (highlightFilterActive) "Review all" else "Review") }
+            } else {
+              IconButton(onClick = {
+                if (!searchActive) searchFocusArmed = true
+                onToggleSearch()
+              }) { Icon(if (searchActive) Icons.Default.Close else Icons.Default.Search, if (searchActive) "Close search" else "Search saved articles") }
+              IconButton(onClick = { sheet = "add" }) { Icon(Icons.Default.Add, "Add article") }
+            }
           }
         }
         if (tab != "highlights") {

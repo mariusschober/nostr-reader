@@ -135,18 +135,36 @@ private fun cursorOf(tokens: List<RsvpToken>, index: Int): SemanticCursor {
 @Composable
 private fun FocalWord(token: String, font: FontFamily, colors: com.reader.app.ui.theme.ReaderColors) {
   val boundaries = remember(token) { com.reader.app.core.Graphemes(token) }
+  // Keep one whole grapheme together; never split a combining/emoji sequence.
   val focalIdx = boundaries.floor(ReaderCore.Rsvp.focalIndex(token.length))
   val focalEnd = boundaries.ceil((focalIdx + 1).coerceAtMost(token.length))
   val left = token.substring(0, focalIdx)
   val focal = token.substring(focalIdx, focalEnd)
   val right = token.substring(focalEnd)
+  val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
+  // Fit one long token as a coordinated layout: bounded reduction for unusual
+  // words only, ordinary words keep full size.
+  val wordSize = when {
+    token.length > 20 -> 30.sp
+    token.length > 12 -> 40.sp
+    else -> 48.sp
+  }
   Layout(
     content = {
-      Text(left, fontFamily = font, fontSize = 48.sp, color = colors.text)
-      Text(focal, fontFamily = font, fontSize = 48.sp, color = colors.focal)
-      Text(right, fontFamily = font, fontSize = 48.sp, color = colors.text)
+      Text(left, fontFamily = font, fontSize = wordSize, color = colors.text, maxLines = 1)
+      Text(
+        focal, fontFamily = font, fontSize = wordSize,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        color = colors.text,
+        style = androidx.compose.material3.MaterialTheme.typography.displayLarge.copy(
+          textDecoration = if (mono) androidx.compose.ui.text.style.TextDecoration.Underline else null,
+        ),
+        maxLines = 1,
+      )
+      Text(right, fontFamily = font, fontSize = wordSize, color = colors.text, maxLines = 1)
     },
   ) { measurables, constraints ->
+    // Measure with final weights so the emphasized glyph never hops.
     val leftP = measurables[0].measure(constraints)
     val focalP = measurables[1].measure(constraints)
     val rightP = measurables[2].measure(constraints)

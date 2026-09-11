@@ -144,7 +144,7 @@ fun ReaderTheme(mode: ThemeMode, content: @Composable () -> Unit) {
       // chosen chip or indicator is unambiguous without relying on hue.
       primary = c.text, onPrimary = c.background, primaryContainer = c.text, onPrimaryContainer = c.background,
       secondaryContainer = c.text, onSecondaryContainer = c.background,
-      inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = c.text,
+      inverseSurface = c.text, inverseOnSurface = c.background, inversePrimary = c.background,
       secondary = c.text, onSecondary = c.background, background = c.background, onBackground = c.text,
       surface = c.surface, onSurface = c.text, surfaceVariant = c.surface, onSurfaceVariant = c.secondary,
       outline = c.secondary, error = c.error,

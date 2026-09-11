@@ -39,12 +39,26 @@ import com.reader.app.ui.theme.*
       }
       if (overlapping) TextButton(onClick = onNextOverlap) { Text("Next overlapping highlight") }
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        HighlightColor.entries.forEach { color -> IconToggleButton(quote.color == color.name, { onColor(color.name) },
-          modifier = Modifier.size(52.dp).semantics { contentDescription = "Highlight color ${color.label}" }) {
-          Box(Modifier.size(30.dp).background(if (mono) c.surface else color.background(dark), CircleShape).border(if (quote.color == color.name) 2.dp else 1.dp, c.secondary, CircleShape), contentAlignment = Alignment.Center) {
-            if (quote.color == color.name) Icon(Icons.Default.Check, null, tint = if (mono) c.text else HighlightColor.text(dark), modifier = Modifier.size(18.dp))
+        HighlightColor.entries.forEach { color ->
+          val pres = highlightPresentation(color.name, mono, dark)
+          val selected = quote.color == color.name
+          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IconToggleButton(selected, { onColor(color.name) },
+              modifier = Modifier.size(52.dp).semantics { contentDescription = "Highlight color ${color.label}" }) {
+              Box(
+                Modifier.size(36.dp)
+                  .background(if (selected && mono) c.text else if (mono) pres.fill else color.background(dark), CircleShape)
+                  .border(2.dp, c.text, CircleShape),
+                contentAlignment = Alignment.Center,
+              ) {
+                Text(pres.shortId, style = MaterialTheme.typography.labelLarge,
+                  color = if (selected && mono) c.background else if (mono) c.text else HighlightColor.text(dark))
+              }
+            }
+            Text(pres.label, style = MaterialTheme.typography.labelSmall, color = c.text)
+            if (selected) Icon(Icons.Default.Check, null, tint = c.text, modifier = Modifier.size(14.dp))
           }
-        } }
+        }
       }
       Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("Important", modifier = Modifier.weight(1f))

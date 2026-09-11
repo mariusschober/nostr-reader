@@ -147,13 +147,7 @@ class ReviewRepository(private val db: ReaderDb) {
     if (state.members.isEmpty()) return ReviewSummary()
     val presented = ReviewScheduler.presentedId(state)
     val phase = if (presented != null) state.phase else "done"
-    val queue = when (phase) {
-      "base" -> state.baseRemaining.size
-      "bonus" -> state.bonusRemaining.size
-      else -> 0
-    }
-    val presentedCount = (if (state.focusedId != null) 1 else 0) + (if (state.currentId != null) 1 else 0)
-    return ReviewSummary(exists = true, phase = phase, remaining = presentedCount + queue)
+    return ReviewSummary(exists = true, phase = phase, remaining = ReviewScheduler.presentationCount(state))
   }
 
   private suspend fun read(): ReviewState? {

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
@@ -75,6 +76,8 @@ fun HighlightsFeed(
   query: String = "", onQuery: (String) -> Unit = {},
   importantOnly: Boolean = false, onImportantOnly: (Boolean) -> Unit = {},
   matchingIds: Set<String>? = null,
+  /** External overlays (e.g. an active Undo notice) hide the floating entry. */
+  suppressReviewEntry: Boolean = false,
   listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
   quoteFont: com.reader.app.prefs.ArticleFont = com.reader.app.prefs.ArticleFont.NEWSREADER,
   quoteBaseSp: Float = 19f,
@@ -110,7 +113,11 @@ fun HighlightsFeed(
   // again on upward scroll. It never relayouts the quote list.
   val hasHighlights = quotes.isNotEmpty()
   var bannerVisible by rememberSaveable { mutableStateOf(true) }
-  val bannerSuppressed = selecting || menuId != null || confirmRemoveIds != null || query.isNotBlank()
+  val imeVisible = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(LocalDensity.current) > 0
+  // Search text alone never hides Review; only an open keyboard, selection,
+  // sheets or confirmations suppress the floating entry. The header Review
+  // action remains as fallback whenever no blocking modal is open.
+  val bannerSuppressed = selecting || menuId != null || confirmRemoveIds != null || imeVisible || suppressReviewEntry
   // Full quote text is loaded only for composed (visible/nearby) cards.
   val loadFullQuote: suspend (String) -> String? = { id -> runCatching { db.highlights().byId(id)?.quote }.getOrNull() }
   val bannerThreshold = with(LocalDensity.current) { 16.dp.toPx() }
@@ -182,7 +189,22 @@ fun HighlightsFeed(
         // floating banner.
         contentPadding = PaddingValues(bottom = 96.dp),
       ) {
-        if (sorted.isEmpty()) item { Text("No highlights match. Try another word or remove Important.", Modifier.padding(20.dp)) }
+        if (sorted.isEmpty()) item {
+          Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val constraint = when {
+              query.isNotBlank() && importantOnly -> "for \u201C$query\u201D in Important highlights"
+              query.isNotBlank() -> "for \u201C$query\u201D"
+              importantOnly -> "in Important highlights"
+              else -> ""
+            }
+            Text(
+              if (constraint.isNotBlank()) "No highlights match $constraint." else "No highlights match.",
+              style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = { onQuery("") }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Clear search") }
+            if (importantOnly) TextButton(onClick = { onImportantOnly(false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Remove Important") }
+          }
+        }
         items(sorted, key = { it.id }) { quote ->
           HighlightSwipeRow(
             quote = quote,
@@ -248,9 +270,10 @@ fun HighlightsFeed(
 }
 
 private fun reviewBannerSecondary(summary: ReviewSummary): String = when {
-  !summary.exists -> "Start a round"
-  summary.phase == "done" -> "Review again"
-  summary.remaining > 0 -> "Continue · ${summary.remaining} remaining"
+  !summary.exists -> "Start with your saved passages"
+  summary.phase == "done" -> "Start another round"
+  summary.phase == "bonus" -> "Revisit Important highlights"
+  summary.remaining > 0 -> "Continue \u00B7 ${summary.remaining} left in this pass"
   else -> "Continue"
 }
 
@@ -262,24 +285,40 @@ private fun reviewBannerSecondary(summary: ReviewSummary): String = when {
 @Composable
 private fun ReviewBanner(summary: ReviewSummary, modifier: Modifier = Modifier, onStart: () -> Unit) {
   val c = appColors()
+  val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
+  val container = if (mono) c.text else MaterialTheme.colorScheme.primary
+  val content = if (mono) c.background else MaterialTheme.colorScheme.onPrimary
+  val secondary = if (mono) c.background.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
   Surface(
-    color = c.surface,
-    contentColor = c.text,
+    color = container,
+    contentColor = content,
     shape = RoundedCornerShape(12.dp),
-    shadowElevation = 6.dp,
+    shadowElevation = 0.dp,
     modifier = modifier
       .fillMaxWidth()
       .padding(horizontal = 16.dp, vertical = 12.dp)
       .heightIn(min = 64.dp)
       .clip(RoundedCornerShape(12.dp))
-      .clickable(onClickLabel = "Review highlights", onClick = onStart),
+      .clickable(
+        role = androidx.compose.ui.semantics.Role.Button,
+        onClickLabel = "Review highlights",
+        onClick = onStart,
+      )
+      .semantics { contentDescription = "Review highlights" },
   ) {
     Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+      Icon(
+        androidx.compose.material.icons.Icons.Default.Refresh,
+        contentDescription = null,
+        tint = content,
+        modifier = Modifier.size(24.dp),
+      )
+      Spacer(Modifier.width(12.dp))
       Column(Modifier.weight(1f)) {
-        Text("Review highlights", style = MaterialTheme.typography.titleMedium)
+        Text("Review highlights", style = MaterialTheme.typography.titleMedium, color = content)
         Text(
           reviewBannerSecondary(summary),
-          style = MaterialTheme.typography.bodySmall, color = c.secondary,
+          style = MaterialTheme.typography.bodySmall, color = secondary,
           maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
       }
@@ -404,14 +443,15 @@ private fun HighlightSwipeRow(
         }
         val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
         val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
+        val pres = com.reader.app.ui.theme.highlightPresentation(quote.color, mono, dark)
         // Reserve space above so the badge and the text never overlap.
         Box(Modifier.fillMaxWidth().padding(top = if (quote.important) 12.dp else 0.dp)) {
           Box(
             Modifier.fillMaxWidth()
               .clip(RoundedCornerShape(8.dp))
-              .background(if (mono) com.reader.app.ui.theme.EinkColors.surface else saved.background(dark).copy(alpha = if (dark) .32f else .55f))
-              .drawBehind { drawRect(color = if (mono) com.reader.app.ui.theme.EinkColors.divider else saved.background(dark), size = Size(if (mono) 2.dp.toPx() else 3.dp.toPx(), size.height)) }
-              .semantics { if (mono) contentDescription = "Highlight color ${saved.label}" },
+              .background(if (mono) pres.fill else saved.background(dark).copy(alpha = if (dark) .32f else .55f))
+              .drawBehind { drawRect(color = if (mono) com.reader.app.ui.theme.EinkColors.text else saved.background(dark), size = Size(if (mono) 2.dp.toPx() else 3.dp.toPx(), size.height)) }
+              .semantics { contentDescription = "Highlight color ${pres.label}" },
           ) {
             Text(
               full,
@@ -437,15 +477,27 @@ private fun HighlightSwipeRow(
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
           Text(
+            "${pres.shortId} \u00B7 ${pres.label}",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.semantics { contentDescription = "Highlight color ${pres.label}" },
+          )
+          Spacer(Modifier.width(8.dp))
+          Text(
             quote.sourceTitle,
             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).clickable(onClickLabel = "Open source article") { onOpenSource() },
           )
-          TextButton(onClick = onOpenSource, contentPadding = PaddingValues(horizontal = 8.dp)) {
-            Text("Open source", style = MaterialTheme.typography.labelMedium)
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          TextButton(
+            onClick = onOpenSource,
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            modifier = Modifier.heightIn(min = 48.dp).weight(1f),
+          ) {
+            Text("Open source", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
           }
-          if (!selecting) IconButton(onClick = onMenu, modifier = Modifier.size(40.dp)) {
+          if (!selecting) IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.MoreVert, contentDescription = "Highlight options")
           }
         }

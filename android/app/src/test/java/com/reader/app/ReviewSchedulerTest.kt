@@ -137,6 +137,45 @@ class ReviewSchedulerTest {
     assertEquals(start, ReviewScheduler.focus(start, ids, 55, emptySet(), "not-a-quote"))
   }
 
+  @Test fun focusedQueuedQuoteCountsOnceNotTwice() {
+    // Base current A, queue [B, C], focused B: report 3, not 4.
+    val state = ReviewState(
+      seed = 1, randomState = 1, members = listOf("A", "B", "C"),
+      baseRemaining = listOf("B", "C"), currentId = "A", phase = "base",
+      focusedId = "B",
+    )
+    assertEquals(3, ReviewScheduler.presentationCount(state))
+    val next = ReviewScheduler.advance(state, listOf("A", "B", "C"), emptySet())
+    assertEquals("A", ReviewScheduler.presentedId(next))
+    assertEquals(2, ReviewScheduler.presentationCount(next))
+  }
+
+  @Test fun focusedConsumedQuoteCountsItsExtraPresentation() {
+    // Focused D already consumed in the base pass: extra + preserved A + C.
+    val state = ReviewState(
+      seed = 1, randomState = 1, members = listOf("A", "C", "D"),
+      baseRemaining = listOf("C"), currentId = "A", phase = "base",
+      focusedId = "D",
+    )
+    assertEquals(3, ReviewScheduler.presentationCount(state))
+  }
+
+  @Test fun preservedImportantBonusSurvivesFocusedAdvance() {
+    val state = ReviewState(
+      seed = 1, randomState = 1, members = listOf("A", "B", "C"),
+      baseRemaining = listOf("C"), currentId = "A", phase = "base",
+      focusedId = "B",
+    )
+    // B not in queue here would be extra; B in queue counts once tested above.
+    // Bonus phase wording uses phase, count stays truthful.
+    val bonus = ReviewState(
+      seed = 1, randomState = 1, members = listOf("A", "B"),
+      baseRemaining = emptyList(), bonusRemaining = listOf("B"),
+      currentId = "A", phase = "bonus",
+    )
+    assertEquals(2, ReviewScheduler.presentationCount(bonus))
+  }
+
   @Test fun focusedPresentationSurvivesSerializationAndLegacyDataStillReads() {
     val start = ReviewScheduler.start(ids, 66)
     val round = ReviewScheduler.advance(start, ids, emptySet())

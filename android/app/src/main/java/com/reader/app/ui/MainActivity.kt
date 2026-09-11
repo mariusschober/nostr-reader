@@ -145,6 +145,8 @@ class MainActivity : ComponentActivity() {
       // Read-only review cycle state for the Highlights entry; never writes.
       val reviewSummary by remember { com.reader.app.data.ReviewRepository(db).observeSummary() }
         .collectAsState(initial = com.reader.app.data.ReviewSummary())
+      // While an Undo notice is up, the floating Review entry yields.
+      val undoNoticeActive by remember { notices.undoActive }.collectAsState(initial = false)
       var channels by remember { mutableStateOf(listOf<com.reader.app.data.ChannelEntity>()) }
       var minutesByList by remember { mutableStateOf(mapOf<String, Int>()) }
       var pairingError by remember { mutableStateOf<String?>(null) }
@@ -383,6 +385,12 @@ class MainActivity : ComponentActivity() {
       destinationState.SaveableStateProvider(route.toString()) {
       when (val r = route) {
           is Route.Inbox, is Route.Archive -> InboxScreen(
+            highlightReviewSummary = reviewSummary,
+            onStartHighlightReview = { restart -> lifecycleScope.launch {
+              try { com.reader.app.data.ReviewRepository(db).resume(restart = restart); go(Route.Review) }
+              catch (e: Exception) { feedback("Couldn’t open review: ${e.message?.take(100)}") }
+            } },
+            highlightFilterActive = highlightQuery.isNotBlank() || importantOnly,
             archiveMode = r == Route.Archive,
             onArchiveOpen = { go(Route.Archive) }, onArchiveBack = { stack.pop(); tick++ },
             listState = if (r == Route.Archive || selectedTab == Triage.ARCHIVED) archiveScrollState else mainScrollStates[selectedTab] ?: mainScrollStates.getValue(Triage.PRIORITY),
@@ -444,6 +452,7 @@ class MainActivity : ComponentActivity() {
               catch (e: Exception) { feedback("Couldn’t open review: ${e.message?.take(100)}") }
             } },
             reviewSummary = reviewSummary,
+            suppressReviewEntry = undoNoticeActive,
             onToggleImportant = { id -> lifecycleScope.launch {
               try {
                 val repo = com.reader.app.data.HighlightRepository(db)
@@ -572,15 +581,7 @@ class MainActivity : ComponentActivity() {
           val rs = reviewState
           ReviewScreen(rs, quote, busy, reviewError, sourceAvailable = sourceDocument != null,
             scrollState = reviewScrollState,
-            remaining = rs?.let { st ->
-              val presentedCount = (if (st.focusedId != null) 1 else 0) + (if (st.currentId != null) 1 else 0)
-              val queue = when (st.phase) {
-                "base" -> st.baseRemaining.size
-                "bonus" -> st.bonusRemaining.size
-                else -> 0
-              }
-              presentedCount + queue
-            } ?: 0,
+            remaining = rs?.let { com.reader.app.core.ReviewScheduler.presentationCount(it) } ?: 0,
             inBonus = rs?.phase == "bonus" && (rs.currentId != null || rs.focusedId != null),
             quoteFont = settings.font,
             onBack = { stack.pop(); tick++ },

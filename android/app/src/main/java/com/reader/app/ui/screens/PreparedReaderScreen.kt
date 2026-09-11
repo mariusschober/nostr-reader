@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -126,6 +127,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   val colors = readerColors(settings.background)
   val dark = colors.background.luminance() < .5f
   val monochrome = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
+  val effectiveReducedMotion = com.reader.app.ui.theme.LocalDisplayPolicy.current.reducedMotion
   val keyboard = LocalSoftwareKeyboardController.current
   var part by rememberSaveable(id) { mutableIntStateOf(-1) }
   var prepared by remember(id) { mutableStateOf<PreparedSection?>(null) }
@@ -171,13 +173,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     catch (_: Exception) { navigationError = "Contents couldn’t load. Try again." }
   }
   LaunchedEffect(id, findText) {
-    findResults = emptyList(); findIndex = 0
+    findResults = emptyList(); findIndex = 0; navigationError = null
     if (findText.isBlank()) { findBusy = false; return@LaunchedEffect }
     findBusy = true
     delay(150)
     try { findResults = navigation.matches(id, findText); navigationError = null }
     catch (e: CancellationException) { throw e }
-    catch (_: Exception) { navigationError = "Search couldn’t load. Try again." }
+    catch (_: Exception) { findResults = emptyList(); navigationError = "Search couldn’t load. Try again." }
     finally { findBusy = false }
   }
   // Search-landing bookkeeping: re-entry into the same article with a new
@@ -296,21 +298,50 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     transition(onBack)
   }
   BackHandler(enabled = !transitioning) { leave() }
-  // Fullscreen focus: hide the Android status/navigation bars and let an edge
-  // swipe reveal them transiently. Ordinary mode restores them, and disposal
-  // (leaving the reader) guarantees they come back.
-  DisposableEffect(immersed) {
+  // Fullscreen focus owns the window boundary: edge-to-edge into the cutout
+  // region with transparent bars so the reading surface paints to the edges.
+  // Only real camera occlusion keeps protection; no black letterbox or hidden
+  // control spacer remains. Restored on exit/disposal.
+  DisposableEffect(immersed, colors.background) {
     val window = (context as? android.app.Activity)?.window
     val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
-    if (controller != null) {
+    val prevCutout = if (android.os.Build.VERSION.SDK_INT >= 28) window?.attributes?.layoutInDisplayCutoutMode else null
+    val prevStatus = window?.statusBarColor
+    val prevNav = window?.navigationBarColor
+    if (window != null && controller != null) {
       if (immersed) {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+          window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+          }
+        }
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        window.decorView.setBackgroundColor(colors.background.toArgb())
         controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
       } else {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+        if (android.os.Build.VERSION.SDK_INT >= 28 && prevCutout != null) {
+          window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = prevCutout }
+        }
+        if (prevStatus != null) window.statusBarColor = prevStatus
+        if (prevNav != null) window.navigationBarColor = prevNav
         controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
       }
     }
-    onDispose { controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+    onDispose {
+      if (window != null) {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+        if (android.os.Build.VERSION.SDK_INT >= 28 && prevCutout != null) {
+          window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = prevCutout }
+        }
+        if (prevStatus != null) window.statusBarColor = prevStatus
+        if (prevNav != null) window.navigationBarColor = prevNav
+      }
+      controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    }
   }
   // Reading sessions run long: never let the lock screen interrupt
   // mid-paragraph. Scoped strictly to the reader and speed-read surfaces.
@@ -461,13 +492,43 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           }
         }
         player()
-        if (pen) FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-          HighlightColor.entries.forEach { color -> IconToggleButton(selectedColor == color.name, { selectedColor = color.name }, modifier = Modifier.semantics { contentDescription = "Highlight color ${color.label}" }) {
-            Box(Modifier.size(28.dp).background(if (monochrome) colors.surface else color.background(dark), CircleShape).border(if (selectedColor == color.name) 2.dp else 0.dp, colors.text, CircleShape), contentAlignment = Alignment.Center) {
-              if (selectedColor == color.name) Icon(Icons.Default.Check, null, tint = if (monochrome) colors.text else HighlightColor.text(dark), modifier = Modifier.size(18.dp))
+        if (pen) {
+          val penColors = HighlightColor.entries
+          val penRows: List<List<HighlightColor>> = if (LocalDensity.current.fontScale > 1.3f) penColors.chunked(2) else listOf(penColors)
+          Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            penRows.forEach { row ->
+              Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                row.forEach { color ->
+                  val pres = highlightPresentation(color.name, monochrome, dark)
+                  val selected = selectedColor == color.name
+                  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                    IconToggleButton(selected, { selectedColor = color.name }, modifier = Modifier.semantics { contentDescription = "Highlight color ${color.label}" }) {
+                      Box(
+                        Modifier.size(36.dp)
+                          .background(if (selected && monochrome) colors.text else if (monochrome) pres.fill else color.background(dark), CircleShape)
+                          .border(2.dp, colors.text, CircleShape),
+                        contentAlignment = Alignment.Center,
+                      ) {
+                        Text(
+                          pres.shortId,
+                          style = MaterialTheme.typography.labelLarge,
+                          color = if (selected && monochrome) colors.background else if (monochrome) colors.text else HighlightColor.text(dark),
+                        )
+                      }
+                    }
+                    Text(
+                      pres.label,
+                      style = MaterialTheme.typography.labelSmall,
+                      color = colors.text,
+                      maxLines = 1,
+                    )
+                    if (selected) Icon(Icons.Default.Check, null, tint = colors.text, modifier = Modifier.size(14.dp))
+                  }
+                }
+              }
             }
-          } }
-          TextButton(onClick = { view?.flushSelection(); pen = false }) { Text("Done") }
+            TextButton(onClick = { view?.flushSelection(); pen = false }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Done") }
+          }
         } else {
           // Four equally weighted reading actions: Highlight · Contents ·
           // Listen · Speed. Labels wrap to a 2x2 grid at enlarged text rather
@@ -600,12 +661,16 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             initial = partPositions[part + 1] ?: SemanticCursor.start(id); liveCursor = null; part++
           } }) { Text("Next part") }
         }
-        val nativeMarks = remember(marks, ready, dark, at, atEnd, matchTint, jumpMatch) {
+        val nativeMarks = remember(marks, ready, dark, monochrome, at, atEnd, matchTint, jumpMatch) {
           val blocks = ready.projection.blocks.mapTo(hashSetOf()) { it.id }
           buildList {
             addAll(marks.filter { it.projectionVersion == RENDERED_PROJECTION_VERSION && it.startBlockId in blocks && it.endBlockId in blocks }.map {
+              val pres = highlightPresentation(it.color, monochrome, dark)
+              val edge = if (monochrome) when (pres.edge) {
+                MonoEdge.SOLID -> "solid"; MonoEdge.DOUBLE -> "double"; MonoEdge.DASHED -> "dashed"; MonoEdge.DOTTED -> "dotted"
+              } else "none"
               NativeMark(it.id, ready.projection.offset(it.startBlockId, it.startOffset), ready.projection.offset(it.endBlockId, it.endOffset),
-                it.createdAt, HighlightColor.parse(it.color).background(dark).toArgb(), HighlightColor.text(dark).toArgb())
+                it.createdAt, pres.fill.toArgb(), pres.text.toArgb(), edge)
             })
             jumpMatch?.takeIf { it.part == part && it.end != null }?.let { match ->
               val start = ready.projection.offset(match.cursor.blockId, match.cursor.charOffset)
@@ -643,7 +708,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             native.tag = styleKey
           }
           native.deleteTint = colors.error.toArgb()
-          native.reducedMotion = monochrome
+          native.reducedMotion = effectiveReducedMotion
           native.articleList = null
           native.onArticleSwipe = { action -> transition { onArticleAction(action) } }
           native.setPenMode(pen)
@@ -806,9 +871,12 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             target?.let { keyboard?.hide(); jump(it.toLocation()) }
           }),
         )
-        navigationError?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
         when {
           findText.isBlank() -> Text("Search the article text stored on this device.", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
+          navigationError != null -> {
+            Text(navigationError!!, color = colors.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            TextButton(onClick = { val q = findText; findText = ""; findText = q }) { Text("Retry") }
+          }
           findBusy -> Text("Searching all parts…", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
           findResults.isEmpty() -> Text("No matches for “$findText”.", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
           else -> {
@@ -820,12 +888,21 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f)) {
               items(findResults.size) { i ->
                 val match = findResults[i]
+                val isSelected = i == findIndex
                 Surface(
-                  color = if (i == findIndex) colors.surface else colors.background,
+                  color = colors.background,
                   shape = RoundedCornerShape(12.dp),
-                  modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { findIndex = i; keyboard?.hide(); jump(match.toLocation()) },
+                  border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, colors.text) else null,
+                  modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { findIndex = i; keyboard?.hide(); jump(match.toLocation()) }
+                    .semantics { selected = isSelected },
                 ) {
-                  Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                  Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (isSelected) Box(
+                      Modifier.width(4.dp).height(36.dp).background(colors.text, RoundedCornerShape(2.dp))
+                        .semantics { contentDescription = "Selected result" },
+                    )
+                    if (isSelected) Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
                     if (partCount > 1) Text("Part ${match.part + 1}", style = MaterialTheme.typography.labelSmall, color = colors.secondary)
                     val snippet = match.snippet
                     val ms = match.matchStart.coerceIn(0, snippet.length)
@@ -841,6 +918,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                       maxLines = 3,
                       overflow = TextOverflow.Ellipsis,
                     )
+                    }
                   }
                 }
               }

@@ -38,6 +38,17 @@ class PrefsMigrationTest {
     )
   }
 
+  @Test fun materializedFreshDecisionSurvivesALaterWelcomeWrite() {
+    // Regression for F11: the first read on an empty store decides `false`, and
+    // that decision must be persisted *before* the optional sample writes its
+    // welcome flag. Without materialization the later welcome made the decoder
+    // treat the fresh install as legacy and silently skip the explanation.
+    val decision = decodeSettings(preferencesOf()).highlightCoachSeen
+    assertFalse("A fresh store decides unseen", decision)
+    val afterWelcome = decodeSettings(preferencesOf(Prefs.K.HIGHLIGHT_COACH to decision, Prefs.K.WELCOME to true))
+    assertFalse("The materialized decision must survive the welcome write", afterWelcome.highlightCoachSeen)
+  }
+
   @Test fun unknownStoredValuesFallBackToDefaults() {
     val s = decodeSettings(preferencesOf(Prefs.K.FONT to "NOT_A_FONT", Prefs.K.THEME to "NOT_A_THEME"))
     assertEquals(ArticleFont.NEWSREADER, s.font)

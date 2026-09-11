@@ -46,6 +46,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var documentId = ""
   private var actionMode: ActionMode? = null
   private var selectionSession: String? = null
+  /** Body offsets the current session already owns; a drag only reshapes this. */
+  private var sessionRange: IntRange? = null
   private var selectionSequence = 0L
   private var selectionCommitted = false
   private var pendingSelection: Runnable? = null
@@ -81,7 +83,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var flingEligible = false
   private val flingFrame = object : Runnable {
     override fun run() {
-      if (pen || hasSelection() || !isAttachedToWindow) { stopFling(); return }
+      if (reducedMotion || pen || hasSelection() || !isAttachedToWindow) { stopFling(); return }
       if (fling.computeScrollOffset()) {
         body.scrollTo(body.scrollX, fling.currY.coerceIn(0, maxScrollY()))
         postOnAnimation(this)
@@ -106,7 +108,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   /** Animated return to the article start (back-to-top bubble). */
   fun smoothScrollToTop() {
     stopFling()
-    if (body.scrollY <= 0 || maxScrollY() <= 0) {
+    if (reducedMotion || body.scrollY <= 0 || maxScrollY() <= 0) {
       body.scrollTo(0, 0)
       return
     }
@@ -202,7 +204,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       onViewport(body.scrollY, body.height)
       onAtEnd(isAtEnd())
       velocity?.addMovement(event)
-      if (flingEligible && !pen && !hasSelection() && kotlin.math.abs(dy) > touchConfig.scaledTouchSlop &&
+      if (!reducedMotion && flingEligible && !pen && !hasSelection() && kotlin.math.abs(dy) > touchConfig.scaledTouchSlop &&
         kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.7f) {
         velocity?.computeCurrentVelocity(1000, touchConfig.scaledMaximumFlingVelocity.toFloat())
         val speed = -(velocity?.yVelocity ?: 0f)
@@ -248,7 +250,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         stopFling()
         actionMode = mode
         selectionCommitted = false
-        selectionSession = UUID.randomUUID().toString()
+        // Reuse the id for one live selection: Android can destroy and
+        // recreate the ActionMode during a handle drag, and minting a new id
+        // here would persist the same selection as a second highlight.
+        if (selectionSession == null) selectionSession = UUID.randomUUID().toString()
         if (pen) {
           // Continuous highlighting: keep the action mode (so handles,
           // magnifier and edge autoscroll keep working) but suppress the
@@ -278,7 +283,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         pendingSelection = null
         actionMode = null
         selectionCommitted = false
-        selectionSession = null
+        // The session id deliberately survives ActionMode teardown: a handle
+        // drag can recreate the mode while the same selection is still live.
+        // It is rotated only for a genuinely new selection (below) or an
+        // explicit clear.
       }
     }
     var downX = 0f; var downY = 0f
@@ -428,11 +436,29 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   fun setPenMode(enabled: Boolean) {
     if (pen == enabled) return
     stopFling()
-    if (!enabled) flushSelection()
+    if (!enabled) {
+      // Leaving continuous highlighting flushes the final range under its
+      // session id, then rotates the session so the next pen entry starts a
+      // genuinely new highlight instead of reshaping the previous one.
+      flushSelection()
+      pendingSelection?.let { removeCallbacks(it) }
+      pendingSelection = null
+      selectionSession = null; sessionRange = null; lastSelection = null
+      selectionCommitted = false
+    } else {
+      // Entering pen mode must not save a stale normal-mode selection as a
+      // highlight. Clear visuals/session without emitting; the next long-press
+      // allocates a fresh session.
+      pendingSelection?.let { removeCallbacks(it) }
+      pendingSelection = null
+      selectionSession = null; sessionRange = null; lastSelection = null
+      selectionCommitted = false
+      actionMode?.finish()
+      actionMode = null
+      (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
+    }
     pen = enabled
     actionMode?.invalidate()
-    if (enabled) selectionChanged(body.selectionStart, body.selectionEnd)
-    else pendingSelection?.let { removeCallbacks(it) }
   }
 
   fun setMarks(marks: List<NativeMark>) {
@@ -463,7 +489,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     pendingSelection?.let { removeCallbacks(it) }
     actionMode?.finish()
     (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
-    selectionSession = null
+    selectionSession = null; sessionRange = null; lastSelection = null
     return active
   }
 
@@ -485,7 +511,18 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private fun selectionChanged(start: Int, end: Int) {
     if (start >= 0 && end > start) stopFling()
     pendingSelection?.let { removeCallbacks(it) }
-    if ((!pen && !selectionCommitted) || start < 0 || end < 0 || end == start) return
+    // A collapsed selection (including the transient collapse while a handle is
+    // grabbed) does not end the session; only a selection that starts clear of
+    // the range this session already covers is treated as a new highlight.
+    if (start < 0 || end < 0 || end == start) return
+    if (!pen && !selectionCommitted) return
+    val owned = sessionRange
+    if (selectionSession == null || owned == null || start >= owned.last || end <= owned.first) {
+      selectionSession = UUID.randomUUID().toString()
+      sessionRange = start until end
+    } else {
+      sessionRange = minOf(owned.first, start) until maxOf(owned.last, end)
+    }
     val expectedStart = start; val expectedEnd = end
     pendingSelection = Runnable {
       if ((pen || selectionCommitted) && body.selectionStart == expectedStart && body.selectionEnd == expectedEnd) emitSelection()
@@ -518,12 +555,76 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     super.onDetachedFromWindow()
   }
   private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+  private val monoEdgePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+    color = android.graphics.Color.BLACK
+    style = android.graphics.Paint.Style.STROKE
+  }
+  override fun dispatchDraw(canvas: android.graphics.Canvas) {
+    super.dispatchDraw(canvas)
+    drawMonoEdges(canvas)
+  }
+  /**
+   * Monochrome saved-mark edge styles drawn from the native Layout's real
+   * positions. Drawing-only: no text inserted, no offsets altered, wrapped
+   * lines and RTL handled per line via primaryHorizontal. 1.5dp strokes sit
+   * below descenders in reserved line-spacing space.
+   */
+  private fun drawMonoEdges(canvas: android.graphics.Canvas) {
+    val layout = body.layout ?: return
+    if (body.text.isEmpty()) return
+    val density = resources.displayMetrics.density
+    val stroke = 1.5f * density
+    for (m in markRanges) {
+      if (m.edge == "none") continue
+      if (m.start < 0 || m.end > body.length() || m.end <= m.start) continue
+      val startLine = layout.getLineForOffset(m.start.coerceIn(0, body.length()))
+      val endLine = layout.getLineForOffset((m.end - 1).coerceIn(0, body.length()))
+      for (line in startLine..endLine) {
+        val segStart = if (line == startLine) m.start else layout.getLineStart(line)
+        val segEnd = if (line == endLine) m.end else layout.getLineEnd(line)
+        if (segEnd <= segStart) continue
+        var x1 = layout.getPrimaryHorizontal(segStart) + body.paddingLeft + body.left - body.scrollX
+        var x2 = layout.getPrimaryHorizontal(segEnd) + body.paddingLeft + body.left - body.scrollX
+        // getPrimaryHorizontal returns caret edge; for RTL ensure left<right
+        val left = minOf(x1, x2).coerceIn(body.left.toFloat(), (body.left + body.width).toFloat())
+        val right = maxOf(x1, x2).coerceIn(body.left.toFloat(), (body.left + body.width).toFloat())
+        if (right - left < 2f) continue
+        val baseY = (layout.getLineBottom(line) + body.paddingTop + body.top - body.scrollY).toFloat() - 1f * density
+        monoEdgePaint.strokeWidth = stroke
+        when (m.edge) {
+          "solid" -> {
+            monoEdgePaint.pathEffect = null
+            monoEdgePaint.strokeCap = android.graphics.Paint.Cap.SQUARE
+            canvas.drawLine(left, baseY, right, baseY, monoEdgePaint)
+          }
+          "double" -> {
+            monoEdgePaint.pathEffect = null
+            monoEdgePaint.strokeCap = android.graphics.Paint.Cap.SQUARE
+            canvas.drawLine(left, baseY, right, baseY, monoEdgePaint)
+            canvas.drawLine(left, baseY + 3f * density, right, baseY + 3f * density, monoEdgePaint)
+          }
+          "dashed" -> {
+            monoEdgePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(8f * density, 6f * density), 0f)
+            monoEdgePaint.strokeCap = android.graphics.Paint.Cap.BUTT
+            canvas.drawLine(left, baseY, right, baseY, monoEdgePaint)
+            monoEdgePaint.pathEffect = null
+          }
+          "dotted" -> {
+            monoEdgePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(1.5f * density, 4f * density), 0f)
+            monoEdgePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+            canvas.drawLine(left, baseY, right, baseY, monoEdgePaint)
+            monoEdgePaint.pathEffect = null
+          }
+        }
+      }
+    }
+  }
   companion object {
     private const val HIGHLIGHT_ACTION = 0x52454144
   }
 }
 
-data class NativeMark(val id: String, val start: Int, val end: Int, val createdAt: Long, val background: Int, val foreground: Int)
+data class NativeMark(val id: String, val start: Int, val end: Int, val createdAt: Long, val background: Int, val foreground: Int, val edge: String = "none")
 private class SavedBackground(color: Int) : BackgroundColorSpan(color)
 private class SavedForeground(color: Int) : ForegroundColorSpan(color)
 

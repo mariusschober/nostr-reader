@@ -26,6 +26,10 @@ import com.reader.app.core.ReviewState
 import com.reader.app.data.HighlightEntity
 import com.reader.app.prefs.ArticleFont
 import com.reader.app.ui.DestinationHeader
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.reader.app.ui.theme.Motion
 import com.reader.app.ui.theme.appColors
 import com.reader.app.ui.theme.fontFor
@@ -58,7 +62,7 @@ fun ReviewScreen(
 ) {
   BackHandler(onBack = onBack)
   val c = appColors()
-  val reduceMotion = rememberReduceMotion()
+  val reduceMotion = com.reader.app.ui.theme.reduceMotionActive()
   val presented = state?.let { com.reader.app.core.ReviewScheduler.presentedId(it) }
   val progress: String? = when {
     loading || presented == null -> null
@@ -132,8 +136,8 @@ fun ReviewScreen(
               .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
               .graphicsLayer {
                 translationX = translation
-                rotationZ = (translation / width * 3f).coerceIn(-4f, 4f)
-                alpha = (1f - kotlin.math.abs(translation) / width * .3f).coerceIn(.5f, 1f)
+                rotationZ = if (reduceMotion) 0f else (translation / width * 3f).coerceIn(-4f, 4f)
+                alpha = if (reduceMotion) 1f else (1f - kotlin.math.abs(translation) / width * .3f).coerceIn(.5f, 1f)
               }
               .pointerInput(quote.id) {
                 val threshold = 80.dp.toPx()
@@ -162,21 +166,46 @@ fun ReviewScreen(
             val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
             val dark = com.reader.app.ui.theme.LocalReaderDark.current
             val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
-            Box(
-              Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(c.surface)
-                .drawBehind { drawRect(color = if (mono) c.text else saved.background(dark), size = Size(3.dp.toPx(), size.height)) },
-            ) {
-              Text(
-                quote.quote,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                  fontFamily = fontFor(quoteFont), fontSize = 22.sp, lineHeight = 32.sp,
-                ),
-                color = c.text,
-                modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
-              )
+            val pres = com.reader.app.ui.theme.highlightPresentation(quote.color, mono, dark)
+            val reviewSp = com.reader.app.ui.theme.quoteSizeSp(19f, quote.quote.length)
+            Box(Modifier.fillMaxWidth().padding(top = if (quote.important) 12.dp else 0.dp)) {
+              Box(
+                Modifier.fillMaxWidth()
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(if (mono) pres.fill else c.surface)
+                  .drawBehind { drawRect(color = if (mono) c.text else saved.background(dark), size = Size(3.dp.toPx(), size.height)) }
+                  .semantics { contentDescription = "Highlight color ${pres.label}" },
+              ) {
+                Text(
+                  quote.quote,
+                  style = MaterialTheme.typography.bodyLarge.copy(
+                    fontFamily = fontFor(quoteFont), fontSize = reviewSp.sp, lineHeight = (reviewSp * 1.5f).sp,
+                  ),
+                  color = c.text,
+                  modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
+                )
+              }
+              if (quote.important) {
+                Box(
+                  Modifier.align(Alignment.TopEnd).offset(y = (-12).dp).size(24.dp)
+                    .background(if (mono) c.background else com.reader.app.ui.theme.Flexoki.Base800, RoundedCornerShape(12.dp))
+                    .semantics { contentDescription = "Important highlight" },
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Icon(
+                    androidx.compose.material.icons.Icons.Default.Star, contentDescription = null,
+                    tint = if (mono) c.text else com.reader.app.ui.theme.Flexoki.StarYellow,
+                    modifier = Modifier.size(15.dp),
+                  )
+                }
+              }
             }
+            Spacer(Modifier.height(6.dp))
+            Text(
+              "${pres.shortId} \u00B7 ${pres.label}",
+              style = MaterialTheme.typography.labelSmall, color = c.secondary,
+              modifier = Modifier.semantics { contentDescription = "Highlight color ${pres.label}" },
+            )
             Spacer(Modifier.height(20.dp))
             Text("Source", style = MaterialTheme.typography.labelSmall, color = c.secondary)
             TextButton(

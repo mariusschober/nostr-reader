@@ -6,6 +6,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onStart
 
 private val Context.store by preferencesDataStore("reader_settings")
 
@@ -73,14 +74,27 @@ class Prefs(private val ctx: Context) {
     val MILESTONES = stringSetPreferencesKey("milestonesDone")
   }
 
-  val flow = ctx.store.data.map(::decode).distinctUntilChanged()
+  val flow = ctx.store.data.onStart { materializeCoach() }.map(::decode).distinctUntilChanged()
   suspend fun load(): ReaderSettings = flow.first()
 
   private fun decode(d: Preferences): ReaderSettings = decodeSettings(d)
 
+  /**
+   * Decide the one-time highlight-coach flag once, the first time settings are
+   * read, and persist it before any new-install write (welcome, appearance) can
+   * make the legacy-install heuristic true and wrongly skip the explanation.
+   * Fresh installs persist `false`; established installs persist `true`.
+   */
+  private suspend fun materializeCoach() {
+    val first = ctx.store.data.first()
+    if (first[K.HIGHLIGHT_COACH] != null) return
+    val decision = decodeSettings(first).highlightCoachSeen
+    ctx.store.updateData { it.toMutablePreferences().apply { set(K.HIGHLIGHT_COACH, decision) } }
+  }
+
   suspend fun save(s: ReaderSettings) {
-    ctx.store.updateData {
-      it.toMutablePreferences().apply {
+    ctx.store.updateData { stored ->
+      stored.toMutablePreferences().apply {
         set(K.FONT, s.font.name)
         set(K.FONT_SIZE, s.fontSizeSp)
         set(K.MARGIN, s.margin.name)
@@ -97,7 +111,10 @@ class Prefs(private val ctx: Context) {
         set(K.SEARCH_CURRENT, s.searchCurrentShelf)
         set(K.SEARCH_TITLES, s.searchTitlesOnly)
         if (s.archiveCoachShown) set(K.ARCHIVE_COACH, true)
-        if (s.highlightCoachSeen) set(K.HIGHLIGHT_COACH, true)
+        // Materialize the decision on the very first write if no read has yet;
+        // thereafter the stored value wins unless the explanation was shown.
+        if (stored[K.HIGHLIGHT_COACH] == null) set(K.HIGHLIGHT_COACH, decodeSettings(stored).highlightCoachSeen)
+        else if (s.highlightCoachSeen) set(K.HIGHLIGHT_COACH, true)
       }
     }
   }
