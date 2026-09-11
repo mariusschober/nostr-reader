@@ -14,6 +14,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -149,36 +152,51 @@ private fun FocalWord(token: String, font: FontFamily, colors: com.reader.app.ui
     token.length > 12 -> 40.sp
     else -> 48.sp
   }
+  // All three segments share the same line metrics. The focal segment only
+  // changes weight/colour/decoration; it must not inherit a different display
+  // style that moves its baseline relative to the surrounding word.
+  val segmentStyle = androidx.compose.material3.MaterialTheme.typography.displayLarge.copy(
+    fontFamily = font,
+    fontSize = wordSize,
+  )
   Layout(
     content = {
-      Text(left, fontFamily = font, fontSize = wordSize, color = colors.text, maxLines = 1)
+      Text(left, style = segmentStyle, color = colors.text, maxLines = 1)
       Text(
-        focal, fontFamily = font, fontSize = wordSize,
+        focal, style = segmentStyle,
         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         // Keep the normal-theme accent that makes the focal grapheme easy to
         // track. Monochrome/e-ink deliberately collapses this role to the
         // same black as the surrounding word; its bold + underline cue is
         // the reliable distinction on a panel without colour.
         color = if (mono) colors.text else colors.focal,
-        style = androidx.compose.material3.MaterialTheme.typography.displayLarge.copy(
-          textDecoration = if (mono) androidx.compose.ui.text.style.TextDecoration.Underline else null,
-        ),
+        style = segmentStyle.copy(textDecoration = if (mono) androidx.compose.ui.text.style.TextDecoration.Underline else null),
         maxLines = 1,
       )
-      Text(right, fontFamily = font, fontSize = wordSize, color = colors.text, maxLines = 1)
+      Text(right, style = segmentStyle, color = colors.text, maxLines = 1)
     },
   ) { measurables, constraints ->
     // Measure with final weights so the emphasized glyph never hops.
     val leftP = measurables[0].measure(constraints)
     val focalP = measurables[1].measure(constraints)
     val rightP = measurables[2].measure(constraints)
+    // Align by the actual first baseline rather than each placeable's top.
+    // Bold fonts and decorations can have different ascent/descent metrics;
+    // this keeps the three fragments on one typographic line.
+    fun baselineOf(placeable: Placeable): Int = placeable[FirstBaseline]
+      .takeUnless { it == AlignmentLine.Unspecified }
+      ?: placeable.height
+    val baseline = maxOf(baselineOf(leftP), baselineOf(focalP), baselineOf(rightP))
+    val leftY = baseline - baselineOf(leftP)
+    val focalY = baseline - baselineOf(focalP)
+    val rightY = baseline - baselineOf(rightP)
     val cx = constraints.maxWidth / 2
     val focalX = cx - focalP.width / 2 // anchored: never moves
-    val y = 0
-    layout(constraints.maxWidth, maxOf(leftP.height, focalP.height, rightP.height)) {
-      leftP.placeRelative(focalX - leftP.width, y)
-      focalP.placeRelative(focalX, y)
-      rightP.placeRelative(focalX + focalP.width, y)
+    val height = maxOf(leftY + leftP.height, focalY + focalP.height, rightY + rightP.height)
+    layout(constraints.maxWidth, height) {
+      leftP.placeRelative(focalX - leftP.width, leftY)
+      focalP.placeRelative(focalX, focalY)
+      rightP.placeRelative(focalX + focalP.width, rightY)
     }
   }
 }
