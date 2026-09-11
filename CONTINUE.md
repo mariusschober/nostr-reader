@@ -52,6 +52,23 @@ Commit **`728b863`** turns Find into the shared compact search surface with expl
 
 Commit **`0d3c085`** diagnoses and fixes the merged-label defect. Root cause: chart legends and `display:block` eyebrow spans are inline tags whose two text runs touch with no whitespace in the source HTML, and a CSS-blind HTML-to-Markdown converter fuses them ("workersAll", "shareThe"). The fix reads the real computed `display` from the live page (`collectVisualBlockClasses`), carries the visually-block class tokens onto the noise-stripped clone, and inserts a single joining space only where both sides touch word characters with no existing whitespace (`separateVisuallyBlockInline`). Genuine inline formatting, punctuation and fenced code are left untouched. Chrome suite green (124 passed, plus the 18 loopback-relay tests when run with loopback access); two new `tests/extraction.test.ts` cases cover the positive fix and a counterexample. Existing stored text is deliberately left intact.
 
+## Stage 6 — App-wide E-ink / NXTPAPER theme (§3B)
+
+Commit **`6ca2a4d`** adds `ThemeMode.EINK` and a shared `DisplayPolicy` (monochrome + reduced motion) provided by `ReaderTheme` and inherited by nested reader themes, so the reading surface cannot silently drop the override.
+
+- Monochrome palette: white ground `#FFFFFF`, black `#000000` primary, `#333333` secondary, white surfaces with a visible border, and selected-container inversion (black fill, white content) instead of hue. Links already carry an underline in both Compose and the native span builder.
+- Reduced motion: `chromeFadeSpec()`, `settleSpec()`, `revealSpec()` collapse to `snap()` under the policy, and the native swipe-settle animation drops to 0ms; drag physics and direct touch scrolling are untouched.
+- Non-colour state: the Important star badge and the highlight cards render in black/white with an accessible colour name, and the Speed/Review/reader loading spinners become static "Opening…" text.
+- System bars follow the background's luminance, so the white e-ink ground gets dark icons.
+- Appearance states that the app-wide E-ink theme owns the background and points at Settings › App theme; the saved reading background and font are preserved underneath and restored on leaving the theme.
+- Settings labels the mode **E-ink / NXTPAPER**. `PrefsMigrationTest` covers the new stored value.
+
+Checks: `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:lintDebug` and `:app:verify16KbAlignment` all **PASS**. QA package verification: selecting E-ink renders the Settings screen and the Inbox in monochrome, and the choice persists across an in-place reinstall (`qa-eink-settings.png`, `qa-eink-inbox.png`).
+
+## Installed candidate — 2026-09-11c
+
+In-place `com.reader.app` install from **`6ca2a4d8ba57c05f9fc4eaf08e32865d02f5a8a0`**: APK SHA-256 `f592aa1269fb52942b88bf6eaea050d6e7fccd03714bdbb74c0d568980e4d676`, installed hash verified identical from the device `base.apk`, owner data preserved across 8 tables plus preferences (schema v13; documents 2, highlights 2, channels 1 before and after), no FATAL EXCEPTION on launch, and the owner's dark theme and saved article retained (`normal-post-install-eink.png`). Detail in `evidence/focused-20260910/installation-20260911c.json`.
+
 ## Installed candidate — 2026-09-11b
 
 In-place `com.reader.app` install from **`0d3c0859a98548f2d6ad1b4274da4b117c0cef46`**: APK SHA-256 `64a0cf406b730fe858e1805d9233ee7b400f5d50b139a357719b4cf12e6fce16`, installed hash verified identical from the device `base.apk`, owner data preserved across 8 tables plus preferences (schema v13), and no FATAL EXCEPTION on launch. This is the first install containing Inter, the refined Find sheet and the Chrome boundary fix. Detail in `evidence/focused-20260910/installation-20260911b.json`.
@@ -69,12 +86,10 @@ Evidence: `evidence/focused-20260910/qa-retest-20260911.json` and `qa-find-*.png
 
 ## Remaining spec items — verified against the code (2026-09-11)
 
-- **§3B E-ink / NXTPAPER theme — NOT DONE.** No `eink`, `nxpaper`, or `monochrome` markers exist under `android/app/src/main/java`. This is the largest remaining item: an app-wide display policy with a monochrome palette, reduced motion and per-theme rendering across the reader, dialogs, sheets, native spans, Review, Speed, search fields and system bars.
-
-Everything else in the spec is implemented or explicitly superseded in this file. §3C (Inter), §2E (Find) and §3D (text boundaries) are now implemented as stages 3–5 above and shipped in the installed candidate.
+Every item in `FINAL_USABILITY_SPEC_20260911.md` is now implemented or explicitly superseded in this file. §3B (E-ink), §3C (Inter), §2E (Find) and §3D (text boundaries) are implemented as stages 3–6 above and shipped in the installed candidate. The one explicitly non-certified claim is true electrophoretic e-ink refresh quality, which TCL NXTPAPER testing does not establish.
 
 ## Tip commit and independent audit pointer
 
-The branch tip is **`4317e67156f9e47261f2e66bc16d5ed9b8acdbb8`** (`test(prefs): extract decodeSettings and cover preference migration`), on top of the installed-revision chain `0d3c085` and its docs/evidence commits. It is a test-only, behavior-preserving change: the private preference `decode` is extracted into a top-level `internal fun decodeSettings(Preferences)` so the migration rules can be unit-tested without a `Context`, `Prefs.K` is widened to `internal`, and `PrefsMigrationTest` covers the once-only highlight explanation plus the fallback rules. No stored key is renamed, no default changes and no product behavior changes; the worktree is clean and `:app:testDebugUnitTest` is green. The installed `com.reader.app` candidate remains the `0d3c085` build (`64a0cf40…`) because the refactor does not change device behavior.
+The branch tip is **`6ca2a4d8ba57c05f9fc4eaf08e32865d02f5a8a0`** (`feat(android): app-wide E-ink / NXTPAPER monochrome theme`), on top of `4317e67` (test-only preference-decode extraction) and the `0d3c085` product chain. It is the installed revision: `com.reader.app` APK SHA-256 `f592aa1269fb52942b88bf6eaea050d6e7fccd03714bdbb74c0d568980e4d676`, verified identical from the device `base.apk`, with owner data preserved.
 
 The independent review/performance/UI/UX audit prompt for GPT Astra is [NEXT_AGENT_PROMPT_ASTRA_REVIEW.md](NEXT_AGENT_PROMPT_ASTRA_REVIEW.md), pointing at the tip commit and this handover. It asks for findings first (P0–P3) across review, performance, UI and UX, names the installed candidate and its hashes, and lists the guardrails (local only, use `com.reader.app.qa`, do not repeat the 100-article intake, no soak/matrix campaign).

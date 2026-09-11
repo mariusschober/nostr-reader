@@ -1,0 +1,32 @@
+{
+  "sourceCommit": "6ca2a4d8ba57c05f9fc4eaf08e32865d02f5a8a0",
+  "sourceCommitSubject": "feat(android): app-wide E-ink / NXTPAPER monochrome theme",
+  "branch": "codex/reliability-finalize",
+  "package": "com.reader.app",
+  "versionName": "0.9.0-beta.1",
+  "versionCode": 2,
+  "device": "TCL T807D",
+  "androidVersion": "16",
+  "androidSdk": 36,
+  "serial": "ZXKRS4VKGQ8PWGEQ",
+  "apkPath": "android/app/build/outputs/apk/debug/app-debug.apk",
+  "apkSha256": "f592aa1269fb52942b88bf6eaea050d6e7fccd03714bdbb74c0d568980e4d676",
+  "installedApkSha256": "f592aa1269fb52942b88bf6eaea050d6e7fccd03714bdbb74c0d568980e4d676",
+  "previousInstalledApkSha256": "64a0cf406b730fe858e1805d9233ee7b400f5d50b139a357719b4cf12e6fce16",
+  "previousInstalledSourceCommit": "0d3c0859a98548f2d6ad1b4274da4b117c0cef46",
+  "installedAtLocal": "2026-09-11 02:19",
+  "inPlaceInstall": true,
+  "ownerDataPreserved": true,
+  "ownerEvidence": "owner-gbefore.json / owner-gafter.json - 8 tables plus preferences identical; schema v13; before-and-after counts documents 2, highlights 2, channels 1",
+  "qaApkSha256": "2cc786b1740bed15edd5604593f7cf185b19254762b1d42d202de9add07da140",
+  "qaPackage": "com.reader.app.qa",
+  "qaInstall": "in place, corpus preserved (98 articles); owner package untouched",
+  "hostChecks": ":app:testDebugUnitTest, :app:assembleDebug, :app:lintDebug and :app:verify16KbAlignment all BUILD SUCCESSFUL on this revision",
+  "uiChecks": {
+    "einkSettings": "Settings shows the App theme chips Follow system / Light / Dark plus E-ink / NXTPAPER; selecting E-ink renders a white ground with black text and black-outlined chips (qa-eink-settings.png)",
+    "einkInbox": "After reinstall the persisted EINK preference still renders the Reader/Inbox in monochrome: white ground, black text, inverted black primary button and bottom-navigation indicator, no colour (qa-eink-inbox.png)",
+    "ownerPreserved": "The normal app kept the owner's dark theme and their saved article 'Scenarios for our Economic Future' with the Today filter after the in-place upgrade (normal-post-install-eink.png)"
+  },
+  "postInstallLaunch": "MainActivity started with no FATAL EXCEPTION for the app PID",
+  "note": "First install containing the app-wide E-ink / NXTPAPER theme. The theme is opt-in (Settings, App theme); the owner's saved dark theme and every stored preference, key and pairing are untouched, and leaving the theme restores the previous reading appearance. Reduced motion, monochrome links, the monochrome Important badge and static loading text are included. No intake, scale, soak or exhaustive-matrix campaign was repeated. True electrophoretic e-ink refresh quality is not certified by TCL testing."
+}

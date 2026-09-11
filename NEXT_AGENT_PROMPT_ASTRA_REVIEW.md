@@ -6,8 +6,9 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 
 - Repo: `/Users/schober/Projects/Nostr Reader`
 - Branch: `codex/reliability-finalize` - work stays local. Do not push, merge or release.
-- Audited revision (check this out): **`4317e67156f9e47261f2e66bc16d5ed9b8acdbb8`** - `test(prefs): extract decodeSettings and cover preference migration`. This is the last code+test commit: it carries every reviewed Android/Chrome change plus one test-only, behavior-preserving preference refactor. The last product-behavior commit is `0d3c085`. The branch tip is a docs-only commit above it that adds this prompt and the handover update, so check out `4317e67` for the code under audit and read this prompt from the working tree.
+- Audited revision (check this out): **`6ca2a4d8ba57c05f9fc4eaf08e32865d02f5a8a0`** - `feat(android): app-wide E-ink / NXTPAPER monochrome theme`. This is the installed revision: it carries every reviewed Android/Chrome change including the app-wide e-ink theme. The branch tip is a docs-only commit above it that updates this prompt and the handover, so check out `6ca2a4d` for the code under audit and read this prompt from the working tree.
 - Feature and test commits in scope, newest first:
+  - `6ca2a4d` feat(android): app-wide E-ink / NXTPAPER monochrome theme
   - `4317e67` test(prefs): extract decodeSettings and cover preference migration (test-only; no product behavior change)
   - `0d3c085` fix(chrome): keep word boundary between visually-block inline boxes
   - `728b863` feat(android): refine Find in article with compact field, states and match navigation
@@ -19,9 +20,9 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
   - `99c5cf9` feat(android): shared destination headers, compact search, prominent Review
   - `fd1b813` feat(android): quieter shelf markers and progress stroke
 - Base chain: `b14f128c54996515f45218f8d912ef106c174446` on `15a77ff647ac39f4e9165e47504d553504a1ac8b`.
-- Diff to audit: `git diff 15a77ff..4317e67 -- android/ chrome/` (use `git show` per commit for exact hunks; the only post-`0d3c085` code change is the test-only Prefs extraction in `4317e67`).
+- Diff to audit: `git diff 15a77ff..6ca2a4d -- android/ chrome/` (use `git show` per commit for exact hunks).
 - Handover: `CONTINUE.md` (running stage-by-stage status, including the one item still unimplemented) and `FOCUSED_HANDOFF_20260910.md` (scope, evidence, state/code map, trial boundaries).
-- Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `64a0cf406b730fe858e1805d9233ee7b400f5d50b139a357719b4cf12e6fce16`, source commit `0d3c085`, installed in place on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ` with the installed file hash verified identical and owner data preserved across 8 tables plus preferences (`evidence/focused-20260910/installation-20260911b.json`). The QA package is `com.reader.app.qa`. The installed build does **not** include `4317e67`; that commit only extracts a pure decode function and adds a unit test, so device product behavior is unchanged from `0d3c085`.
+- Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `f592aa1269fb52942b88bf6eaea050d6e7fccd03714bdbb74c0d568980e4d676`, source commit `6ca2a4d`, installed in place on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ` with the installed file hash verified identical and owner data preserved across 8 tables plus preferences (`evidence/focused-20260910/installation-20260911c.json`). The QA package is `com.reader.app.qa`.
 
 ## Read first
 
@@ -31,8 +32,9 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 - `NEXT_AGENT_PLAN.md` - the earlier plan (work packages A-E); superseded where it conflicts with the new spec.
 - `docs/COPY_DECK.md` - the copy/behavior contract.
 - `evidence/focused-20260910/installation-20260911b.json` - the current installed build, hashes and the checks actually run.
+- `evidence/focused-20260910/installation-20260911c.json` - the current installed build (installed-revision `6ca2a4d`), its hashes and the e-ink UI observations.
 - `evidence/focused-20260910/qa-retest-20260911.json` - the isolated-QA retest of the two paths changed after the last device check: the refined Find sheet and the Inter reading font.
-- `evidence/focused-20260910/hdr-*.png`, `qa-*.png`, `ux-*.png`, `normal-post-install-0d3c085.png`, `walkthrough.jsonl` - real TCL observations (not mockups).
+- `evidence/focused-20260910/hdr-*.png`, `qa-*.png` (including `qa-eink-settings.png`, `qa-eink-inbox.png`), `ux-*.png`, `normal-post-install-eink.png`, `walkthrough.jsonl` - real TCL observations (not mockups).
 - `android/app/src/test/java/com/reader/app/PrefsMigrationTest.kt` - the test added by the tip commit.
 
 ## Scope note
@@ -59,6 +61,7 @@ Android (all in the audited revision):
 - `prefs/Prefs.kt` - `ArticleFont.INTER`; `ui/theme/Tokens.kt`, `ReaderScreen.kt` - font and colour tokens; `res/font/inter_regular.ttf`, `inter_bold.ttf`; `LICENSES/INTER-OFL.txt`, `LICENSES/README.md`.
 - `prefs/Prefs.kt` (tip commit `4317e67`) - pure extraction of the preference decode into a top-level `internal fun decodeSettings(Preferences)`, with `Prefs.K` widened to `internal`. `Prefs.decode` now delegates to it. **No stored key renamed, no default changed, no behavior change intended**; it exists so the migration rules can be unit-tested without a `Context`.
 - `ui/screens/InboxScreen.kt`, `ui/screens/SettingsScreen.kt`, `ui/MainActivity.kt` - wiring, one-time search focus, Back-closes-search, Reader rename, warmer Paper surface, one-time highlight help.
+- `ui/theme/Tokens.kt`, `ui/theme/Motion.kt`, `prefs/Prefs.kt` (installed revision `6ca2a4d`) - `ThemeMode.EINK`, the `EinkColors` palette, the `DisplayPolicy`/`LocalDisplayPolicy` (monochrome + reduced motion) and the `settleSpec`/`revealSpec`/`chromeFadeSpec` helpers. `ReaderTheme` now inherits an outer monochrome override so the nested reader theme cannot drop it; `appColors`/`readerColors` return the e-ink palette when monochrome. System bars follow background luminance. E-ink state reaches the Important badge and highlight cards, static loading text, and the native swipe settle.
 - Tests: `ReviewSchedulerTest.kt`, `ArticleNavigationTest.kt`, `ReaderFlowInstrumentedTest.kt`, `UiCompletionInstrumentedTest.kt`, and `PrefsMigrationTest.kt` (new: fresh install sees the highlight explanation once, an existing install is treated as already seen, an explicit flag beats the legacy-install guess, unknown stored values fall back to defaults).
 
 Chrome extension:
@@ -72,6 +75,7 @@ Chrome extension:
 
 - Text boundary fix (`chrome/src/extraction/pipeline.ts`): are `collectVisualBlockClasses` and `separateVisuallyBlockInline` actually applied on both extraction clones (not just defined)? Is the guard correct - inserts only when both adjacent characters are word characters, no existing whitespace, and never inside `pre`/fenced code? Can it insert a spurious space into genuinely adjacent inline content, tables or punctuation? Is it bounded and side-effect free on the live DOM, and does it fail safe when `defaultView`/`getComputedStyle` is unavailable?
 - Preference decode extraction (`prefs/Prefs.kt` tip commit): is `decodeSettings` byte-for-byte equivalent to the previous private `decode` for every key (including the `legacyInstall` guess and the explicit `highlightCoachSeen` flag winning over it)? Does widening `K` to `internal` leak any key that should stay private? Does the extraction change the compiled debug APK bytes versus the installed `0d3c085` build, and if so is the behavior provably identical?
+- E-ink theme (`ui/theme/Tokens.kt`, `ui/theme/Motion.kt`, `prefs/Prefs.kt`): does `ThemeMode.EINK` decode from storage without renaming existing values, and is the theme applied from the stored mode rather than inferred? Does a nested `ReaderTheme` keep the monochrome/reduced-motion override? Does leaving E-ink restore the exact saved reading background/font, or can the policy leak? Is reduced motion limited to decorative transitions (chrome fade, settle, reveal, the native swipe settle) while drag physics, direct touch scrolling and native selection stay untouched? Are the e-ink colours genuinely monochrome with non-colour state for Important and errors, and does the selected-container inversion hold for every chip/toggle?
 - Inter (`prefs/Prefs.kt`, `ui/theme/Tokens.kt`, `NativeArticleView.kt`, `ReaderScreen.kt`): is `ArticleFont.INTER` wired for both Compose and the native reader, and does bold use the bundled `inter_bold` face rather than a synthetic weight? Is the enum added without renaming existing stored values, and is the license shipped?
 - Find (`ui/screens/PreparedReaderScreen.kt`, `data/ArticleNavigation.kt`): are the explicit states correct; is stale-query cancellation real (a completed older query cannot overwrite a newer one); does the sheet keep the header and field stable while results scroll independently; does selecting a result land at the match and expose Return to reading position; is there any new extra scroller around the article text?
 - Does `DestinationHeader` actually guarantee identical title geometry across Reader, Highlights, Settings and Review, or can content/actions still shift the baseline or reserve height differently?
@@ -102,6 +106,7 @@ Chrome extension:
 - Do the four reading actions render as one coherent 48dp row (icon above a 12sp label) and wrap cleanly above font scale 1.3?
 - Is Review visually primary within Highlights, and are the card typography, 3dp colour marker, Important badge and completion states coherent?
 - Contrast, 48dp touch targets, focus order, colour-only signalling, overlap and truncation.
+- E-ink: is the whole app genuinely monochrome - destination header, article, highlight cards, chips, dialogs, sheets, Review, Speed, search fields and system bars - with readable contrast, and does the Appearance sheet correctly say the app-wide theme owns the background while E-ink is active?
 
 **4. UX**
 
@@ -112,7 +117,7 @@ Chrome extension:
 - Source round-trip preserves the pending cycle, and Back from Review returns to Highlights with position intact?
 - Does fullscreen focus mode remove distractions without hiding controls the reader still needs, and is exit discoverable?
 - Any copy that overclaims (offline availability, streaks, ranking) versus `docs/COPY_DECK.md`.
-- Note: the e-ink / NXTPAPER theme (spec 3B) is the one remaining unimplemented item; do not treat its absence as a regression, but flag any place that would block adding it cleanly.
+- E-ink: does switching to E-ink preserve the reading position, and does leaving it restore the previous appearance without resetting preferences? Is any motion left that the theme should suppress, or any functional motion (drag physics, native selection) wrongly suppressed?
 
 ## Guardrails
 
