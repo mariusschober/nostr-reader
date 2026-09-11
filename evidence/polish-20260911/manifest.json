@@ -1,0 +1,210 @@
+{
+  "pass": "reader-polish-20260911",
+  "plan": "READER_POLISH_PLAN_20260911.md",
+  "audit": "ASTRA_AUDIT_20260911.md",
+  "branch": "codex/reliability-finalize",
+  "commits": {
+    "android_a_to_e": "a4140c3",
+    "chrome_f": "8b89a7f",
+    "audited_product_source": "f20828b3e2b4c255419f5436523d5b5de7d49104"
+  },
+  "device": {
+    "serial": "ZXKRS4VKGQ8PWGEQ",
+    "model": "T807D",
+    "android": 16,
+    "pixels": "1080x2340",
+    "density": 456,
+    "font_scale": 1.0
+  },
+  "qa_package": "com.reader.app.qa",
+  "qa_apk_sha256": "025bdbacfe55cdbe64aac4610abaa3a37f95767f30d2cf0168ec5747da9af5e5",
+  "qa_installed_bytes_match": true,
+  "normal_package": "com.reader.app",
+  "normal_apk_sha256": "8dc3d733635189852151f908de4c0b261fc131b0a130c974f0e7df8430c0b6e1",
+  "normal_installed_bytes_match": true,
+  "normal_owner_integrity": "reader.db 200704 bytes mtime 10:19 identical before/after install -r; lastUpdateTime 12:37 install; launch-check deferred (owner active on device)",
+  "native_so_16kb_page_alignment": "PASS all 12 lib/ entries OK (overall zipalign verdict fails only on tiny uncompressed META-INF metadata, same as prior builds)",
+  "test_results": {
+    "android_unit_full": {
+      "tests": 247,
+      "failures": 0,
+      "errors": 0
+    },
+    "android_focused_new": "ReviewScheduler 17/17 (3 new count cases), PrefsMigration 6/6 (1 new materialization case)",
+    "android_lint": "PASS",
+    "chrome_extraction": {
+      "tests": 10,
+      "passed": 10
+    },
+    "chrome_typecheck": "PASS",
+    "chrome_build": "PASS",
+    "instrumented_selection_identity": "PASS 1/1 on TCL (HighlightSessionInstrumentedTest, leaveApksInstalled)"
+  },
+  "device_checks": {
+    "F01_identity": "PASS via instrumentation (one session id across save+extension, one persisted row, final range)",
+    "F02_undo_visible": "PASS screenshot 17-undo-settled.png (white message+Undo+dismiss on black) + tree 12/17",
+    "F09_nav_icon": "PASS screenshots 02/12/15/17 (white quote icon on black capsule)",
+    "F04_picker_identity": "PASS dumps 05/11/14-16 (Y/G/C/P + names) + screenshots (mono gray fills, black stripe)",
+    "F04_feed_identity": "PASS dumps 04/06/10/13 (Y x Yellow + source + Open source + options per card)",
+    "F06_review_entry": "PASS dumps 02/10 (floating filled button with state line + header Review fallback)",
+    "review_count_live": "fresh round reports 10 left; focused-tap round showed 7 then Next advanced (tap landed in stray app, count decrement NOT MEASURED)",
+    "undo_functional_restore": "NOT MEASURED (Undo taps expired or missed; handler code unchanged from audit)",
+    "F03_focus_cutout": "NOT MEASURED (owner call blocked reader driving; code owns edge-to-edge + SHORT_EDGES + restore)",
+    "F05_speed_focal": "NOT MEASURED visually (code: bold focal + mono underline + long-word fit)",
+    "pen_dock_identifiers": "NOT MEASURED visually (same component as verified sheet picker)",
+    "find_states": "NOT MEASURED visually (unit-covered navigation logic unchanged; UI states mutually exclusive in code)",
+    "scroll_motion_mono": "NOT MEASURED on panel (code: no kinetic continuation, instant jumps, no Review flourish)"
+  },
+  "blocked": "Owner is on an active Satellite call and multitasking (Messages/Phone/LinkedIn foregrounded during the pass); all further screen-driving checks deferred. No SMS sent, no call placed, no owner data modified. QA holds audit sample + highlights plus clearly-labeled session-gate-* test rows (mine) for later removal.",
+  "primary_captures": [
+    "02-highlights.png",
+    "05-sheet.png",
+    "12-undo-snack.png",
+    "15-undo-settled.png",
+    "17-undo-settled.png"
+  ],
+  "artifacts": [
+    {
+      "file": "01-launch.png",
+      "sha256": "aae547b140e1f379814b69a34d105cafb5a3fff447e7b23fae3392de2736d58d",
+      "bytes": 89987
+    },
+    {
+      "file": "01-launch.xml",
+      "sha256": "c62a8ef0dc14860e6d0eceea506a6035d1038579ae62567c1f5631e5239a070f",
+      "bytes": 20832
+    },
+    {
+      "file": "02-highlights.png",
+      "sha256": "a6bc65db05653c2533b73677dc417c2a8c2ccb352cc4a63e8a85f2286e6f9ef3",
+      "bytes": 201209
+    },
+    {
+      "file": "02-highlights.xml",
+      "sha256": "db10a51a11e43fcb021f9fee69e3c6a5c265eff1aa9ef054d75770139f46f9e1",
+      "bytes": 17108
+    },
+    {
+      "file": "03-select.xml",
+      "sha256": "8a8f830409731f9c5cdc4e16b20ff0454438746d8e820d0d613d5ca1addce99f",
+      "bytes": 14274
+    },
+    {
+      "file": "04-undo-notice.png",
+      "sha256": "e016018bfae2e35c76d5e75c2723504eeb38138b040462a880170bd155cb74e3",
+      "bytes": 183220
+    },
+    {
+      "file": "04-undo-notice.xml",
+      "sha256": "dddd3b1cea48574fcf06d0fd660e49c8e7ed28dd376f0412af5838172dfdb181",
+      "bytes": 30862
+    },
+    {
+      "file": "05-sheet.png",
+      "sha256": "7ec92f1907a2d7bf50067c4a1f72a64ba389bd0146394c6619d39402f69332e3",
+      "bytes": 144180
+    },
+    {
+      "file": "05-sheet.xml",
+      "sha256": "05bfd7b73186679f7517fede691725adb9bf664ea846e0b9f20163b719457c8e",
+      "bytes": 15246
+    },
+    {
+      "file": "06-undo.xml",
+      "sha256": "629c853e101ca143a2c8a2bf66cf6e522764b687cbf8f0281ee0748acc8ee105",
+      "bytes": 31573
+    },
+    {
+      "file": "07-undo-visible.png",
+      "sha256": "8a7bc7b141655ef323b93944cb2f1f12f8552767f9f93a1327e848f9983e1350",
+      "bytes": 152718
+    },
+    {
+      "file": "08-after-undo.xml",
+      "sha256": "da5473c152c5b40f341cab0163f9cb941c3120d98b5b8f4abdf9be5ecb943534",
+      "bytes": 11479
+    },
+    {
+      "file": "09-back.xml",
+      "sha256": "44e8b2467987733ecf58e54848500d15357e9cbdabf8130b4128ba66732c0b6b",
+      "bytes": 30217
+    },
+    {
+      "file": "10-feed.xml",
+      "sha256": "44e8b2467987733ecf58e54848500d15357e9cbdabf8130b4128ba66732c0b6b",
+      "bytes": 30217
+    },
+    {
+      "file": "11-sheet.xml",
+      "sha256": "05bfd7b73186679f7517fede691725adb9bf664ea846e0b9f20163b719457c8e",
+      "bytes": 15246
+    },
+    {
+      "file": "12-undo-snack.png",
+      "sha256": "3cc3aea6eb041b24f96c0b23309855eeb4865b69e9b90bb1e66ed49fa978582d",
+      "bytes": 174682
+    },
+    {
+      "file": "12-undo.xml",
+      "sha256": "257a169888740e062aa0aede188722b7aeff39d822cc7bf2f3415695202d4d79",
+      "bytes": 27293
+    },
+    {
+      "file": "13-feed.xml",
+      "sha256": "ad75fc2c754ebde87f575e1fd335e4c4e93fa1490ec7a23a66ca2cfc19c60b8c",
+      "bytes": 25937
+    },
+    {
+      "file": "14-undo-settled.png",
+      "sha256": "d3830d9fb576f1185689f86c53de9588b15695835e3277d2c1acc426bf2dc62f",
+      "bytes": 144566
+    },
+    {
+      "file": "14-undo.xml",
+      "sha256": "05bfd7b73186679f7517fede691725adb9bf664ea846e0b9f20163b719457c8e",
+      "bytes": 15246
+    },
+    {
+      "file": "15-undo-settled.png",
+      "sha256": "013deac43733a94a9bb114f1a242fba90494b8a144d7700a54fc3b1e25d1c73c",
+      "bytes": 188006
+    },
+    {
+      "file": "15-undo.xml",
+      "sha256": "e7a97b52faccdb231e06afbceea21de963d7805f8667014081464a3e53bd00b8",
+      "bytes": 21657
+    },
+    {
+      "file": "16-sheet.xml",
+      "sha256": "05bfd7b73186679f7517fede691725adb9bf664ea846e0b9f20163b719457c8e",
+      "bytes": 15246
+    },
+    {
+      "file": "17-undo-settled.png",
+      "sha256": "ec4bf09a31dc6b9474bdc0674ccd07e5bf976eb8fe4d64845a05f5418f8b0276",
+      "bytes": 206372
+    },
+    {
+      "file": "17-undo.xml",
+      "sha256": "76b1262a65045267aaae52e92b131d550252e74cf400eec96a9e99c9d8651933",
+      "bytes": 18752
+    },
+    {
+      "file": "18-undo-tap.xml",
+      "sha256": "414ad22fe714e3899ab654f563d3793651ff6388702554446aadff491b41a3ff",
+      "bytes": 28698
+    },
+    {
+      "file": "19-recover.xml",
+      "sha256": "6d40560c651d2a6fe92b298c7b11aeac2e226545108e0cc48691d590b553e011",
+      "bytes": 9696
+    },
+    {
+      "file": "20-review-next.xml",
+      "sha256": "a13f2448cfc5964a7b898d685f04322d107e6c3ff2b90d27a29cd663e3c45e30",
+      "bytes": 47627
+    }
+  ],
+  "qa_apk_note": "Exact QA bytes verified identical on device (pulled base.apk matched build hash); file not stored in repo, rebuild with :app:assembleDebug -PreaderQa=true from 8b89a7f^/a4140c3. Normal APK bytes kept on disk at artifacts/reader-debug.apk (git-ignored, not committed).",
+  "normal_apk_note": "Exact bytes kept on disk at artifacts/reader-debug.apk (git-ignored per repo rules); SHA-256 in SHA256SUMS (git-ignored) and recorded here + CONTINUE.md."
+}
