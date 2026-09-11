@@ -73,7 +73,9 @@ class NativeMonoGeometryInstrumentedTest {
       )
 
       val bidiStart = articleText.indexOf("English")
-      val bidiEnd = articleText.indexOf("selected", bidiStart)
+      // Stop inside the RTL run, leaving the remaining Hebrew glyphs
+      // unselected. The resulting visual gap catches any bounding-box bridge.
+      val bidiEnd = articleText.indexOf("אבג", bidiStart) + 1
       val bidi = nativeMonoVisualRuns(view.text, bidiStart, bidiEnd, layout, "dotted")
       assertFalse("mixed-direction selection must retain visible runs", bidi.isEmpty())
       assertTrue("bidi runs remain bounded to their visual lines", bidi.all { it.right > it.left && it.line in 0 until layout.lineCount })
