@@ -1,0 +1,125 @@
+{
+  "pass": "muse-focused-tcl-review-20260911",
+  "purpose": "Short visual and interaction review of Muse Spark's installed polish build; no extensive testing.",
+  "device": {
+    "serial": "ZXKRS4VKGQ8PWGEQ",
+    "model": "T807D",
+    "android": "16",
+    "resolution": "1080x2340",
+    "density": 456,
+    "fontScale": 1.0
+  },
+  "packages": {
+    "normal": {
+      "name": "com.reader.app",
+      "apkSha256": "8dc3d733635189852151f908de4c0b261fc131b0a130c974f0e7df8430c0b6e1"
+    },
+    "qa": {
+      "name": "com.reader.app.qa",
+      "apkSha256": "025bdbacfe55cdbe64aac4610abaa3a37f95767f30d2cf0168ec5747da9af5e5"
+    }
+  },
+  "scope": {
+    "normalAppTouched": false,
+    "qaArticleIntake": false,
+    "qaArticleRecordsCreated": false,
+    "qaMutation": "One existing QA highlight was toggled Important in Review. Navigation may also persist QA reading/review locations; no complete QA database-diff claim is made. No article intake or new fixture creation; owner data, keys, pairings and Chrome profile were not mutated.",
+    "finalForeground": "com.reader.app.qa/com.reader.app.ui.MainActivity"
+  },
+  "checks": [
+    {
+      "id": "shelf",
+      "state": "PASS",
+      "evidence": [
+        "01-qa-launch.png",
+        "02-qa-settled.png"
+      ],
+      "observation": "QA opens to Reader; Inbox is empty with useful Add an article copy. Inbox/Priority/Later/Archive and Reader/Highlights/Settings navigation are visible. Normal app was not opened."
+    },
+    {
+      "id": "highlights-review-entry",
+      "state": "PASS",
+      "evidence": [
+        "03-highlights.png",
+        "04-review-entry.png",
+        "06-highlights-important.png"
+      ],
+      "observation": "Highlights presents full quotes, color names, Important filter, compact approximately 48dp search, and a filled Review highlights banner. The header Review action is an intentional fallback. Review opens; on a long quote, attribution and source action are initially below the fold. Their presence below the quote is confirmed in source; no inability-to-scroll claim is made.",
+      "remainingDesignRefinement": "Put source context before the quote and keep it reachable in Review without scrolling to the end."
+    },
+    {
+      "id": "saved-highlight-eink-rendering",
+      "state": "FAIL",
+      "evidence": [
+        "07-article-from-highlight.png",
+        "08-article-focus.png",
+        "11-controls-visible.png"
+      ],
+      "observation": "QA source opens at a stored passage/end state and retains four reader actions. In E-ink/monochrome, saved highlight edge lines do not follow wrapped selection geometry: the lower multi-line gray region begins mid-line but its black double edge starts far to the left and ends early, crossing unrelated text. This is the reported broken-underlining defect."
+    },
+    {
+      "id": "focus",
+      "state": "PASS",
+      "evidence": [
+        "08-article-focus.png"
+      ],
+      "observation": "Focus mode removes the reader controls and system bars; the white reading surface reaches the screen edges. Physical Nxtpaper/electrophoretic refresh quality was not measured."
+    },
+    {
+      "id": "highlight-sheet",
+      "state": "PASS",
+      "evidence": [
+        "09-article-controls.png"
+      ],
+      "observation": "Opening an existing highlight shows the compact Highlight sheet with Y/G/C/P identifiers, Important, Copy, Share, Remove and Done. This does not test first-run continuous-highlighting coaching."
+    },
+    {
+      "id": "speed",
+      "state": "PASS",
+      "evidence": [
+        "12-speed.png"
+      ],
+      "observation": "Speed opens and exits cleanly in monochrome; the focal letter is visibly heavier and underlined in the inspected word. Physical panel contrast/refresh was not measured."
+    }
+  ],
+  "unmeasured": [
+    "ordinary native selection followed by handle adjustment",
+    "actual Remove then Undo restoration",
+    "Contents and Find sheets in this short pass",
+    "normal package launch after the prior install",
+    "physical e-ink/Nxtpaper ghosting, refresh, and long-session comfort",
+    "large corpus, soak, performance campaign, and exhaustive accessibility matrix",
+    "normal-theme Speed focal color on the device (regression established in source)",
+    "fresh first-run coach behavior",
+    "complete before-after QA database diff"
+  ],
+  "captures": [
+    "01-qa-launch.png",
+    "02-qa-settled.png",
+    "03-highlights.png",
+    "04-review-entry.png",
+    "05-archive.png",
+    "06-highlights-important.png",
+    "07-article-from-highlight.png",
+    "08-article-focus.png",
+    "09-article-controls.png",
+    "10-controls-visible.png",
+    "11-controls-visible.png",
+    "12-speed.png"
+  ],
+  "source": {
+    "branch": "codex/reliability-finalize",
+    "reviewedHead": "80f39c4d60574a487a44b27e33c05a3648391d9d",
+    "androidCommit": "a4140c3",
+    "chromeCommit": "8b89a7f",
+    "productChangesDuringAudit": false
+  },
+  "acceptedScreenshotsInspectedByAstra": [
+    "02-qa-settled.png",
+    "03-highlights.png",
+    "04-review-entry.png",
+    "07-article-from-highlight.png",
+    "08-article-focus.png",
+    "12-speed.png"
+  ]
+}

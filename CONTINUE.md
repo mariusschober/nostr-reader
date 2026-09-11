@@ -1,6 +1,16 @@
 # Continue with the final usability pass
 
-## Current next action — independent audit, 11 September
+## Current next action — final repairs after Muse review, 11 September
+
+Read **[MUSE_REVIEW_PLAN_20260911.md](MUSE_REVIEW_PLAN_20260911.md)** and use [NEXT_AGENT_PROMPT_MUSE_REPAIRS.md](NEXT_AGENT_PROMPT_MUSE_REPAIRS.md) when implementation is authorized. The user requested review and a plan in this turn; no product source or APK was changed.
+
+Reviewed baseline: `80f39c4` on `codex/reliability-finalize`, containing Android `a4140c3` and Chrome `8b89a7f`. Fresh TCL evidence confirms the wrapped e-ink underline defect and the improved full-screen focus, Review CTA, title alignment, compact Highlights search and visible monochrome Speed cue. Code review also found ordinary-menu Highlight → handle-adjust session duplication and normal-theme Speed losing its focal accent. These are the current repair priorities; long-quote source context is the bounded design refinement. Keep all historical records below, but do not read their “all implemented” wording as acceptance of these remaining defects.
+
+Normal installed SHA-256 remains `8dc3d733635189852151f908de4c0b261fc131b0a130c974f0e7df8430c0b6e1`; QA remains `025bdbacfe55cdbe64aac4610abaa3a37f95767f30d2cf0168ec5747da9af5e5`. Both were checked again. New screenshots and notes are under `evidence/muse-review-20260911/`. No repeat intake, whole test suite, owner-library mutation, app reset or install occurred in this audit. Normal-app launch and quantitative performance remain unmeasured here. Leave the user's seven-day trial as the sustained-use check.
+
+Pre-existing untracked captures `evidence/polish-20260911/{21-feed,22-feed,22-reader-tab,23-archive}.xml` are preserved separately. The detailed plan names the current proof limits, precise repair gates and future in-place install requirements.
+
+## Historical next action — independent audit before Muse's implementation
 
 The fresh audit of product source **`f20828b`** found incomplete focus/cutout layout, invisible monochrome Undo and selected navigation icons, indistinguishable highlight choices/focal letters, duplicate pen-selection IDs, weak/conditionally absent Review entry, an incorrect focused Review count, and two capture-boundary counterexamples. See [ASTRA_AUDIT_20260911.md](ASTRA_AUDIT_20260911.md) for severity, source lines and evidence.
 
