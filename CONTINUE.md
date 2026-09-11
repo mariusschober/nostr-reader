@@ -56,6 +56,8 @@ Commit **`0d3c085`** diagnoses and fixes the merged-label defect. Root cause: ch
 
 In-place `com.reader.app` install from **`0d3c0859a98548f2d6ad1b4274da4b117c0cef46`**: APK SHA-256 `64a0cf406b730fe858e1805d9233ee7b400f5d50b139a357719b4cf12e6fce16`, installed hash verified identical from the device `base.apk`, owner data preserved across 8 tables plus preferences (schema v13), and no FATAL EXCEPTION on launch. This is the first install containing Inter, the refined Find sheet and the Chrome boundary fix. Detail in `evidence/focused-20260910/installation-20260911b.json`.
 
+The installed artifact itself was opened and checked: the on-device `base.apk` contains `res/font/inter_regular.ttf`, `res/font/inter_bold.ttf` and the refined Find strings (`Word or phrase`, `No matches for`, `Return to reading position`) in its dex, so the shipped binary matches the source, not just the build inputs. The Inter commit's only change to `NativeArticleView.kt` is the typeface selection (`inter_regular` / `inter_bold`); selection handling, the native text-action mode and the 8dp inset are untouched, so the `18c9ac2` native end-of-text and native-selection results still describe this build. The copy contract was extended for Inter and the refined Find sheet in `9c3c58c`.
+
 ## Remaining spec items — verified against the code (2026-09-11)
 
 - **§3B E-ink / NXTPAPER theme — NOT DONE.** No `eink`, `nxpaper`, or `monochrome` markers exist under `android/app/src/main/java`. This is the largest remaining item: an app-wide display policy with a monochrome palette, reduced motion and per-theme rendering across the reader, dialogs, sheets, native spans, Review, Speed, search fields and system bars.

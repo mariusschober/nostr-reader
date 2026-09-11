@@ -36,7 +36,7 @@ You are a rigorous, independent reviewer and auditor for an Android reader app (
 
 Review only committed code at the audited revision. The worktree at handoff is **clean**.
 
-Do not repeat the completed 100-article intake. The only native checks recorded for the app are the end-of-article finish state and one adjusted native selection (`installation-20260911.json`, taken at `18c9ac2`). Those article/selection paths are unchanged by `a60c7cd` / `728b863` / `0d3c085`, so they were intentionally not re-run; treat them as prior evidence, not as a claim about the newest build. Do not restage the 100-article exercise, generate scale data, or run a 120-minute / soak / exhaustive-matrix campaign.
+Do not repeat the completed 100-article intake. The only native checks recorded for the app are the end-of-article finish state and one adjusted native selection (`installation-20260911.json`, taken at `18c9ac2`). They were intentionally not re-run: `a60c7cd` changes only the typeface selection inside `NativeArticleView.kt` (not the selection handling, the native text-action mode or the 8dp inset), and `728b863` / `0d3c085` do not touch those paths. Treat them as prior evidence for this build, not as a fresh pass. Do not restage the 100-article exercise, generate scale data, or run a 120-minute / soak / exhaustive-matrix campaign.
 
 The Chrome boundary fix (`0d3c085`) is **not** part of the APK. It changes future captures at extraction time and deliberately leaves the owner's already-stored text intact.
 
