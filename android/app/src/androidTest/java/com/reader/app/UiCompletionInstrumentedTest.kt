@@ -221,8 +221,13 @@ class UiCompletionInstrumentedTest {
     val d = fixture("Focused quotation")
     val q = quote(d)
     val reviewCountBefore = q.reviewCount
+    val reviewBefore = db.review().parts()
     ActivityScenario.launch(MainActivity::class.java).use {
-      tap("Highlights"); tap("Newest"); tap(d.title)
+      tap("Highlights"); tap("Newest")
+      // Opening the destination and changing its order are read-only. The
+      // explicit card tap below is the first action allowed to focus Review.
+      assertEquals(reviewBefore, db.review().parts())
+      tap(d.title)
       waitFor("review quote") { node("Next") != null && node("Open source") != null }
       assertEquals(reviewCountBefore, db.highlights().byId(q.id)!!.reviewCount)
       // Entering Review may persist its focused cursor, but it must not
@@ -240,7 +245,6 @@ class UiCompletionInstrumentedTest {
       tap("Undo"); waitFor("restored") { runBlocking { db.highlights().byId(q.id) != null } }
       assertTrue(db.highlights().byId(q.id)!!.important)
       assertEquals(q.quote, db.highlights().byId(q.id)!!.quote)
-      assertEquals(reviewBefore, db.review().parts())
     }
   }
 }
