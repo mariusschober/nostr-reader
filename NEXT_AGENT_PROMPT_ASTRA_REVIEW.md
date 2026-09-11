@@ -6,7 +6,8 @@ You are a rigorous, independent reviewer and auditor for an Android reader app. 
 
 - Repo: `/Users/schober/Projects/Nostr Reader`
 - Branch: `codex/reliability-finalize` — work stays local. Do not push, merge or release.
-- Audited revision (HEAD): **`18c9ac203c1a11e216417c8a7cef160a246dd70b`** — `feat(android): review from a tapped quote without losing the round`.
+- Audited revision (check this out): **`05dc6d0830224827a4560c8e509f5f90ff4365dc`** — `docs: record verified remaining spec items`; it contains all reviewed code plus the documentation ledger.
+- Newest code change under audit: **`18c9ac203c1a11e216417c8a7cef160a246dd70b`** — `feat(android): review from a tapped quote without losing the round`. Every commit above it is documentation only (including this audit prompt).
 - Feature commits in scope, newest first:
   - `18c9ac2` review from a tapped quote without losing the round
   - `9fa220d` floating Review banner replaces the top entry card
@@ -15,22 +16,27 @@ You are a rigorous, independent reviewer and auditor for an Android reader app. 
   - `99c5cf9` shared destination headers, compact search, prominent Review
   - `fd1b813` quieter shelf markers and progress stroke
 - Base chain: `b14f128c54996515f45218f8d912ef106c174446` on `15a77ff647ac39f4e9165e47504d553504a1ac8b`.
-- Diff to audit: `git diff 15a77ff..9fa220d -- android/ docs/` (use `git show` per commit for exact hunks).
+- Diff to audit: `git diff 15a77ff..18c9ac2 -- android/ docs/` (use `git show` per commit for exact hunks).
+- Handover: `CONTINUE.md` (running stage-by-stage status, including what is still unimplemented) and `FOCUSED_HANDOFF_20260910.md` (scope, evidence, state/code map, trial boundaries).
 - Installed candidate: normal `com.reader.app`, debug `0.9.0-beta.1` / code 2, APK SHA-256 `8052b8a1d1d43a4188a727f69fc57b2fbe3120ce301b214ee507838b3c6680d3`, source commit `18c9ac2`, installed in place on TCL T807D / Android 16 / serial `ZXKRS4VKGQ8PWGEQ` with the installed file hash verified identical and owner data preserved (`evidence/focused-20260910/installation-20260911.json`). The QA package is `com.reader.app.qa`.
 
 ## Read first
 
 - `FINAL_USABILITY_SPEC_20260911.md` — the current specification; it supersedes conflicting older requirements.
+- `CONTINUE.md` — the primary handover: per-stage status, the two native checks and the verified-not-implemented items.
 - `FOCUSED_HANDOFF_20260910.md` — implemented scope, evidence, state/code map, trial boundaries.
-- `CONTINUE.md` — running stage-by-stage progress of the final usability pass.
 - `NEXT_AGENT_PLAN.md` — the earlier plan (work packages A–E); superseded where it conflicts with the new spec.
 - `docs/COPY_DECK.md` — the copy/behavior contract.
-- `evidence/focused-20260910/installation.json` and `final-verification-20260910b.txt` — installed build, hashes, checks actually run.
-- `evidence/focused-20260910/*.png` and `walkthrough.jsonl` — real TCL observations (not mockups).
+- `evidence/focused-20260910/installation-20260911.json` — installed build, hashes and the checks actually run.
+- `evidence/focused-20260910/hdr-*.png`, `ux-review*.png`, `ux-shelf-search.png`, `walkthrough.jsonl` — real TCL observations (not mockups).
 
 ## Scope note
 
-The working tree is clean at the audited revision; review only committed code. The two native checks already recorded for this revision are the end-of-article finish state and the single adjusted native selection (`installation-20260911.json`); do not repeat the 100-article intake.
+Review only committed code at the audited revision. Do not repeat the completed 100-article intake.
+
+The worktree at handoff is **not clean**. A separate Inter-font work-in-progress sits uncommitted in `android/app/src/main/java/com/reader/app/prefs/Prefs.kt`, `ui/theme/Tokens.kt`, `ui/screens/ReaderScreen.kt`, `ui/screens/NativeArticleView.kt`, plus untracked `android/app/src/main/res/font/inter_regular.ttf`, `inter_bold.ttf` and `LICENSES/INTER-OFL.txt`. That work was **not built, not tested and not installed**; treat it as out of scope unless the task explicitly says to audit the uncommitted diff.
+
+The only native checks recorded for the audited revision are the end-of-article finish state and one adjusted native selection (`installation-20260911.json`). Do not restage the 100-article exercise, generate scale data, or run a 120-minute / soak / exhaustive-matrix campaign.
 
 ## What changed (audit targets)
 
@@ -88,6 +94,7 @@ The working tree is clean at the audited revision; review only committed code. T
 - Preserve Room v13, canonical article text, quote anchors, the native selectable TextView and its 8dp inset, existing preferences, owner data, highlights, Review history, keys and pairings.
 - Do not repeat the completed 100-article intake, generate scale data, or run a 120-minute / soak / exhaustive-matrix campaign.
 - `adb` and Gradle require escalated permissions on this host. The isolated QA browser/controller is stopped — do not assume old process IDs or credentials are live.
+- Ignore the uncommitted Inter-font work-in-progress described in the scope note; it is not part of the audited revision.
 - If you propose or make a fix, keep it the smallest complete change, run only the affected focused tests, and leave the installed candidate's hash and owner-integrity evidence intact.
 
 ## Output
