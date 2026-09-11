@@ -39,3 +39,14 @@ Checks for this stage: `testDebugUnitTest` **234 passed, 0 failures**; `assemble
 Installed candidate (in place, `com.reader.app`): source `18c9ac203c1a11e216417c8a7cef160a246dd70b`, APK SHA-256 `8052b8a1d1d43a4188a727f69fc57b2fbe3120ce301b214ee507838b3c6680d3`, installed hash verified identical from the device `base.apk`, updated 2026-09-11 00:51:23. Owner integrity: 8 tables plus preferences identical before and after (`owner-ebefore.json` / `owner-eafter.json`), schema v13. Full detail in `evidence/focused-20260910/installation-20260911.json`.
 
 Two native checks on the refreshed QA package (built from the same revision): end of article reaches `100% · End of article` with the Finish card and a byte-stable viewport; one press-and-hold plus one handle adjustment produces exactly one saved range (7 → 8) with the native Copy/Highlight/Share menu intact outside continuous highlighting.
+
+## Remaining spec items — verified against the code (2026-09-11)
+
+Checked directly in the checkout at `18c9ac2`; none of these are implemented yet, so the seven-day trial build deliberately does not contain them:
+
+- **§3C Inter font — NOT DONE.** `ArticleFont` is `NEWSREADER, CRIMSON_PRO, ASUL, ATKINSON, ABEEZEE` (`android/app/src/main/java/com/reader/app/prefs/Prefs.kt:12`) and `android/app/src/main/res/font/` holds no Inter asset. Adding it needs the official OFL files plus normal/bold wiring for Compose and the native reader.
+- **§3B E-ink / NXTPAPER theme — NOT DONE.** No `eink`, `nxpaper`, or `monochrome` markers exist under `android/app/src/main/java`. This is the largest remaining item (app-wide display policy, reduced motion, per-theme rendering).
+- **§2E Find-in-article refinement — NOT DONE.** The sheet is still the older one: the navigation menu opens it at `android/app/src/main/java/com/reader/app/ui/screens/PreparedReaderScreen.kt:395` and the sheet title is set at line 765, with the previous field/list presentation rather than the compact shared search surface, explicit states, "3 of 12" navigation and snippet rows.
+- **§3D merged labels/headings (e.g. “workersAll”, “shareThe.”) — NOT DIAGNOSED.** The visible defect is confirmed but its origin is not established; the spec still requires comparing source HTML, stored Markdown and the rendered projection before any change, leaving existing stored text intact.
+
+Everything else in the spec that shipped before this checkpoint is either implemented or explicitly superseded in this file.
