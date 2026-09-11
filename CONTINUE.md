@@ -40,13 +40,24 @@ Installed candidate (in place, `com.reader.app`): source `18c9ac203c1a11e216417c
 
 Two native checks on the refreshed QA package (built from the same revision): end of article reaches `100% · End of article` with the Finish card and a byte-stable viewport; one press-and-hold plus one handle adjustment produces exactly one saved range (7 → 8) with the native Copy/Highlight/Share menu intact outside continuous highlighting.
 
+## Stage 3 — Inter reading font
+
+Commit **`a60c7cd`** bundles Inter Regular/Bold into `android/app/src/main/res/font/` with the SIL OFL text at `LICENSES/INTER-OFL.txt`. `ArticleFont.INTER` is added without renaming existing stored enum values; `ReaderFonts.Inter`, `fontFor`, the Appearance picker label and the native reader all resolve it, and the native reader selects `inter_bold` when bold is on instead of synthesising weight. `LICENSES/README.md` lists it.
+
+## Stage 4 — Find in article refined
+
+Commit **`728b863`** turns Find into the shared compact search surface with explicit states (empty / searching / no matches / results / failure), `N of M` match navigation with Previous/Next, full-width snippet rows with the matched phrase emphasised, and part information for multi-part articles. `data/ArticleNavigation.kt` gains the match model; `ui/ReaderSearchField.kt` is reused; `ArticleNavigationTest.kt` adds focused cases.
+
+## Stage 5 — Text boundary fix (§3D merged labels/headings)
+
+Commit **`0d3c085`** diagnoses and fixes the merged-label defect. Root cause: chart legends and `display:block` eyebrow spans are inline tags whose two text runs touch with no whitespace in the source HTML, and a CSS-blind HTML-to-Markdown converter fuses them ("workersAll", "shareThe"). The fix reads the real computed `display` from the live page (`collectVisualBlockClasses`), carries the visually-block class tokens onto the noise-stripped clone, and inserts a single joining space only where both sides touch word characters with no existing whitespace (`separateVisuallyBlockInline`). Genuine inline formatting, punctuation and fenced code are left untouched. Chrome suite green (124 passed, plus the 18 loopback-relay tests when run with loopback access); two new `tests/extraction.test.ts` cases cover the positive fix and a counterexample. Existing stored text is deliberately left intact.
+
+## Installed candidate — 2026-09-11b
+
+In-place `com.reader.app` install from **`0d3c0859a98548f2d6ad1b4274da4b117c0cef46`**: APK SHA-256 `64a0cf406b730fe858e1805d9233ee7b400f5d50b139a357719b4cf12e6fce16`, installed hash verified identical from the device `base.apk`, owner data preserved across 8 tables plus preferences (schema v13), and no FATAL EXCEPTION on launch. This is the first install containing Inter, the refined Find sheet and the Chrome boundary fix. Detail in `evidence/focused-20260910/installation-20260911b.json`.
+
 ## Remaining spec items — verified against the code (2026-09-11)
 
-Checked directly in the checkout at `18c9ac2`; none of these are implemented yet, so the seven-day trial build deliberately does not contain them:
+- **§3B E-ink / NXTPAPER theme — NOT DONE.** No `eink`, `nxpaper`, or `monochrome` markers exist under `android/app/src/main/java`. This is the largest remaining item: an app-wide display policy with a monochrome palette, reduced motion and per-theme rendering across the reader, dialogs, sheets, native spans, Review, Speed, search fields and system bars.
 
-- **§3C Inter font — NOT DONE.** `ArticleFont` is `NEWSREADER, CRIMSON_PRO, ASUL, ATKINSON, ABEEZEE` (`android/app/src/main/java/com/reader/app/prefs/Prefs.kt:12`) and `android/app/src/main/res/font/` holds no Inter asset. Adding it needs the official OFL files plus normal/bold wiring for Compose and the native reader.
-- **§3B E-ink / NXTPAPER theme — NOT DONE.** No `eink`, `nxpaper`, or `monochrome` markers exist under `android/app/src/main/java`. This is the largest remaining item (app-wide display policy, reduced motion, per-theme rendering).
-- **§2E Find-in-article refinement — NOT DONE.** The sheet is still the older one: the navigation menu opens it at `android/app/src/main/java/com/reader/app/ui/screens/PreparedReaderScreen.kt:395` and the sheet title is set at line 765, with the previous field/list presentation rather than the compact shared search surface, explicit states, "3 of 12" navigation and snippet rows.
-- **§3D merged labels/headings (e.g. “workersAll”, “shareThe.”) — NOT DIAGNOSED.** The visible defect is confirmed but its origin is not established; the spec still requires comparing source HTML, stored Markdown and the rendered projection before any change, leaving existing stored text intact.
-
-Everything else in the spec that shipped before this checkpoint is either implemented or explicitly superseded in this file.
+Everything else in the spec is implemented or explicitly superseded in this file. §3C (Inter), §2E (Find) and §3D (text boundaries) are now implemented as stages 3–5 above and shipped in the installed candidate.
