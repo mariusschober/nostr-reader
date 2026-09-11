@@ -731,18 +731,22 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       val left = (run.left + contentLeft - body.scrollX).coerceAtLeast(body.left.toFloat())
       val right = (run.right + contentLeft - body.scrollX).coerceAtMost((body.left + body.width).toFloat())
       if (right - left < 2f) continue
+      // Two full 1.5dp strokes can merge in the narrowest Comfort gaps on
+      // dense displays. A slightly finer double rule keeps a real paper-like
+      // separation while remaining above a physical pixel on e-ink.
+      val ruleStroke = if (run.edge == "double") maxOf(1f, stroke * 0.68f) else stroke
       val ys = nativeMonoUnderlineOffsets(
         layout = layout,
         line = run.line,
         edge = run.edge,
-        stroke = stroke,
+        stroke = ruleStroke,
         density = density,
         lastInset = body.paddingBottom.toFloat(),
         text = body.text,
         paint = body.paint,
       ) ?: continue
       val yOffset = body.top + body.paddingTop - body.scrollY
-      monoEdgePaint.strokeWidth = stroke
+      monoEdgePaint.strokeWidth = ruleStroke
       when (run.edge) {
         "solid" -> {
           monoEdgePaint.pathEffect = null

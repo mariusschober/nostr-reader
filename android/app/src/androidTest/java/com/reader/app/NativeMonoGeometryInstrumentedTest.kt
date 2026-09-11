@@ -95,10 +95,11 @@ class NativeMonoGeometryInstrumentedTest {
       // catches the old baseline + getLineDescent calculation, which included
       // the added spacing and returned no underline Y at all.
       val density = view.resources.displayMetrics.density
+      val doubleStroke = maxOf(1f, 1.5f * density * 0.68f)
       val underline = wrapped.asSequence()
         .mapNotNull { run ->
           nativeMonoUnderlineOffsets(
-            layout, run.line, run.edge, 1.5f * density, density, 8f, view.text, view.paint,
+            layout, run.line, run.edge, doubleStroke, density, 8f, view.text, view.paint,
           )
         }
         .firstOrNull()
