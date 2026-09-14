@@ -3,6 +3,7 @@ package com.reader.app.tts
 import android.content.ComponentName
 import android.content.Context
 import android.os.Bundle
+import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
@@ -21,7 +22,7 @@ import com.reader.app.cursor.SemanticCursor
  * not spin up the speech engine. Commands issued while binding are queued in
  * order, which keeps controls usable right after an Activity recreation.
  */
-@UnstableApi
+@OptIn(UnstableApi::class)
 class TtsPlaybackClient(context: Context) {
   private val appContext = context.applicationContext
   private var controller: MediaController? = null
