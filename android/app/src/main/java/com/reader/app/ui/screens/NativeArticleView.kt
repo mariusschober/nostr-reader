@@ -70,6 +70,14 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var restoring = false
   private var markRanges: List<NativeMark> = emptyList()
   var onSelection: (String, Long, IntRange) -> Unit = { _, _, _ -> }
+  /**
+   * Final-commit bridge for a completed pen gesture. The UI persists the
+   * acknowledged session's range and calls `ack(true)` on success; the native
+   * selection is cleared only for that session. On failure (`ack(false)` or no
+   * ack) the recoverable range stays on screen for a retry.
+   */
+  var onSettle: (session: String, range: IntRange, ack: (Boolean) -> Unit) -> Unit = { _, _, ack -> ack(true) }
+  private var settledSession: String? = null
   var onCursor: (SemanticCursor, Float) -> Unit = { _, _ -> }
   var onMark: (List<String>) -> Unit = {}
   var onLink: (String) -> Unit = {}
@@ -256,7 +264,13 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         }
       }
       recycleVelocity()
-    } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) { gestureActive = false; stopFling(); recycleVelocity(); onViewport(body.scrollY, body.height) }
+      // A completed continuous-highlighting gesture commits once, on release.
+      if (pen) settlePenGesture()
+    } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+      gestureActive = false; stopFling(); recycleVelocity(); onViewport(body.scrollY, body.height)
+      // Cancellation saves nothing from the cancelled gesture.
+      if (pen) { pendingSelection?.let { removeCallbacks(it) }; pendingSelection = null; settledSession = null }
+    }
     return handled
   }
 
@@ -419,7 +433,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
             hits.isNotEmpty() -> onMark(hits.map { it.id })
             !pen && link != null -> onLink(link)
             !pen && table >= 0 -> onTable(table)
-            !pen -> onTap()
+            // A stationary background tap toggles focus in either mode. A tap
+            // on a link or table while highlighting stays inert instead of
+            // toggling focus by accident.
+            link == null && table < 0 -> onTap()
           }
         }
       }
@@ -649,6 +666,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private fun selectionChanged(start: Int, end: Int) {
     if (start >= 0 && end > start) stopFling()
     pendingSelection?.let { removeCallbacks(it) }
+    pendingSelection = null
     // A collapsed selection (including the transient collapse while a handle is
     // grabbed) does not end the session. The next ActionMode creation decides
     // whether a valid range is a handle continuation or a new gesture.
@@ -662,9 +680,14 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // half-open selection. Replacing it (rather than unioning endpoints) lets a
     // handle shrink a quote as well as extend it.
     sessionRange = start until end
+    // Continuous highlighting commits its final half-open range once, on
+    // release (see settlePenGesture). Ordinary selections keep the debounced
+    // commit so the Android Highlight action still behaves as before. Neither
+    // path clears the selection while the finger is still adjusting.
+    if (pen) return
     val expectedStart = start; val expectedEnd = end
     pendingSelection = Runnable {
-      if ((pen || selectionCommitted) && body.selectionStart == expectedStart && body.selectionEnd == expectedEnd) emitSelection()
+      if (selectionCommitted && body.selectionStart == expectedStart && body.selectionEnd == expectedEnd) emitSelection()
     }.also { postDelayed(it, 100) }
   }
 
@@ -672,7 +695,36 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     stopFling()
     pendingSelection?.let { removeCallbacks(it) }
     pendingSelection = null
-    if (pen || selectionCommitted) emitSelection()
+    // A pen gesture commits on release; flushing here would save a partial range
+    // when the user cancels by leaving the article mid-gesture.
+    if (selectionCommitted) emitSelection()
+  }
+
+  /**
+   * Commit the final range of a completed continuous-highlighting gesture and
+   * settle the selection. Called from ACTION_UP; a scroll (no valid selection)
+   * is a no-op. Clearing is scoped to the acknowledged session, so a stale ack
+   * from an older gesture never disturbs a newer selection.
+   */
+  private fun settlePenGesture() {
+    if (!pen) return
+    val start = body.selectionStart
+    val end = body.selectionEnd
+    if (!validSelection(start, end)) return
+    val value = projection ?: return
+    val range = value.range(start, end) ?: return
+    val session = selectionSession ?: UUID.randomUUID().toString().also { selectionSession = it }
+    if (settledSession == session) return
+    settledSession = session
+    pendingSelection?.let { removeCallbacks(it) }
+    pendingSelection = null
+    onSettle(session, range) { ok ->
+      post {
+        if (settledSession != session) return@post
+        settledSession = null
+        if (ok && selectionSession == session) clearSelection()
+      }
+    }
   }
 
   private var lastSelection: Pair<String, IntRange>? = null

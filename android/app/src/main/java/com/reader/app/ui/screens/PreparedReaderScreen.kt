@@ -93,6 +93,115 @@ private fun ReadingActionButton(item: ReadingActionItem, colors: ReaderColors, m
 }
 
 /** Loads metadata independently from the library and parses only the visible bounded part. */
+/**
+ * The compact continuous-highlighting dock. One bottom-centred capsule with the
+ * current colour, an explicit focus control and Done highlighting. Long-pressing
+ * the colour control reveals a small transient palette above the dock; choosing
+ * a colour closes it. Touch targets are at least 48dp and the capsule is about
+ * 56dp tall, so it never reserves the old control stack's height.
+ */
+@Composable
+private fun PenDock(
+  colors: ReaderColors,
+  monochrome: Boolean,
+  dark: Boolean,
+  selectedColor: String,
+  paletteOpen: Boolean,
+  onTogglePalette: () -> Unit,
+  onSelectColor: (String) -> Unit,
+  immersed: Boolean,
+  onToggleFocus: () -> Unit,
+  onDone: () -> Unit,
+) {
+  val current = highlightPresentation(selectedColor, monochrome, dark)
+  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    if (paletteOpen) {
+      Surface(
+        color = colors.surface,
+        contentColor = colors.text,
+        shape = RoundedCornerShape(14.dp),
+        tonalElevation = 0.dp,
+        shadowElevation = 4.dp,
+        modifier = Modifier.padding(bottom = 8.dp),
+      ) {
+        Row(
+          Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+          horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+          HighlightColor.entries.forEach { color ->
+            val pres = highlightPresentation(color.name, monochrome, dark)
+            val selected = selectedColor == color.name
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+              IconToggleButton(
+                selected,
+                { onSelectColor(color.name) },
+                modifier = Modifier.semantics { contentDescription = "Highlight color ${color.label}" },
+              ) {
+                Box(
+                  Modifier.size(32.dp)
+                    .background(if (selected && monochrome) colors.text else if (monochrome) pres.fill else color.background(dark), CircleShape)
+                    .border(2.dp, colors.text, CircleShape),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Text(
+                    pres.shortId,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected && monochrome) colors.background else if (monochrome) colors.text else HighlightColor.text(dark),
+                  )
+                }
+              }
+              Text(pres.label, style = MaterialTheme.typography.labelSmall, color = colors.text, maxLines = 1)
+            }
+          }
+        }
+      }
+    }
+    Surface(
+      color = colors.surface,
+      contentColor = colors.text,
+      shape = RoundedCornerShape(28.dp),
+      border = androidx.compose.foundation.BorderStroke(1.dp, colors.divider),
+      tonalElevation = 0.dp,
+      shadowElevation = 0.dp,
+    ) {
+      Row(
+        Modifier.heightIn(min = 56.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        IconButton(
+          onClick = onTogglePalette,
+          modifier = Modifier.semantics { contentDescription = "Highlight color ${current.label}" },
+        ) {
+          Box(
+            Modifier.size(26.dp)
+              .background(if (monochrome) current.fill else HighlightColor.parse(selectedColor).background(dark), CircleShape)
+              .border(2.dp, colors.text, CircleShape),
+            contentAlignment = Alignment.Center,
+          ) {
+            Text(
+              current.shortId,
+              style = MaterialTheme.typography.labelLarge,
+              color = if (monochrome) colors.text else HighlightColor.text(dark),
+            )
+          }
+        }
+        IconButton(
+          onClick = onToggleFocus,
+          modifier = Modifier.semantics { contentDescription = if (immersed) "Exit focus" else "Enter focus" },
+        ) {
+          Icon(
+            if (immersed) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+            contentDescription = null,
+            tint = colors.text,
+          )
+        }
+        TextButton(onClick = onDone, modifier = Modifier.heightIn(min = 48.dp)) { Text("Done") }
+      }
+    }
+  }
+}
+
+/** Loads metadata independently from the library and parses only the visible bounded part. */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSettings,
@@ -195,6 +304,8 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var immersed by rememberSaveable(id) { mutableStateOf(false) }
   var selectedColor by rememberSaveable { mutableStateOf("YELLOW") }
   var menu by remember { mutableStateOf(false) }
+  // Transient highlighter palette above the pen dock; closes after a choice.
+  var paletteOpen by rememberSaveable(id) { mutableStateOf(false) }
   var showLabels by remember { mutableStateOf(false) }
   var appearance by remember { mutableStateOf(false) }
   var expandedTable by remember(id, part) { mutableStateOf<Int?>(null) }
@@ -284,6 +395,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     }
   }
   fun leave() {
+    if (paletteOpen) { paletteOpen = false; return }
     if (menu) { menu = false; return }
     if (navigationSheet != null) { navigationSheet = null; return }
     if (appearance) { appearance = false; return }
@@ -292,9 +404,11 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     if (activeQuote != null) { actions = emptyList(); activeQuote = null; return }
     view?.flushSelection()
     if (view?.clearSelection() == true) return
-    // Back dismisses a sheet/selection first, then exits fullscreen focus,
-    // and only then leaves the article.
+    // Back dismisses the palette/sheet first, then cancels an active selection
+    // gesture, then exits fullscreen focus, then exits highlighting, and only
+    // then leaves the article.
     if (immersed) { immersed = false; return }
+    if (pen) { paletteOpen = false; pen = false; return }
     transition(onBack)
   }
   BackHandler(enabled = !transitioning) { leave() }
@@ -395,7 +509,8 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   BoxWithConstraints(Modifier.fillMaxSize()) {
   val dockMaxHeight = maxHeight * 0.45f
   Scaffold(containerColor = colors.background, contentColor = colors.text, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-    if (!immersed || pen) Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Focus hides the top bar whether pen mode is on or off.
+    if (!immersed) Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
       IconButton(onClick = ::leave, enabled = !transitioning) { Icon(Icons.Default.ArrowBack, "Back") }
       Spacer(Modifier.weight(1f))
       IconButton(onClick = { appearance = true }, enabled = !transitioning) { Icon(Icons.Default.TextFields, "Appearance") }
@@ -425,7 +540,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       }
     }
   }, bottomBar = {
-    if (!immersed || pen) Column(Modifier.navigationBarsPadding()) {
+    // Focus hides the normal stack; with highlighting active it leaves only the
+    // compact dock, which never reserves the old control stack's height.
+    if (!immersed) Column(Modifier.navigationBarsPadding()) {
       if (inspectionOrigin != null) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = ::returnToReading, modifier = Modifier.weight(1f)) { Text("Return to reading position") }
         if (findResults.isNotEmpty()) {
@@ -462,41 +579,17 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         }
         player()
         if (pen) {
-          val penColors = HighlightColor.entries
-          val penRows: List<List<HighlightColor>> = if (LocalDensity.current.fontScale > 1.3f) penColors.chunked(2) else listOf(penColors)
-          Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-            penRows.forEach { row ->
-              Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                row.forEach { color ->
-                  val pres = highlightPresentation(color.name, monochrome, dark)
-                  val selected = selectedColor == color.name
-                  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    IconToggleButton(selected, { selectedColor = color.name }, modifier = Modifier.semantics { contentDescription = "Highlight color ${color.label}" }) {
-                      Box(
-                        Modifier.size(36.dp)
-                          .background(if (selected && monochrome) colors.text else if (monochrome) pres.fill else color.background(dark), CircleShape)
-                          .border(2.dp, colors.text, CircleShape),
-                        contentAlignment = Alignment.Center,
-                      ) {
-                        Text(
-                          pres.shortId,
-                          style = MaterialTheme.typography.labelLarge,
-                          color = if (selected && monochrome) colors.background else if (monochrome) colors.text else HighlightColor.text(dark),
-                        )
-                      }
-                    }
-                    Text(
-                      pres.label,
-                      style = MaterialTheme.typography.labelSmall,
-                      color = colors.text,
-                      maxLines = 1,
-                    )
-                    if (selected) Icon(Icons.Default.Check, null, tint = colors.text, modifier = Modifier.size(14.dp))
-                  }
-                }
-              }
-            }
-            TextButton(onClick = { view?.flushSelection(); pen = false }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Done") }
+          // One compact dock; the palette opens above it and closes on choice.
+          Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
+            PenDock(
+              colors = colors, monochrome = monochrome, dark = dark,
+              selectedColor = selectedColor, paletteOpen = paletteOpen,
+              onTogglePalette = { paletteOpen = !paletteOpen },
+              onSelectColor = { selectedColor = it; paletteOpen = false },
+              immersed = immersed,
+              onToggleFocus = { view?.retainPassageOnLayout(); immersed = !immersed },
+              onDone = { view?.flushSelection(); paletteOpen = false; pen = false },
+            )
           }
         } else {
           // Four equally weighted reading actions: Highlight · Contents ·
@@ -534,6 +627,23 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             readingActions.forEach { item -> ReadingActionButton(item, colors, Modifier.weight(1f)) }
           }
         }
+      }
+    } else if (pen) {
+      // Fullscreen focus + highlighting: only the compact dock, bottom-centred,
+      // so the reading surface keeps its edges and the last line stays clear.
+      Box(
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 12.dp),
+        contentAlignment = Alignment.Center,
+      ) {
+        PenDock(
+          colors = colors, monochrome = monochrome, dark = dark,
+          selectedColor = selectedColor, paletteOpen = paletteOpen,
+          onTogglePalette = { paletteOpen = !paletteOpen },
+          onSelectColor = { selectedColor = it; paletteOpen = false },
+          immersed = immersed,
+          onToggleFocus = { view?.retainPassageOnLayout(); immersed = !immersed },
+          onDone = { view?.flushSelection(); paletteOpen = false; pen = false },
+        )
       }
     }
   }) { padding ->
@@ -744,6 +854,27 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
               } catch (error: Exception) { scope.launch { snackbar.showSnackbar(error.message ?: "Couldn’t prepare highlight") } }
             }
           }
+          // Final-commit bridge: a completed pen gesture persists its final
+          // half-open range once and acknowledges, which is what settles the
+          // native selection. A failure keeps the range on screen for a retry.
+          native.onSettle = { session, range, ack ->
+            val source = doc
+            if (source == null) ack(false) else {
+              val frozenColor = selectedColor
+              try {
+                val draft = HighlightAnchors.create(session, source, ready.projection, range.first, range.last + 1,
+                  System.currentTimeMillis()).copy(color = frozenColor)
+                app.reading.submitSelection(draft) { change ->
+                  val before = sessions[session]?.second?.before ?: change.before
+                  val aggregate = HighlightMutation(before, change.after)
+                  sessions[session] = System.currentTimeMillis() to aggregate
+                  while (sessions.size > 16) sessions.remove(sessions.keys.first())
+                  undo = aggregate.takeIf { it.before != null || it.after != null }
+                  ack(true)
+                }
+              } catch (_: Exception) { ack(false) }
+            }
+          }
         })
           } // inner centering Box
         } // BoxWithConstraints
@@ -804,7 +935,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   if (highlightHelp) ModalBottomSheet(onDismissRequest = { highlightHelp = false }, containerColor = colors.background) {
     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text("Keep a passage", style = MaterialTheme.typography.titleLarge)
-      Text("Press and hold a word, then adjust the handles. Your selection is highlighted and saved automatically. Choose a color below; tap Done to leave highlighting.")
+      Text("Press and hold a word, drag to extend over the text, then release. Your selection is highlighted and saved automatically. Choose a color in the dock; tap Done to leave highlighting.")
       Text("Copy, Share and your device’s text actions stay available outside continuous highlighting.", color = colors.secondary)
       Button(onClick = { highlightHelp = false; pen = true }) { Text("Start highlighting") }
     }

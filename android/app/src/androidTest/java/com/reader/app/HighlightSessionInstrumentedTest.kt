@@ -62,7 +62,7 @@ class HighlightSessionInstrumentedTest {
     val projection = RenderedText.project(ArticleParser.parseWithSources(text))
     val doc = DocumentEntity(docId, "Session gate", "test", null, null, null, null, run, "en", text,
       text.split(' ').size, 1, "reading", "inbox", null, 0, 0f, run, run, run)
-    val emissions = ConcurrentLinkedQueue<Triple<String, Long, IntRange>>()
+    val settled = ConcurrentLinkedQueue<Pair<String, IntRange>>()
     val native = AtomicReference<NativeArticleView>()
     val body = AtomicReference<TextView>()
     ActivityScenario.launch(MainActivity::class.java).use { scenario ->
@@ -72,7 +72,7 @@ class HighlightSessionInstrumentedTest {
             display(docId, projection, com.reader.app.ui.screens.nativeArticleText(projection, Color.BLUE),
               com.reader.app.prefs.ReaderSettings(), Color.rgb(16, 15, 15), Color.rgb(255, 252, 240), 24,
               SemanticCursor.start(docId))
-            onSelection = { session, sequence, range -> emissions.add(Triple(session, sequence, range)) }
+            onSettle = { session, range, ack -> settled.add(session to range); ack(true) }
             setPenMode(true)
             native.set(this)
             body.set((0 until childCount).map { getChildAt(it) }.filterIsInstance<TextView>().first { it.isTextSelectable })
@@ -107,52 +107,37 @@ class HighlightSessionInstrumentedTest {
         runner.runOnMainSync { start = view.selectionStart; end = view.selectionEnd }
         return start until end
       }
-      // 1) Long-press a word in the first paragraph; pen mode saves it at once.
-      val word = text.indexOf("deliberate") + 4
-      val press = point(word)
-      var down = SystemClock.uptimeMillis()
-      event(MotionEvent.ACTION_DOWN, press, down); SystemClock.sleep(700); event(MotionEvent.ACTION_UP, press, down)
+      // 1) Long-press a word and keep the finger down: the gesture is owned,
+      // and holding alone must not commit anything yet.
+      val word = text.indexOf("deliberate")
+      val press = point(word + 4)
+      val down = SystemClock.uptimeMillis()
+      event(MotionEvent.ACTION_DOWN, press, down)
+      SystemClock.sleep(700)
       waitFor("word selection") { selection().last > selection().first }
-      waitFor("first saved emission") { emissions.isNotEmpty() }
-      // 2) Extend the live selection well beyond the first paragraph in
-      // small increments, the way a handle drag moves through intermediate
-      // ranges (a single teleport leaves stale native handles up and the
-      // platform snaps the selection back). Each step travels the real
-      // onSelectionChanged -> session-identity path. The session id must
-      // survive every step so the same row is updated, not duplicated.
+      assertTrue("A held gesture must not settle before release", settled.isEmpty())
+      // 2) Extend the live selection while the finger is still down, the way a
+      // hold-drag travels over wrapped lines, then release once to commit the
+      // final half-open range.
       val before = selection()
-      val targetEnd = (before.last + 400).coerceAtMost(view.length() - 1)
-      var cursor = before.last
-      while (cursor < targetEnd) {
-        cursor = (cursor + 80).coerceAtMost(targetEnd)
-        val end = cursor
-        runner.runOnMainSync { Selection.setSelection(view.text as Spannable, before.first, end + 1) }
-        SystemClock.sleep(200)
-      }
-      waitFor("extended emission") { emissions.size >= 2 }
-      SystemClock.sleep(600)
-      val extendedEnd = targetEnd
-      // 3) Persist every emission through the real repository, exactly as the
-      // reader does, and assert the row identity and count.
-      val savedIds = mutableListOf<String>()
-      for ((session, _, range) in emissions) {
-        val draft = HighlightAnchors.create(session, doc, projection, range.first, range.last + 1, System.currentTimeMillis())
-        runBlocking { repo.saveSelection(draft) }
-        savedIds += session
-      }
+      val targetEnd = (before.first + 400).coerceAtMost(view.length() - 1)
+      runner.runOnMainSync { Selection.setSelection(view.text as Spannable, before.first, targetEnd + 1) }
+      SystemClock.sleep(150)
+      event(MotionEvent.ACTION_UP, point(targetEnd), down)
+      waitFor("settled emission") { settled.isNotEmpty() }
+      SystemClock.sleep(400)
+      // 3) One release commits one range; write it through the real repository
+      // and assert exactly one row with the final range and the settled id.
+      assertEquals("One gesture must produce exactly one settled emission", 1, settled.size)
+      val (session, range) = settled.single()
+      runBlocking { repo.saveSelection(HighlightAnchors.create(session, doc, projection, range.first, range.last + 1, System.currentTimeMillis())) }
       val rows = runBlocking { db.highlights().observeForDocument(docId).first() }
-      val emList = emissions.toList()
-      val diag = "emissions=" + emList.joinToString { (s, q, r) -> s.take(8) + ":" + q.toString() + ":" + r.first.toString() + ".." + r.last.toString() } +
-        " before=" + before.first.toString() + ".." + before.last.toString() + " extendedEnd=" + extendedEnd.toString()
-      val firstEnd = emissions.first().third.last
-      val last = emissions.last().third
-      assertEquals("One live selection must use one session id", 1, savedIds.distinct().size)
-      assertEquals("One session must persist exactly one highlight row", 1, rows.size)
-      assertEquals("The persisted row carries the session id", savedIds.last(), rows.single().id)
+      assertEquals("One gesture must persist exactly one highlight row", 1, rows.size)
+      assertEquals("The persisted row carries the settled session id", session, rows.single().id)
       assertEquals(docId, rows.single().documentId)
-      assertTrue("The handle drag must extend the saved range", last.last > firstEnd)
+      assertTrue("The hold-drag must extend past the initial word", range.last - range.first > 50)
       assertEquals("The saved quote equals the final selected range",
-        projection.text.substring(last.first, last.last + 1), rows.single().quote)
+        projection.text.substring(range.first, range.last + 1), rows.single().quote)
     }
   }
 

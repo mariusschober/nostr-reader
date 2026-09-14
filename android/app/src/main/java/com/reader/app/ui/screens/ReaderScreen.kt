@@ -215,11 +215,14 @@ private fun inlineLen(i: com.reader.app.core.Inline): Int = when (i) {
 @Composable
 fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit, onClose: () -> Unit) {
   val c = readerColors(settings.background)
-  var expanded by remember { mutableStateOf(false) }
+  val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
   ModalBottomSheet(onDismissRequest = onClose, containerColor = c.background,
-    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-    Column(Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState())
-      .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)) {
+    // One continuous list, initially partially expanded and fully scrollable so
+    // every control is reachable by pulling up or scrolling — no More options
+    // button and no fixed 500dp ceiling.
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+      .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Appearance", style = MaterialTheme.typography.titleLarge, color = c.text, modifier = Modifier.weight(1f))
         TextButton(onClick = onClose) { Text("Done") }
@@ -236,10 +239,34 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
             { Text(spacing.name.lowercase().replaceFirstChar { it.uppercase() }) })
         }
       }
+      Text("App theme", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(
+          com.reader.app.prefs.ThemeMode.SYSTEM,
+          com.reader.app.prefs.ThemeMode.LIGHT,
+          com.reader.app.prefs.ThemeMode.DARK,
+        ).forEach { mode ->
+          FilterChip(settings.themeMode == mode, { onChange(settings.copy(themeMode = mode)) },
+            { Text(when (mode) {
+              com.reader.app.prefs.ThemeMode.SYSTEM -> "Follow system"
+              else -> mode.name.lowercase().replaceFirstChar { it.uppercase() }
+            }) })
+        }
+      }
+      Text("Display", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.reader.app.prefs.DisplayMode.entries.forEach { mode ->
+          FilterChip(settings.display == mode, { onChange(settings.copy(display = mode)) },
+            { Text(when (mode) {
+              com.reader.app.prefs.DisplayMode.STANDARD -> "Standard"
+              com.reader.app.prefs.DisplayMode.MONOCHROME -> "E-ink & NXTPAPER"
+            }) })
+        }
+      }
       Text("Background", style = MaterialTheme.typography.labelMedium, color = c.secondary)
-      if (com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome) {
+      if (mono) {
         Text(
-          "The app-wide E-ink theme controls the background. Change it in Settings under App theme.",
+          "The monochrome display controls the background. Your saved reading background returns when Display is Standard.",
           color = c.secondary,
         )
       } else {
@@ -248,25 +275,22 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
             { Text(when(b) { ArticleBackground.FOLLOW_APP -> "Follow app theme"; else -> b.name.lowercase().replaceFirstChar { it.uppercase() } }) }) }
         }
       }
-      TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Fewer options ▴" else "Font, margins & bold ▾") }
-      if (expanded) {
-        Text("Font", style = MaterialTheme.typography.labelMedium, color = c.secondary)
-        ArticleFont.entries.forEach { font ->
-          Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(settings.font == font, role = Role.RadioButton,
-            onClick = { onChange(settings.copy(font = font)) }), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(settings.font == font, null)
-            Text(when(font) { ArticleFont.NEWSREADER -> "Newsreader"; ArticleFont.CRIMSON_PRO -> "Crimson Pro"; ArticleFont.ASUL -> "Asul"; ArticleFont.ATKINSON -> "Atkinson Hyperlegible"; ArticleFont.ABEEZEE -> "ABeeZee"; ArticleFont.INTER -> "Inter" }, fontFamily = fontFor(font), color = c.text)
-          }
+      Text("Font", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+      ArticleFont.entries.forEach { font ->
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(settings.font == font, role = Role.RadioButton,
+          onClick = { onChange(settings.copy(font = font)) }), verticalAlignment = Alignment.CenterVertically) {
+          RadioButton(settings.font == font, null)
+          Text(when(font) { ArticleFont.NEWSREADER -> "Newsreader"; ArticleFont.CRIMSON_PRO -> "Crimson Pro"; ArticleFont.ASUL -> "Asul"; ArticleFont.ATKINSON -> "Atkinson Hyperlegible"; ArticleFont.ABEEZEE -> "ABeeZee"; ArticleFont.INTER -> "Inter" }, fontFamily = fontFor(font), color = c.text)
         }
-        Text("Margins", style = MaterialTheme.typography.labelMedium, color = c.secondary)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          ArticleMargin.entries.forEach { margin -> FilterChip(settings.margin == margin, { onChange(settings.copy(margin = margin)) },
-            { Text(margin.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-          Text("Bold text", modifier = Modifier.weight(1f), color = c.text)
-          Switch(settings.bold, { onChange(settings.copy(bold = it)) }, modifier = Modifier.semantics { contentDescription = "Bold text" })
-        }
+      }
+      Text("Margins", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ArticleMargin.entries.forEach { margin -> FilterChip(settings.margin == margin, { onChange(settings.copy(margin = margin)) },
+          { Text(margin.name.lowercase().replaceFirstChar { it.uppercase() }) }) }
+      }
+      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Bold text", modifier = Modifier.weight(1f), color = c.text)
+        Switch(settings.bold, { onChange(settings.copy(bold = it)) }, modifier = Modifier.semantics { contentDescription = "Bold text" })
       }
     }
   }
