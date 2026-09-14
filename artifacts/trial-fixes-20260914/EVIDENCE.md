@@ -82,7 +82,7 @@ Run on the isolated `com.reader.app.qa` package installed on the TCL, with
 | `tcl-qa-3-focus-monochrome-dark.png` | Fullscreen focus in monochrome dark: text runs to the top edge with no top bar, footer or action row, and **no light outer border**. This settles the owner-reported dark-mode edge symptom and is the view the S23 could not measure. |
 | `tcl-qa-4-pen-dock-monochrome-dark.png` | Highlighting dock: a compact bottom capsule with the current colour, the focus toggle and Done. |
 | `tcl-qa-5-highlight-settled-monochrome-dark.png` | A single hold-drag-release saved exactly one highlight, drawn with a dark fill and a white patterned edge, with a quiet "Undo highlight" offered. |
-| `tcl-qa-6-monochrome-light-settings.png`, `tcl-qa-7-monochrome-light-library.png` | Monochrome light on the NXTPAPER panel: white ground, black text, dark-gray secondary, inverse-selected controls and a white status bar with dark icons. |
+| `tcl-qa-6-monochrome-light-settings.png`, `tcl-qa-7-monochrome-light-library.png`, `tcl-qa-9-focus-monochrome-light.png` | Monochrome light on the NXTPAPER panel: white ground, black text, dark-gray secondary, inverse-selected controls and a white status bar with dark icons. `tcl-qa-9` is a **focused** light view: no top bar, footer or action row and no dark strip, with both stored highlights drawn as a gray fill and dark edge. |
 | `tcl-qa-8-pen-control-second-highlight.png` | The control gesture from the cancel test below produced a second highlight. |
 
 ## Pen-cancel repair - PASS (TCL QA package, source `0ca22ac`)

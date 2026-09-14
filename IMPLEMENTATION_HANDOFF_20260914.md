@@ -100,8 +100,9 @@ selected states and black system regions; the article renders black ground,
 white text, gray secondary; the pen dock is the compact capsule with a dark
 fill and white patterned highlight edge; and **fullscreen focus in monochrome
 dark has no light outer border**, which is the owner-reported symptom and the
-view the S23 could not measure. Monochrome light also captured (white ground,
-black text, inverse-selected controls, white status bar). Screenshots are the
+view the S23 could not measure. Monochrome light was captured too, including a
+**focused** light view: white ground, black text, inverse-selected controls and
+no dark strip. Screenshots are the
 `tcl-qa-*.png` files in this directory.
 
 **PASS (pen-cancel repair, TCL QA package).** With a baseline of 1 highlight,
