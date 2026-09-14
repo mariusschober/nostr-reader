@@ -84,3 +84,32 @@ NXTPAPER/e-ink appearance.
 - `ReaderFlowInstrumentedTest` remains opt-in and its residual failure is the
   Android 16 / One UI 8 share-sheet layout assumption, not a product defect; it
   is **NOT MEASURED** as a product check on this device.
+
+## S23 walkthrough — pen, appearance and ordinary selection
+
+Added after the freeze commit, from a later run on the same frozen build
+(`d58067f`, QA package `com.reader.app.qa`) on S23 Ultra `R3CW404GVBL`
+(Android 16 / SDK 36). The QA database was read through `run-as` together with
+its WAL before and after each check, so row counts and committed ranges are
+measured, not inferred. The QA preferences were left at their prior values
+(App theme Light, Display Standard, Text size 19, Spacing Comfort, Margins
+Default, Font Newsreader, Bold text off).
+
+| Brief row | Result | Evidence |
+|---|---|---|
+| Pen: hold/drag/release settles automatically, no native menu, exactly one row | **PASS** | Long-press + drag across a wrapped line persisted exactly one new row: total `highlights` 9 → 10, document `f051e679…` 1 → 2, quote ". A saved quote remains a single record while its handles move", block `b2` offsets 13 → 75, colour `YELLOW`. No native Copy/Share menu appeared in pen mode; a quiet "Undo highlight" was offered. `s23-qa-6-pen-dock.png`, `s23-qa-7-pen-settled-highlight.png` |
+| Pen: Undo reverses the gesture | **PASS** | "Undo highlight" returned the total to 9 and document `f051e679…` to 1, leaving the pre-existing "deliberate" highlight intact. |
+| Pen: short drag still scrolls | **PASS** | A 300 ms drag scrolled the article (footer 2% → 5%) and added no row (total stayed 9). |
+| Pen: cancellation saves nothing | **PASS** | `ACTION_CANCEL` after long-press and drag left the total at 9. |
+| Pen: cancellation visual | minor deviation | The native selection highlight is not cleared by `ACTION_CANCEL` and stayed painted after leaving pen mode (`s23-qa-8-pen-off-residual-selection.png`); it cleared as soon as the next selection replaced it. Cosmetic only, no data effect. |
+| Ordinary mode: native handles and actions | **PASS** | Outside pen mode a long-press produced native handles and the system menu "Highlight · Kopieren · Übersetzen · ⋮" (device locale German). `s23-qa-9-ordinary-selection-actions.png` |
+| Appearance sheet: partially open, one hierarchy, no expand button | **PASS** | It opens partially expanded with a pinned Appearance/Done header and a usable passage visible; pulling up reveals Text size, Spacing, App theme, Display, Background (Standard only), Font, Margins and Bold text with no "More options" control. `s23-qa-10-appearance-partial.png`, `s23-qa-11-appearance-expanded-bottom.png` |
+| Appearance sheet: pinned header | minor deviation | The Appearance/Done header is pinned while the sheet is partially open but scrolls away once it is fully expanded; the drag handle remains for dismissal. |
+| Appearance sheet: change applies immediately, passage preserved | **PASS** | "+" changed "Text size · 19" → "Text size · 20" with no confirmation step and "−" restored 19; closing the sheet left the footer at 5% (same passage). |
+| Back cancels an active selection gesture | **FAIL (deviation, not repaired)** | With the finger still down, Back cleared the native selection but the release still committed a highlight: total 9 → 10, quote "remains exact." (document `f051e679…`, offsets 93–107). Reproduced with a single-process 3 s drag and Back at 1.6 s, and contrasted with a run that held the finger down without releasing (total stayed 9), which shows the release is the commit point. Cause: `PreparedReaderScreen.leave()` calls `NativeArticleView.clearSelection()`, which clears the native selection but not the pen gesture session; later MOVE events re-establish the native selection, so `settlePenGesture()` commits on release. `setPenMode(false)` and the `ACTION_CANCEL` branch both reset that session (`selectionSession`, `sessionRange`, `settledSession`); `clearSelection()` does not. **Not repaired in this pass** — changing the frozen source would invalidate the archived APK hashes and the S23 install/owner-integrity evidence, so it needs a deliberate re-freeze. |
+
+**NOT MEASURED on the S23:** entering/leaving fullscreen focus and a *focused*
+monochrome-dark capture. The archived monochrome set (light, dark reader, dark
+article highlight) was captured earlier in the pass and re-checked here, but it
+contains no focused view, so the owner-reported light outer border in dark mode
+is still not device-verified. TCL `ZXKRS4VKGQ8PWGEQ` remains BLOCKED.

@@ -81,10 +81,52 @@ highlight (dark fill, white patterned edge). QA preferences were restored
 byte-identically. Screenshots and the artifact hashes are in
 `artifacts/trial-fixes-20260914/` (see `EVIDENCE.md`).
 
+**PASS (S23 walkthrough, later run on the same frozen build).** The brief's
+device walkthrough was then carried out on the S23 QA package with the QA
+database read before/after each step:
+
+- Continuous highlighting: hold/drag/release across a wrapped line persisted
+  exactly one row (total 9 → 10, document `f051e679…` 1 → 2, block `b2`
+  offsets 13 → 75, `YELLOW`) with no native menu in pen mode; **Undo** returned
+  it to 9/1; a short drag scrolled without saving; `ACTION_CANCEL` saved
+  nothing. Ordinary (non-pen) long-press still produced native handles and
+  "Highlight · Kopieren · Übersetzen · ⋮".
+- Article highlights and article-scoped Review, label creation/colour/
+  assignment and the compact `#label` library badge were verified on the QA
+  content; labels persist and the badge renders under the row metadata.
+- Background listening: a real media3 session for `com.reader.app.qa`
+  (`state=PLAYING`, custom actions "Previous sentence"/"Next sentence"),
+  `TtsPlaybackService` foreground with the media-playback type, the session
+  still PLAYING after Home with the position object refreshing, the
+  now-playing row above the bottom navigation, and Stop winding the session
+  down.
+- Appearance sheet: partially open by default with the briefed control order,
+  pull-up expansion with every control reachable and no "More options" button,
+  immediate apply (Text size 19 → 20 → 19) and the reading passage preserved
+  (footer stayed at 5%) after close.
+
+**Two deviations found and deliberately not repaired in this pass:**
+
+1. **Back during a live pen gesture does not cancel it.** With the finger still
+   down, Back cleared the native selection, but the release still committed a
+   highlight (total 9 → 10). `PreparedReaderScreen.leave()` →
+   `NativeArticleView.clearSelection()` clears the native selection without
+   resetting the pen gesture session, and later MOVEs re-establish the native
+   selection that `settlePenGesture()` reads on release. `setPenMode(false)`
+   and the `ACTION_CANCEL` branch both reset that session; `clearSelection()`
+   does not. Repairing it changes the frozen source, which would invalidate the
+   archived hashes and the S23 install/owner-integrity evidence, so it needs a
+   deliberate re-freeze.
+2. **`ACTION_CANCEL` leaves the native selection painted** (cosmetic), and the
+   Appearance/Done header is pinned only while the sheet is partially open — it
+   scrolls away at full expansion, leaving the drag handle for dismissal.
+
+**NOT MEASURED:** entering/leaving fullscreen focus and a *focused*
+monochrome-dark capture on the S23, so the owner-reported light outer border in
+dark mode is still not device-verified.
+
 **BLOCKED:** the TCL `ZXKRS4VKGQ8PWGEQ` is not connected, so the TCL
-installation hash and the NXTPAPER physical-appearance checks were not run, and
-the brief's QA walkthrough (pen gesture, article-scoped Review, labels,
-background-audio continuation) is deferred to that device.
+installation hash and the NXTPAPER physical-appearance checks were not run.
 
 **NOT MEASURED:** `ReaderFlowInstrumentedTest`'s residual failure is the
 Android 16 / One UI 8 share-sheet layout assumption, not a product defect; it is
@@ -103,9 +145,13 @@ Git. Signing certificate (both): `3af50cab6e0515f478413e79786958671913b2cae67037
 
 ## Remaining work / next input
 
-1. When the TCL is connected, install `reader-debug-d58067f.apk` in place, run
-   the brief's QA walkthrough on `com.reader.app.qa`, verify the pulled-back TCL
-   hash and the NXTPAPER appearance, and confirm owner data before/after.
-2. Optional ideas noticed but not implemented: none required by the brief.
+1. When the TCL is connected, install `reader-debug-d58067f.apk` in place,
+   verify the pulled-back TCL hash and owner data before/after, and check the
+   NXTPAPER physical appearance plus a focused monochrome-dark view (the only
+   walkthrough item the S23 could not settle).
+2. Decide whether the Back-cancels-gesture deviation above is worth a re-freeze.
+   If it is, the one-place fix is to reset the pen gesture session in
+   `NativeArticleView.clearSelection()` the way `setPenMode(false)` does, then
+   rebuild, re-run the freeze checks, reinstall and re-archive.
 
 No push, merge, release or production-data change occurred.
