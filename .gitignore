@@ -39,6 +39,9 @@ android/local.properties
 # Focused repair-cycle APK archives; hashes and evidence are tracked separately.
 /artifacts/repairs-20260911/*.apk
 
+# Trial-fix-cycle APK archives; hashes and evidence are tracked separately.
+/artifacts/trial-fixes-20260914/*.apk
+
 # Live-web eval reports are regenerated on demand (see docs/eval/); only the
 # URL list and the harness are tracked.
 docs/eval/report-*.tsv

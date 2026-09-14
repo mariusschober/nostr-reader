@@ -1,0 +1,39 @@
+{
+  "package": "com.reader.app",
+  "tables": {
+    "documents": {
+      "rows": 1,
+      "sha256": "47121019f945c91a9cceea66bbf97b86f4b210b88d1dd3d7d5273ebe0b4afbe2"
+    },
+    "document_content": {
+      "rows": 1,
+      "sha256": "e8deceb3cdc058ce009f23d529b35340a015fead61246bab68b253e88ad87c3b"
+    },
+    "highlights": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "labels": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "document_labels": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "channels": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "review_state": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "reading_days": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "schema": 13,
+  "preferencesSha256": "6fe2c4a7ebec49bd84e29d7a270dfe2ee91aaad01aea0ce5a012d1e94c666588"
+}
