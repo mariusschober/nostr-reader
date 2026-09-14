@@ -42,9 +42,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.Lifecycle
 import com.reader.app.sync.SyncWorker
 import com.reader.app.sync.TransferManager
-import com.reader.app.tts.AndroidTtsEngine
-import com.reader.app.tts.Narration
-import com.reader.app.tts.TtsController
+import com.reader.app.tts.TtsPlaybackBus
+import com.reader.app.tts.TtsPlaybackClient
 import com.reader.app.ui.Route
 import com.reader.app.ui.RouteStack
 import com.reader.app.ui.Triage
@@ -76,8 +75,7 @@ class MainActivity : ComponentActivity() {
   private lateinit var db: ReaderDb
   private lateinit var prefs: Prefs
   private lateinit var keys: KeystoreWrap
-  private var ttsEngine: AndroidTtsEngine? = null
-  private var ttsController: TtsController? = null
+  private var ttsClient: TtsPlaybackClient? = null
   private var refreshTick = androidx.compose.runtime.mutableStateOf(0)
   private val reviewMutex = kotlinx.coroutines.sync.Mutex()
   private val exportMutex = kotlinx.coroutines.sync.Mutex()
@@ -91,6 +89,7 @@ class MainActivity : ComponentActivity() {
     db = ReaderDb.get(this)
     prefs = Prefs(this)
     keys = KeystoreWrap(this)
+    ttsClient = TtsPlaybackClient(this)
     SyncWorker.schedule(this)
     lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
       repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -152,11 +151,12 @@ class MainActivity : ComponentActivity() {
       var pairingError by remember { mutableStateOf<String?>(null) }
       var pairingStatus by remember { mutableStateOf<String?>(null) }
       var pairingChannelId by remember { mutableStateOf<String?>(null) }
-      var ttsState by remember { mutableStateOf<TtsController.State?>(null) }
+      // Playback truth comes from the service through one process-wide bus: the
+      // Activity only observes it and sends commands.
+      val ttsPlayback by TtsPlaybackBus.state.collectAsState()
       var readerMove by remember { mutableStateOf<MoveNotice?>(null) }
       val articleMoves = remember { ArticleMoves(db) }
       var readerMoving by remember { mutableStateOf(false) }
-      var ttsDocId by remember { mutableStateOf<String?>(null) }
       // Library search: text + scope survive rotation; results re-query.
       // Blank query always means "no search" (never MATCH '').
       var searchActive by rememberSaveable { mutableStateOf(false) }
@@ -327,30 +327,10 @@ class MainActivity : ComponentActivity() {
         }
       }
 
-      fun openTts(docId: String, projection: com.reader.app.core.RenderedProjection, from: SemanticCursor) {
-        ttsController?.pause()
-        lifecycleScope.launch {
-          val audioRepo = (application as com.reader.app.ReaderApp).articles
-          val audioIndex = audioRepo.index(docId)
-          val audioSection = audioRepo.section(docId, audioIndex.sectionFor(from.blockId))
-          val units = withContext(Dispatchers.Default) { Narration.sentences(projection) }
-          val eng = ttsEngine ?: AndroidTtsEngine(this@MainActivity).also {
-            ttsEngine = it
-            // Refresh the network-required banner if TTS init completes after load.
-            it.onReady = { ttsController?.refreshVoice() }
-          }
-          val ctl = ttsController ?: TtsController(eng).also { ttsController = it }
-          eng.onFocusLost = { ctl.pause() }
-          ctl.onPosition = { blockId, offset ->
-            val cursor = SemanticCursor(docId, blockId, offset)
-            (application as com.reader.app.ReaderApp).progress.offer(cursor,
-              audioSection.fraction(projection.offset(blockId, offset)))
-          }
-          ctl.onState = { ttsState = it }
-          ctl.load(units, from.blockId, settings.ttsSpeed, from.charOffset)
-          ttsDocId = docId
-          ctl.play()
-        }
+      // Listening is owned by TtsPlaybackService; the Activity sends only the
+      // document id, the semantic cursor and the speed.
+      fun openTts(docId: String, from: SemanticCursor) {
+        ttsClient?.start(docId, from, settings.ttsSpeed)
       }
 
       fun moveReader(id: String, target: String) {
@@ -363,7 +343,7 @@ class MainActivity : ComponentActivity() {
             if (previous == target) return@launch
             val changes = articleMoves.move(setOf(id), target)
             if (changes.isNotEmpty()) readerMove = MoveNotice(changes)
-            ttsController?.pause(); ttsState = null; ttsDocId = null
+            // Archiving or relabelling the narrated article keeps it playing.
             refresh(); stack.pop(); tick++
           } catch (_: Exception) {
             feedback("Couldn’t move that just now. Nothing was moved — try again.")
@@ -377,7 +357,7 @@ class MainActivity : ComponentActivity() {
         deleting.add(id)
         lifecycleScope.launch {
           try {
-            if (ttsDocId == id) { ttsController?.pause(); ttsState = null; ttsDocId = null }
+            if (ttsPlayback.documentId == id) ttsClient?.stop()
             (application as com.reader.app.ReaderApp).deleteArticle(id)
             if ((stack.current() as? Route.Reader)?.id == id) { stack.pop(); tick++ }
           } catch (_: Exception) { feedback("Couldn’t delete article. Try again.") }
@@ -410,6 +390,12 @@ class MainActivity : ComponentActivity() {
       val rootVisible = route == Route.Inbox || route == Route.Archive || route == Route.Settings
       val destinationState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
       Box(Modifier.fillMaxSize()) {
+      // Narration continues away from its article; the compact row below is the
+      // control surface there. Inside the narrated article the reader's own
+      // player is used instead, so the two never appear together.
+      val narratedId = ttsPlayback.documentId
+      val showNowPlaying = ttsPlayback.active &&
+        !((route is Route.Reader && route.id == narratedId) || (route is Route.Rsvp && route.id == narratedId))
       Column(Modifier.fillMaxSize()) {
       Box(Modifier.weight(1f)) {
       destinationState.SaveableStateProvider(route.toString()) {
@@ -689,12 +675,13 @@ class MainActivity : ComponentActivity() {
           onToggleLabel = { label -> toggleLabel(setOf(r.id), label) },
           onSettingsChange = { lifecycleScope.launch { prefs.save(it) } },
           onBack = {
-            ttsController?.pause(); ttsState = null; ttsDocId = null
+            // Leaving the article never stops narration; the now-playing row
+            // above the bottom navigation takes over as the control surface.
             stack.pop(); tick++
           },
           onReadAnother = { stack.pop(); tick++ },
-          onListen = { projection, cursor -> openTts(r.id, projection, cursor) },
-          onSpeedRead = { cursor -> ttsController?.pause(); go(Route.Rsvp(r.id, cursor)) },
+          onListen = { _, cursor -> openTts(r.id, cursor) },
+          onSpeedRead = { cursor -> ttsClient?.pause(); go(Route.Rsvp(r.id, cursor)) },
           onArticleAction = { action ->
             if (action == ArticleAction.Delete) deleteArticle(r.id) else action.target?.let { moveReader(r.id, it) }
           },
@@ -702,21 +689,21 @@ class MainActivity : ComponentActivity() {
             if (!com.reader.app.data.HighlightRepository(db).undo(change)) notices.show("Later highlight changes were kept.")
           } },
           onOpenArticleHighlights = { go(Route.ArticleHighlights(r.id)) },
-          onPauseAudio = { ttsController?.pause() },
-          onResumeAudio = { ttsController?.play() },
-          speechPlaying = ttsDocId == r.id && ttsState?.playing == true,
-          playerVisible = ttsDocId == r.id && ttsState != null,
+          onPauseAudio = { ttsClient?.pause() },
+          onResumeAudio = { ttsClient?.play() },
+          speechPlaying = ttsPlayback.documentId == r.id && ttsPlayback.playing,
+          playerVisible = ttsPlayback.documentId == r.id && !ttsPlayback.ended,
           player = {
-            if (ttsDocId == r.id) ttsState?.let { state ->
-              TtsBar(state, com.reader.app.ui.theme.readerColors(settings.background),
-                onPrev = { ttsController?.prev() },
-                onToggle = { if (state.playing) ttsController?.pause() else ttsController?.play() },
-                onNext = { ttsController?.next() },
+            if (ttsPlayback.documentId == r.id && !ttsPlayback.ended) {
+              TtsBar(ttsPlayback, com.reader.app.ui.theme.readerColors(settings.background),
+                onPrev = { ttsClient?.prev() },
+                onToggle = { if (ttsPlayback.playing) ttsClient?.pause() else ttsClient?.play() },
+                onNext = { ttsClient?.next() },
                 onSpeed = { speed ->
-                  ttsController?.setSpeed(speed)
+                  ttsClient?.setSpeed(speed)
                   lifecycleScope.launch { prefs.save(prefs.load().copy(ttsSpeed = speed)) }
                 },
-                onClose = { ttsController?.pause(); ttsState = null; ttsDocId = null },
+                onClose = { ttsClient?.stop() },
               )
             }
           },
@@ -888,6 +875,17 @@ class MainActivity : ComponentActivity() {
       }
       }
       }
+      if (showNowPlaying) {
+        NowPlayingBar(
+          state = ttsPlayback,
+          colors = com.reader.app.ui.theme.appColors(),
+          onOpen = { ttsPlayback.documentId?.let { target ->
+            go(Route.Reader(target, at = ttsPlayback.cursor?.takeIf { it.documentId == target }))
+          } },
+          onToggle = { if (ttsPlayback.playing) ttsClient?.pause() else ttsClient?.play() },
+          onStop = { ttsClient?.stop() },
+        )
+      }
       if (rootVisible) ReaderBottomNavigation(if (route == Route.Settings) "settings" else if (selectedTab == "highlights") "highlights" else "shelf") { destination ->
         if (selectedTab != "highlights") shelfTab = if (route == Route.Archive) Triage.ARCHIVED else selectedTab
         stack.reset()
@@ -899,7 +897,7 @@ class MainActivity : ComponentActivity() {
         tick++
       }
       }
-      notices.Host(Modifier.align(Alignment.BottomCenter).padding(bottom = if (rootVisible) 88.dp else 12.dp))
+      notices.Host(Modifier.align(Alignment.BottomCenter).padding(bottom = (if (rootVisible) 88.dp else 12.dp) + (if (showNowPlaying) 56.dp else 0.dp)))
       }
       }
     }
@@ -1065,7 +1063,7 @@ class MainActivity : ComponentActivity() {
   }
 
   override fun onStop() {
-    ttsController?.pause()
+    // Backgrounding the Activity must not touch playback: the service owns it.
     val app = application as com.reader.app.ReaderApp
     app.persistenceScope.launch {
       try {
@@ -1077,55 +1075,10 @@ class MainActivity : ComponentActivity() {
   }
 
   override fun onDestroy() {
-    try {
-      ttsEngine?.shutdown()
-    } catch (e: Exception) {
-    }
+    // Detach only; a running session outlives this Activity.
+    ttsClient?.release()
+    ttsClient = null
     super.onDestroy()
-  }
-}
-
-@Composable
-private fun ReaderWithTts(
-  docId: String,
-  blocks: List<ArticleBlock>,
-  settings: ReaderSettings,
-  docState: com.reader.app.data.DocumentEntity,
-  ttsState: TtsController.State?,
-  onSettingsChange: (ReaderSettings) -> Unit,
-  onBack: () -> Unit,
-  onCursor: (SemanticCursor, Float) -> Unit,
-  onEnterTts: (SemanticCursor) -> Unit,
-  onEnterRsvp: (SemanticCursor) -> Unit,
-  onReadLater: () -> Unit,
-  onArchive: () -> Unit,
-  onTtsPrev: () -> Unit,
-  onTtsToggle: () -> Unit,
-  onTtsNext: () -> Unit,
-  onTtsSpeed: (Float) -> Unit,
-  onTtsClose: () -> Unit,
-) {
-  Scaffold(
-    containerColor = colorsFor(settings.background).background,
-    bottomBar = {
-      if (ttsState != null) {
-        TtsBar(
-          state = ttsState, colors = colorsFor(settings.background),
-          onPrev = onTtsPrev, onToggle = onTtsToggle, onNext = onTtsNext,
-          onSpeed = onTtsSpeed, onClose = onTtsClose,
-        )
-      }
-    },
-  ) { pad ->
-    Box(Modifier.padding(pad).fillMaxSize()) {
-      ReaderScreen(
-        doc = docState, blocks = blocks, settings = settings,
-        onSettingsChange = onSettingsChange, onBack = onBack, onCursor = onCursor,
-        initialBlockId = docState.progressBlockId, initialOffset = docState.progressCharOffset,
-        onEnterTts = onEnterTts, onEnterRsvp = onEnterRsvp,
-        onReadLater = onReadLater, onArchive = onArchive,
-      )
-    }
   }
 }
 

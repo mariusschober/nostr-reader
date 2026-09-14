@@ -1,132 +1,132 @@
 package com.reader.app.tts
 
 import android.os.Looper
-import androidx.media3.common.BasePlayer
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import androidx.media3.common.Timeline
+import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 
-/** Thin Media3 Player around the TTS controller: lock-screen + headphone keys. */
+/**
+ * Truthful Media3 [Player] over the narrator. It advertises only commands it
+ * really implements, reports a real single-item timeline with the article's
+ * title/source, and reflects IDLE / BUFFERING / READY state instead of always
+ * claiming READY. Transport commands are routed back to the owning service.
+ */
 @UnstableApi
-class TtsMediaPlayer(private val looper: Looper) : BasePlayer() {
-  private var controller: TtsController? = null
-  private val listeners = mutableSetOf<Player.Listener>()
-  private var playWhenReadyFlag = false
+class TtsMediaPlayer(looper: Looper) : SimpleBasePlayer(looper) {
+  var onPlay: () -> Unit = {}
+  var onPause: () -> Unit = {}
+  var onStop: () -> Unit = {}
+  var onSpeed: (Float) -> Unit = {}
 
-  fun attach(c: TtsController) {
-    controller = c
-    c.onState = { s ->
-      playWhenReadyFlag = s.playing
-      listeners.toList().forEach {
-        it.onPlayWhenReadyChanged(s.playing, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-        it.onPlaybackStateChanged(STATE_READY)
-      }
+  private val commands: Player.Commands = Player.Commands.Builder()
+    .addAll(
+      Player.COMMAND_PLAY_PAUSE,
+      Player.COMMAND_STOP,
+      Player.COMMAND_SET_SPEED_AND_PITCH,
+      Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
+      Player.COMMAND_GET_TIMELINE,
+      Player.COMMAND_GET_METADATA,
+      Player.COMMAND_GET_MEDIA_ITEMS_METADATA,
+    ).build()
+
+  private var documentId: String? = null
+  private var title: String = ""
+  private var url: String? = null
+  private var source: String = ""
+  private var playbackState: Int = Player.STATE_IDLE
+  private var playWhenReady: Boolean = false
+  private var speed: Float = 1f
+
+  /** Push the narrator's compact state into the player surface. */
+  fun update(state: TtsPlaybackState) {
+    documentId = state.documentId
+    title = state.sourceTitle
+    url = state.sourceUrl
+    source = displaySource(state.sourceUrl)
+    speed = state.speed
+    playWhenReady = state.playing
+    playbackState = when {
+      state.documentId == null -> Player.STATE_IDLE
+      // Ended releases the notification/foreground resource: the session has
+      // nothing left to resume, so it must not keep reporting a live player.
+      state.ended -> Player.STATE_IDLE
+      state.loading -> Player.STATE_BUFFERING
+      else -> Player.STATE_READY
     }
+    invalidateState()
   }
 
-  override fun getApplicationLooper(): Looper = looper
-  override fun addListener(listener: Player.Listener) {
-    listeners.add(listener)
-  }
-  override fun removeListener(listener: Player.Listener) {
-    listeners.remove(listener)
-  }
-  override fun getPlaybackState(): Int = STATE_READY
-  override fun getPlaybackSuppressionReason(): Int = PLAYBACK_SUPPRESSION_REASON_NONE
-  override fun getPlayerError(): androidx.media3.common.PlaybackException? = null
-  override fun getPlayWhenReady(): Boolean = playWhenReadyFlag
-  override fun setPlayWhenReady(playWhenReady: Boolean) {
-    playWhenReadyFlag = playWhenReady
-    if (playWhenReady) controller?.play() else controller?.pause()
-  }
-  override fun getPlaybackParameters(): PlaybackParameters = PlaybackParameters.DEFAULT
-  override fun setPlaybackParameters(playbackParameters: PlaybackParameters) {}
-  override fun getSeekBackIncrement(): Long = 0L
-  override fun getSeekForwardIncrement(): Long = 0L
-  override fun getMaxSeekToPreviousPosition(): Long = 0L
-  override fun seekTo(windowIndex: Int, positionMs: Long, seekCommand: Int, isRepeatingCurrentItem: Boolean) {
-    when (seekCommand) {
-      Player.COMMAND_SEEK_TO_NEXT -> controller?.next()
-      Player.COMMAND_SEEK_TO_PREVIOUS -> controller?.prev()
-      else -> {}
+  override fun getState(): State {
+    val doc = documentId
+    val playlist = if (doc == null) {
+      emptyList()
+    } else {
+      listOf(
+        MediaItemData.Builder(doc)
+          .setMediaItem(
+            MediaItem.Builder()
+              .setMediaId(doc)
+              .setUri(url)
+              .build(),
+          )
+          .setMediaMetadata(
+            MediaMetadata.Builder()
+              .setTitle(title.ifBlank { "Article" })
+              .setArtist(source.ifBlank { "Reader" })
+              .setIsBrowsable(false)
+              .setIsPlayable(true)
+              .build(),
+          )
+          .setDurationUs(C.TIME_UNSET)
+          .setIsSeekable(false)
+          .setIsDynamic(false)
+          .build(),
+      )
     }
+    return State.Builder()
+      .setAvailableCommands(commands)
+      .setPlaylist(playlist)
+      .setCurrentMediaItemIndex(0)
+      .setPlaybackState(playbackState)
+      .setPlayWhenReady(playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+      .setPlaybackSuppressionReason(Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+      .setPlaybackParameters(PlaybackParameters(speed))
+      .setContentPositionMs(C.TIME_UNSET)
+      .build()
   }
-  override fun getAvailableCommands(): Player.Commands =
-    Player.Commands.Builder()
-      .addAll(
-        Player.COMMAND_PLAY_PAUSE,
-        Player.COMMAND_SEEK_TO_NEXT,
-        Player.COMMAND_SEEK_TO_PREVIOUS,
-        Player.COMMAND_STOP,
-      ).build()
-  override fun getCurrentTimeline(): Timeline = Timeline.EMPTY
-  override fun getCurrentPeriodIndex(): Int = 0
-  override fun getCurrentMediaItemIndex(): Int = 0
-  override fun getDuration(): Long = C.TIME_UNSET
-  override fun getCurrentPosition(): Long = 0L
-  override fun getBufferedPosition(): Long = 0L
-  override fun getTotalBufferedDuration(): Long = 0L
-  override fun getContentPosition(): Long = 0L
-  override fun getContentBufferedPosition(): Long = 0L
-  override fun setMediaItems(mediaItems: MutableList<androidx.media3.common.MediaItem>, resetPosition: Boolean) {}
-  override fun setMediaItems(mediaItems: MutableList<androidx.media3.common.MediaItem>, startIndex: Int, startPositionMs: Long) {}
-  override fun addMediaItems(index: Int, mediaItems: MutableList<androidx.media3.common.MediaItem>) {}
-  override fun moveMediaItems(fromIndex: Int, toIndex: Int, newFromIndex: Int) {}
-  override fun replaceMediaItems(fromIndex: Int, toIndex: Int, mediaItems: MutableList<androidx.media3.common.MediaItem>) {}
-  override fun removeMediaItems(fromIndex: Int, toIndex: Int) {}
-  override fun prepare() {}
 
-  // ---- No-op surface: TTS has no playlist, video, audio routing, or ads. ----
-  override fun setRepeatMode(repeatMode: Int) {}
-  override fun getRepeatMode(): Int = Player.REPEAT_MODE_OFF
-  override fun setShuffleModeEnabled(shuffleModeEnabled: Boolean) {}
-  override fun getShuffleModeEnabled(): Boolean = false
-  override fun isLoading(): Boolean = false
-  override fun isPlayingAd(): Boolean = false
-  override fun getCurrentAdGroupIndex(): Int = C.INDEX_UNSET
-  override fun getCurrentAdIndexInAdGroup(): Int = C.INDEX_UNSET
-  override fun getCurrentTracks(): androidx.media3.common.Tracks = androidx.media3.common.Tracks.EMPTY
-  override fun getTrackSelectionParameters(): androidx.media3.common.TrackSelectionParameters =
-    androidx.media3.common.TrackSelectionParameters.DEFAULT_WITHOUT_CONTEXT
-  override fun setTrackSelectionParameters(parameters: androidx.media3.common.TrackSelectionParameters) {}
-  override fun getMediaMetadata(): androidx.media3.common.MediaMetadata = androidx.media3.common.MediaMetadata.EMPTY
-  override fun getPlaylistMetadata(): androidx.media3.common.MediaMetadata = androidx.media3.common.MediaMetadata.EMPTY
-  override fun setPlaylistMetadata(mediaMetadata: androidx.media3.common.MediaMetadata) {}
-  override fun getVolume(): Float = 1f
-  override fun setVolume(volume: Float) {}
-  override fun getAudioAttributes(): androidx.media3.common.AudioAttributes = androidx.media3.common.AudioAttributes.DEFAULT
-  override fun setAudioAttributes(audioAttributes: androidx.media3.common.AudioAttributes, handleAudioFocus: Boolean) {}
-  override fun getVideoSize(): androidx.media3.common.VideoSize = androidx.media3.common.VideoSize.UNKNOWN
-  override fun getSurfaceSize(): androidx.media3.common.util.Size = androidx.media3.common.util.Size.UNKNOWN
-  override fun clearVideoSurface() {}
-  override fun clearVideoSurface(surface: android.view.Surface?) {}
-  override fun setVideoSurface(surface: android.view.Surface?) {}
-  override fun setVideoSurfaceHolder(surfaceHolder: android.view.SurfaceHolder?) {}
-  override fun clearVideoSurfaceHolder(surfaceHolder: android.view.SurfaceHolder?) {}
-  override fun setVideoSurfaceView(surfaceView: android.view.SurfaceView?) {}
-  override fun clearVideoSurfaceView(surfaceView: android.view.SurfaceView?) {}
-  override fun setVideoTextureView(textureView: android.view.TextureView?) {}
-  override fun clearVideoTextureView(textureView: android.view.TextureView?) {}
-  override fun getCurrentCues(): androidx.media3.common.text.CueGroup = androidx.media3.common.text.CueGroup.EMPTY_TIME_ZERO
-  override fun getDeviceInfo(): androidx.media3.common.DeviceInfo = androidx.media3.common.DeviceInfo.UNKNOWN
-  override fun getDeviceVolume(): Int = 0
-  override fun isDeviceMuted(): Boolean = false
-  override fun setDeviceVolume(volume: Int) {}
-  override fun setDeviceVolume(volume: Int, flags: Int) {}
-  override fun increaseDeviceVolume() {}
-  override fun increaseDeviceVolume(flags: Int) {}
-  override fun decreaseDeviceVolume() {}
-  override fun decreaseDeviceVolume(flags: Int) {}
-  override fun setDeviceMuted(muted: Boolean) {}
-  override fun setDeviceMuted(muted: Boolean, flags: Int) {}
-
-  override fun stop() {
-    controller?.pause()
+  override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+    if (playWhenReady) onPlay() else onPause()
+    return Futures.immediateVoidFuture()
   }
-  override fun release() {
-    controller = null
-    listeners.clear()
+
+  override fun handleStop(): ListenableFuture<*> {
+    onStop()
+    return Futures.immediateVoidFuture()
+  }
+
+  override fun handleSetPlaybackParameters(playbackParameters: PlaybackParameters): ListenableFuture<*> {
+    onSpeed(playbackParameters.speed)
+    return Futures.immediateVoidFuture()
+  }
+
+  override fun handleRelease(): ListenableFuture<*> {
+    documentId = null
+    playbackState = Player.STATE_IDLE
+    playWhenReady = false
+    return Futures.immediateVoidFuture()
+  }
+
+  private companion object {
+    fun displaySource(url: String?): String {
+      val host = url?.let { runCatching { java.net.URI(it).host }.getOrNull() }
+      return host?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: "Reader"
+    }
   }
 }

@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.reader.app.tts.TtsController
+import com.reader.app.tts.TtsPlaybackState
 import com.reader.app.ui.theme.ReaderColors
 import com.reader.app.ui.theme.ReaderFonts
 
@@ -21,7 +21,7 @@ import com.reader.app.ui.theme.ReaderFonts
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TtsBar(
-  state: TtsController.State,
+  state: TtsPlaybackState,
   colors: ReaderColors,
   onPrev: () -> Unit,
   onToggle: () -> Unit,
@@ -32,7 +32,8 @@ fun TtsBar(
   val context = LocalContext.current
   Surface(color = colors.surface, tonalElevation = 2.dp) {
     Column {
-    if (state.voiceRequiresNetwork == true) Text("This voice requires a network connection", color = colors.secondary, modifier = Modifier.padding(horizontal = 12.dp))
+    if (state.requiresNetwork == true) Text("This voice requires a network connection", color = colors.secondary, modifier = Modifier.padding(horizontal = 12.dp))
+    if (state.loading) Text("Preparing speech…", color = colors.secondary, modifier = Modifier.padding(horizontal = 12.dp))
     state.error?.let {
       Text(it, color = colors.error, modifier = Modifier.padding(12.dp))
       TextButton(onClick = { runCatching { context.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS")) } }) { Text("Speech settings") }
@@ -47,7 +48,7 @@ fun TtsBar(
         )
       }
       IconButton(onClick = onNext) { Icon(Icons.Default.SkipNext, contentDescription = "Next sentence", tint = colors.text) }
-      Text("${state.index + 1}/${state.units.size}", fontFamily = ReaderFonts.Ui, color = colors.secondary, modifier = Modifier.align(Alignment.CenterVertically))
+      if (state.total > 1) Text("${state.index + 1}/${state.total}", fontFamily = ReaderFonts.Ui, color = colors.secondary, modifier = Modifier.align(Alignment.CenterVertically))
       TextButton(onClick = { onSpeed((state.speed + 0.25f).let { if (it > 2.5f) 0.75f else it }) }) {
         Text("${state.speed}x", fontFamily = ReaderFonts.Ui, color = colors.text)
       }

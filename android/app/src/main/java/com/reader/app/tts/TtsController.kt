@@ -14,6 +14,8 @@ class TtsController(private val engine: TtsEngine) {
   var onCursor: ((String) -> Unit)? = null
   var onPosition: ((String, Int) -> Unit)? = null
   var onState: ((State) -> Unit)? = null
+  /** Invoked when the last unit of the loaded batch finishes (end of a section). */
+  var onComplete: (() -> Unit)? = null
   private var generation = 0L
 
   private fun stopGeneration() { generation++; engine.stop() }
@@ -50,7 +52,7 @@ class TtsController(private val engine: TtsEngine) {
           val next = state.index + 1
           state = state.copy(index = next.coerceAtMost(state.units.lastIndex), playing = false, offset = 0)
           publish()
-          if (next < state.units.size) play()
+          if (next < state.units.size) play() else onComplete?.invoke()
         }
       },
       onRange = { start, _ ->

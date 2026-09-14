@@ -427,48 +427,44 @@ class ReaderFlowInstrumentedTest {
     try {
       ActivityScenario.launch(MainActivity::class.java).use { scenario ->
         tap("Inbox"); tap(title); tap("Listen")
-        var controller: com.reader.app.tts.TtsController? = null
-        val field = MainActivity::class.java.getDeclaredField("ttsController").apply { isAccessible = true }
-        fun state(): com.reader.app.tts.TtsController.State? {
-          var result: com.reader.app.tts.TtsController.State? = null
-          scenario.onActivity { controller = field.get(it) as? com.reader.app.tts.TtsController; result = controller?.state }
-          return result
-        }
-        waitFor("speech controller is available") { state() != null }
-        val initialSpeech = state()!!
+        // Playback truth lives in the service and is published on the bus.
+        fun state(): com.reader.app.tts.TtsPlaybackState = com.reader.app.tts.TtsPlaybackBus.state.value
+        waitFor("listening starts") { state().active }
+        val initialSpeech = state()
         waitFor("real speech callbacks advance") {
-          state()?.let { value ->
-            check(value.error == null) { "Speech unavailable: ${value.error}" }
-            value.playing && (value.offset != initialSpeech.offset || value.index != initialSpeech.index)
-          } == true
+          val value = state()
+          check(value.error == null) { "Speech unavailable: ${value.error}" }
+          value.playing && (value.cursor != initialSpeech.cursor || value.index != initialSpeech.index)
         }
         tap("1.0x")
-        waitFor("active speech uses the changed speed") { state()?.let { it.playing && it.speed == 1.25f } == true }
+        waitFor("active speech uses the changed speed") { state().let { it.playing && it.speed == 1.25f } }
         assertEquals(1.25f, Prefs(context).load().ttsSpeed)
         assertEquals(android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED, audio.requestAudioFocus(focus))
-        waitFor("audio focus loss pauses speech") { state()?.playing == false && node("Play") != null }
+        waitFor("audio focus loss pauses speech") { !state().playing && node("Play") != null }
         audio.abandonAudioFocusRequest(focus)
-        val paused = state()!!
+        val paused = state()
         SystemClock.sleep(700)
         assertEquals(paused, state())
         tap("Next sentence")
-        waitFor("next sentence while paused") { state()?.index == paused.index + 1 }
+        waitFor("next sentence while paused") { state().index == paused.index + 1 }
         tap("Previous sentence")
-        waitFor("previous sentence while paused") { state()?.index == paused.index }
+        waitFor("previous sentence while paused") { state().index == paused.index }
         tap("Play")
-        waitFor("speech resumed") { state()?.playing == true }
+        waitFor("speech resumed") { state().playing }
         check(runner.uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
-        // Read the existing controller without asking ActivityScenario to resume it.
-        waitFor("background stops narration") {
-          var pausedInBackground = false
-          runner.runOnMainSync { pausedInBackground = controller?.state?.playing == false }
-          pausedInBackground
-        }
+        // The service owns playback, so Home backgrounds the reader without
+        // interrupting narration.
+        waitFor("background keeps narration") { state().playing }
+        SystemClock.sleep(1500)
+        assertTrue("narration continues after Home", state().playing)
         context.startActivity(android.content.Intent(context, MainActivity::class.java)
           .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-        waitFor("return leaves speech paused") { node("Play") != null }
-        screenshot("reader-speech-return-paused")
+        waitFor("return shows the running player") { node("Pause") != null }
+        assertTrue("return keeps the same spoken position", state().active)
+        screenshot("reader-speech-background-continues")
         tap("Close player")
+        waitFor("stop releases the session") { !state().active }
+        assertFalse("Stop ends playback", state().playing)
         var native: NativeArticleView? = null
         fun find(view: View): NativeArticleView? {
           if (view is NativeArticleView) return view
