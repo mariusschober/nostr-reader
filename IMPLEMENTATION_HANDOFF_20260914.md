@@ -151,12 +151,49 @@ which the repair now makes true.
 
 ## Remaining work / next input
 
-1. Owner trial: sustained reading, listening and e-ink comfort on the TCL. Not
-   a code task.
-2. Optional polish, not required by the brief: clear the cosmetic native
-   selection remnant after settlement, and keep the Appearance/Done header
-   pinned at full expansion.
-3. `ReaderFlowInstrumentedTest`'s share-sheet step could be made
-   Android-16-aware so the whole flow runs unattended.
+The branch was pushed to `origin/codex/reliability-finalize` at the owner's
+request on 14 September 2026. There is no release and no merged pull request.
 
-No push, merge, release or production-data change occurred.
+1. **Open defect: the native selection lingers after a settled pen gesture.**
+   The brief's required outcome is "One gesture, one saved highlight, no
+   lingering selection". The data is correct (one row, one range, no
+   duplicates), but on the TCL the platform's selection handles stay painted in
+   highlighting mode after a successful save, until the next gesture or until
+   highlighting is left. `NativeArticleView.settlePenGesture()` already intends
+   to clear on the acknowledged commit:
+
+   ```kotlin
+   onSettle(session, range) { ok ->
+     post {
+       if (settledSession != session) return@post
+       settledSession = null
+       if (ok && selectionSession == session) clearSelection()
+     }
+   }
+   ```
+
+   The `selectionSession == session` guard is the weak point: the platform can
+   re-mint or null that session while the finger is up, so the clear is
+   skipped. Planned minimal fix: guard on a gesture generation counter
+   (incremented in the `ACTION_DOWN` branch) instead of session identity, and
+   drop the idle cursor/focus after the clear (`clearSelection();
+   clearIdleTextCursor()`) so the Editor cannot restore handles. The pinned
+   invariant must survive: `PenSettlementInstrumentedTest.staleAckCannotClearANewerGesture`
+   claims the newer selection with a real `ACTION_DOWN`, so a generation
+   counter keeps it passing. A half-finished edit of this kind was made and
+   reverted in this pass, so nothing partial is committed and the frozen source
+   still matches the installed APK.
+2. **Cosmetic:** the Appearance/Done header is pinned while the sheet is
+   partially open and scrolls away at full expansion; the drag handle remains
+   for dismissal.
+3. **Test fixture:** `ReaderFlowInstrumentedTest` fails only at its Android 16
+   share-sheet step, an OS-version layout assumption rather than a product
+   defect. Making that step version-aware would let the opt-in flow run
+   unattended.
+4. **Owner trial:** sustained reading, listening and e-ink comfort on the TCL.
+   Not a code task.
+
+No release, merge or production-data change occurred.
+
+Continuation prompt for a fresh session:
+[NEXT_AGENT_PROMPT_TRIAL_FIXES_CONTINUATION_20260914.md](NEXT_AGENT_PROMPT_TRIAL_FIXES_CONTINUATION_20260914.md).
