@@ -78,6 +78,13 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    */
   var onSettle: (session: String, range: IntRange, ack: (Boolean) -> Unit) -> Unit = { _, _, ack -> ack(true) }
   private var settledSession: String? = null
+  /**
+   * Set when a pen gesture is cancelled from outside (Back, navigation, Undo).
+   * The pointer can still be down, so the platform may re-establish the native
+   * selection after it is cleared; the release must therefore be ignored until
+   * the next ACTION_DOWN starts a genuinely new gesture.
+   */
+  private var gestureAbandoned = false
   var onCursor: (SemanticCursor, Float) -> Unit = { _, _ -> }
   var onMark: (List<String>) -> Unit = {}
   var onLink: (String) -> Unit = {}
@@ -161,6 +168,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
         gestureActive = true
+        gestureAbandoned = false
         stopFling()
         recycleVelocity()
         velocity = VelocityTracker.obtain().also { it.addMovement(event) }
@@ -265,11 +273,14 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       }
       recycleVelocity()
       // A completed continuous-highlighting gesture commits once, on release.
-      if (pen) settlePenGesture()
+      // A gesture abandoned from outside (Back, navigation) commits nothing and
+      // must not leave its range painted.
+      if (pen) { if (gestureAbandoned) abandonPenGesture() else settlePenGesture() }
     } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
       gestureActive = false; stopFling(); recycleVelocity(); onViewport(body.scrollY, body.height)
-      // Cancellation saves nothing from the cancelled gesture.
-      if (pen) { pendingSelection?.let { removeCallbacks(it) }; pendingSelection = null; settledSession = null }
+      // Cancellation saves nothing from the cancelled gesture, and leaves no
+      // range painted once the finger is gone.
+      if (pen) abandonPenGesture()
     }
     return handled
   }
@@ -596,6 +607,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
     }
     pen = enabled
+    // Any in-flight gesture is gone when the mode changes.
+    gestureAbandoned = false
     actionMode?.invalidate()
   }
 
@@ -645,6 +658,13 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     actionMode?.finish()
     (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
     resetSelectionOwner()
+    // Cancelling from outside the gesture (Back, dock, navigation, Undo) must
+    // also abandon an in-flight pen selection: the pointer is still down, so
+    // the platform can re-establish the native selection and the release would
+    // otherwise commit a range the user cancelled. The next DOWN starts fresh.
+    // Guarded by gestureActive so a settle acknowledgement arriving after the
+    // finger is up cannot suppress the following gesture.
+    if (pen && gestureActive) gestureAbandoned = true
     return active
   }
 
@@ -707,7 +727,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    * from an older gesture never disturbs a newer selection.
    */
   private fun settlePenGesture() {
-    if (!pen) return
+    if (!pen || gestureAbandoned) return
     val start = body.selectionStart
     val end = body.selectionEnd
     if (!validSelection(start, end)) return
@@ -728,6 +748,25 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   private var lastSelection: Pair<String, IntRange>? = null
+  /**
+   * Abandons an in-flight pen gesture: the release that follows commits nothing
+   * and the range is cleared from the screen. Mirrors the session reset in
+   * [setPenMode] so a cancelled gesture cannot reshape the next one.
+   */
+  private fun abandonPenGesture() {
+    gestureAbandoned = true
+    pendingSelection?.let { removeCallbacks(it) }
+    pendingSelection = null
+    pendingActionModeContinuation = false
+    pendingCommittedContinuation = false
+    selectionSession = null; sessionRange = null; lastSelection = null
+    selectionCommitted = false
+    settledSession = null
+    actionMode?.finish()
+    actionMode = null
+    (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
+  }
+
   private fun emitSelection() {
     val value = projection ?: return
     if (body.selectionStart < 0 || body.selectionEnd < 0) return
