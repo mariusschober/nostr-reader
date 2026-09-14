@@ -73,6 +73,8 @@ fun HighlightsFeed(
   onOpenSource: (String) -> Unit = {},
   /** Tapping a card enters Review at that quote without losing the round. */
   onReviewFromQuote: (String) -> Unit = {},
+  /** Opens the article-scoped highlight list for the quote's article. */
+  onOpenArticleHighlights: (String) -> Unit = {},
   query: String = "", onQuery: (String) -> Unit = {},
   importantOnly: Boolean = false, onImportantOnly: (Boolean) -> Unit = {},
   matchingIds: Set<String>? = null,
@@ -246,6 +248,7 @@ fun HighlightsFeed(
       onShare = { context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
         type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, "“${quote.quote}”\n— ${quote.sourceTitle}" + (quote.sourceUrl?.let { " ($it)" } ?: ""))
       }, "Share highlight")) },
+      onArticleHighlights = { menuId = null; onOpenArticleHighlights(quote.documentId) },
       onRemove = { menuId = null; onRemoveHighlights(setOf(quote.id)) }, onDismiss = { menuId = null })
   }
   confirmRemoveIds?.let { doomed ->

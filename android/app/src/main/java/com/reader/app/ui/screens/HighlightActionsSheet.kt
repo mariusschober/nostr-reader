@@ -25,6 +25,8 @@ import com.reader.app.ui.theme.*
 @Composable fun HighlightActionsSheet(quote: HighlightEntity, overlapping: Boolean = false,
   onNextOverlap: () -> Unit = {}, onColor: (String) -> Unit, onImportant: () -> Unit,
   onShare: () -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit,
+  /** Opens the article-scoped highlight list; null hides the entry point. */
+  onArticleHighlights: (() -> Unit)? = null,
 ) {
   val c = appColors()
   val dark = LocalReaderDark.current
@@ -67,6 +69,7 @@ import com.reader.app.ui.theme.*
       FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         TextButton(onClick = { (context.getSystemService(ClipboardManager::class.java)).setPrimaryClip(ClipData.newPlainText("Highlight", quote.quote)); onDismiss() }) { Text("Copy") }
         TextButton(onClick = onShare) { Text("Share") }
+        onArticleHighlights?.let { open -> TextButton(onClick = open) { Text("View article highlights") } }
         TextButton(onClick = onRemove) { Text("Remove", color = c.error) }
       }
     }

@@ -56,6 +56,9 @@ interface HighlightDao {
   @Query("SELECT * FROM highlights WHERE documentId = :id ORDER BY createdAt, id")
   fun observeForDocument(id: String): Flow<List<HighlightEntity>>
 
+  @Query("SELECT id FROM highlights WHERE documentId = :documentId")
+  suspend fun idsForDocument(documentId: String): List<String>
+
   @Query("SELECT id, documentId, color, createdAt, startBlockId, startOffset, endBlockId, endOffset, projectionVersion FROM highlights WHERE documentId = :id ORDER BY createdAt, id")
   fun observeMarks(id: String): Flow<List<HighlightMark>>
 

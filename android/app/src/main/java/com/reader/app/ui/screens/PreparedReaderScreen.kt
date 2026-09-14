@@ -220,8 +220,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                           atEnd: Int? = null,
                           docLabels: List<String> = emptyList(),
                           labelSuggestions: List<String> = emptyList(),
-                          onToggleLabel: (String) -> Unit = {},
-                          player: @Composable () -> Unit = {},
+                         onToggleLabel: (String) -> Unit = {},
+                         onOpenArticleHighlights: () -> Unit = {},
+                         player: @Composable () -> Unit = {},
                           // Finish-card bridge: pop back to the library so the
                           // moment of completion leads somewhere.
                           onReadAnother: () -> Unit = {}) {
@@ -524,6 +525,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           DropdownMenuItem(text = { Text("Speed") }, enabled = prepared != null,
             onClick = { menu = false; val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } })
           DropdownMenuItem(text = { Text("Labels") }, onClick = { menu = false; showLabels = true })
+          DropdownMenuItem(text = { Text("Article highlights · ${marks.size}") }, onClick = { menu = false; onOpenArticleHighlights() })
           if (!doc?.sourceUrl.isNullOrBlank()) DropdownMenuItem(text = { Text("Open original") }, onClick = { menu = false; openWeb(doc!!.sourceUrl!!) })
           DropdownMenuItem(text = { Text(if (immersed) "Show reading controls" else "Focus mode") }, onClick = { menu = false; view?.retainPassageOnLayout(); immersed = !immersed })
           if (prepared?.projection?.tables?.isNotEmpty() == true) DropdownMenuItem(text = { Text("View tables") }, onClick = { menu = false; expandedTable = 0 })
@@ -927,7 +929,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     onRemove = { scope.launch {
       try { val removed = highlights.remove(quote.id); if (removed != null && onHighlightRemoved != null) { undo = null; onHighlightRemoved(removed) } else undo = removed; actions = emptyList(); activeQuote = null }
       catch (_: Exception) { snackbar.showSnackbar("Couldn’t remove highlight. Try again.") }
-    } }, onDismiss = { actions = emptyList(); activeQuote = null }) }
+    } },
+    onArticleHighlights = { actions = emptyList(); activeQuote = null; onOpenArticleHighlights() },
+    onDismiss = { actions = emptyList(); activeQuote = null }) }
   if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete article?") },
     text = { Text("This permanently removes the saved article. Your highlights and their attribution stay saved.") },
     confirmButton = { TextButton(onClick = { confirmDelete = false; transition { onArticleAction(ArticleAction.Delete) } }) { Text("Delete article", color = colors.error) } },

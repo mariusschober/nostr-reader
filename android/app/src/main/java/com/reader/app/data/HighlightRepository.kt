@@ -6,6 +6,99 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
+/**
+ * One resumable, article-scoped review round. Membership is snapshotted at
+ * round start in source-passage order (rotated so the chosen quote is first);
+ * advancing credits each quote at most once per round. It never touches the
+ * global round.
+ */
+@kotlinx.serialization.Serializable
+data class ArticleRound(
+  val documentId: String,
+  val order: List<String>,
+  val cursor: Int = 0,
+  val consumed: Set<String> = emptySet(),
+  val completed: Boolean = false,
+) {
+  /** The quote currently presented, or null when the round is finished/empty. */
+  val presentedId: String? get() = if (completed) null else order.getOrNull(cursor)
+  val position: Int get() = (cursor + 1).coerceIn(1, order.size.coerceAtLeast(1))
+  val total: Int get() = order.size
+  val atLast: Boolean get() = cursor >= order.size - 1
+}
+
+/**
+ * Passage-ordered membership rotated so [startHighlightId] (when it is a member)
+ * is presented first; the rest continue to the end, then wrap so every member
+ * appears exactly once. Pure, so the scoped round is unit-testable without Room.
+ */
+fun articleOrder(ids: List<String>, startHighlightId: String?): List<String> {
+  val distinct = ids.distinct()
+  return when {
+    startHighlightId != null && startHighlightId in distinct ->
+      distinct.dropWhile { it != startHighlightId } + distinct.takeWhile { it != startHighlightId }
+    else -> distinct
+  }
+}
+
+/**
+ * Pure advance for a scoped round: credit [expectedId] once, then move to the
+ * next member that still exists in [present], skipping deleted rows. Reaching
+ * the end (or the last present member) completes the round. An expected-id
+ * mismatch is a no-op so a stale or rapid repeat tap cannot double-advance.
+ */
+fun ArticleRound.advance(expectedId: String, present: Set<String>): ArticleRound {
+  if (presentedId != expectedId) return this
+  val consumed = if (expectedId in consumed) consumed else consumed + expectedId
+  if (cursor >= order.size - 1) return copy(consumed = consumed, completed = true)
+  var next = cursor + 1
+  while (next < order.size && order[next] !in present) next++
+  return if (next >= order.size) copy(consumed = consumed, completed = true)
+  else copy(consumed = consumed, cursor = next)
+}
+
+/**
+ * Pure step back to an earlier member without crediting it. Repeated Previous
+ * stays on the first member; it never wraps forward. Deleted members are
+ * skipped so the reader lands on a quote that still exists.
+ */
+fun ArticleRound.previous(expectedId: String, present: Set<String>): ArticleRound {
+  if (presentedId != expectedId) return this
+  var prev = (cursor - 1).coerceAtLeast(0)
+  while (prev > 0 && order[prev] !in present) prev--
+  return copy(cursor = prev, completed = false)
+}
+
+/**
+ * Versioned JSON envelope for the chunked `review_state` storage. It carries
+ * the global round and at most one article round side by side so neither scope
+ * can overwrite the other inside the same Room transaction. A legacy bare
+ * `ReviewState` blob decodes losslessly into [global] via [decodeReviewEnvelope].
+ */
+@kotlinx.serialization.Serializable
+data class ReviewEnvelope(
+  val version: Int = 2,
+  val global: ReviewState? = null,
+  val article: ArticleRound? = null,
+)
+
+/**
+ * Central decoder for the persisted review blob. Accepts both the versioned
+ * envelope and a legacy bare global `ReviewState`; every caller uses this so
+ * legacy compatibility is not reimplemented differently.
+ */
+fun decodeReviewEnvelope(json: String): ReviewEnvelope = runCatching {
+  val element = Json.parseToJsonElement(json)
+  val obj = element as? JsonObject
+  if (obj != null && (obj.containsKey("global") || obj.containsKey("version") || obj.containsKey("article"))) {
+    Json.decodeFromString(ReviewEnvelope.serializer(), json)
+  } else {
+    ReviewEnvelope(global = Json.decodeFromString(ReviewState.serializer(), json))
+  }
+}.getOrDefault(ReviewEnvelope())
 
 data class HighlightMutation(val before: HighlightEntity?, val after: HighlightEntity?)
 
@@ -131,15 +224,14 @@ class HighlightRepository(private val db: ReaderDb) {
 
 class ReviewRepository(private val db: ReaderDb) {
   /** Live, read-only summary for the Highlights entry. Never writes. */
-  fun observeSummary(): Flow<ReviewSummary> = db.review().observeParts().map { parts -> summarizeParts(parts) }
+  fun observeSummary(): Flow<ReviewSummary> = db.review().observeParts().map { parts -> summarize(envelopeOf(parts).global) }
 
-  private fun summarizeParts(parts: List<ReviewStatePartEntity>): ReviewSummary {
-    if (parts.isEmpty()) return ReviewSummary()
+  private fun envelopeOf(parts: List<ReviewStatePartEntity>): ReviewEnvelope {
+    if (parts.isEmpty()) return ReviewEnvelope()
     return runCatching {
       check(parts.map { it.part } == parts.indices.toList()) { "Review state is incomplete" }
-      val state: ReviewState? = Json.decodeFromString(parts.joinToString("") { it.json })
-      summarize(state)
-    }.getOrDefault(ReviewSummary())
+      decodeReviewEnvelope(parts.joinToString("") { it.json })
+    }.getOrDefault(ReviewEnvelope())
   }
 
   private fun summarize(state: ReviewState?): ReviewSummary {
@@ -150,17 +242,19 @@ class ReviewRepository(private val db: ReaderDb) {
     return ReviewSummary(exists = true, phase = phase, remaining = ReviewScheduler.presentationCount(state))
   }
 
-  private suspend fun read(): ReviewState? {
+  private suspend fun readEnvelope(): ReviewEnvelope {
     val parts = db.review().parts()
-    if (parts.isEmpty()) return null
+    if (parts.isEmpty()) return ReviewEnvelope()
     check(parts.map { it.part } == parts.indices.toList()) { "Review state is incomplete" }
-    return Json.decodeFromString(parts.joinToString("") { it.json })
+    return decodeReviewEnvelope(parts.joinToString("") { it.json })
   }
-  private suspend fun write(state: ReviewState) {
-    val json = Json.encodeToString(state)
+  private suspend fun writeEnvelope(envelope: ReviewEnvelope) {
+    val json = Json.encodeToString(envelope)
     db.review().clear()
     db.review().insert(json.chunked(CONTENT_PART_CHARS).mapIndexed { i, part -> ReviewStatePartEntity(i, part) })
   }
+  private suspend fun read(): ReviewState? = readEnvelope().global
+  private suspend fun write(state: ReviewState) = writeEnvelope(readEnvelope().copy(global = state))
   private suspend fun candidates() = db.highlights().reviewCandidates()
 
   suspend fun resume(chosen: String? = null, restart: Boolean = false): ReviewState = db.withTransaction {
@@ -214,5 +308,55 @@ class ReviewRepository(private val db: ReaderDb) {
       write(ReviewScheduler.refresh(state, eligible.map { it.id }, eligible.filter { it.important }.mapTo(mutableSetOf()) { it.id }))
     }
     updated
+  }
+
+  // ---- Article-scoped rounds (brief section C). Kept beside the global scope. ----
+
+  /** Read the persisted article round for one document, or null. Read-only. */
+  suspend fun readArticleRound(documentId: String): ArticleRound? =
+    readEnvelope().article?.takeIf { it.documentId == documentId }
+
+  /**
+   * Start a fresh article round from the passage-ordered ids. The order is
+   * rotated so [startHighlightId] (when present) is presented first, then the
+   * rest continue to the end and wrap so every member appears once. Replaces
+   * any prior article round; the global round is untouched.
+   */
+  suspend fun startArticleRound(documentId: String, orderedIds: List<String>, startHighlightId: String? = null): ArticleRound =
+    db.withTransaction {
+      val round = ArticleRound(documentId = documentId, order = articleOrder(orderedIds, startHighlightId))
+      writeEnvelope(readEnvelope().copy(article = round))
+      round
+    }
+
+  /**
+   * Credit the presented quote once for this round and advance, or finish on
+   * the last card. An expected-id guard makes repeated rapid taps idempotent and
+   * a stale tap a no-op. Deleted members are skipped at presentation.
+   */
+  suspend fun advanceArticle(expectedId: String): ArticleRound? = db.withTransaction {
+    val envelope = readEnvelope()
+    val round = envelope.article ?: return@withTransaction null
+    if (round.presentedId != expectedId) return@withTransaction round
+    if (expectedId !in round.consumed && db.highlights().byId(expectedId) != null) {
+      db.highlights().recordReview(expectedId, System.currentTimeMillis())
+    }
+    val present = db.highlights().idsForDocument(round.documentId).toSet()
+    val advanced = round.advance(expectedId, present)
+    writeEnvelope(envelope.copy(article = advanced))
+    advanced
+  }
+
+  /**
+   * Step back to an earlier member without crediting it. Repeated Previous
+   * stays on the first member; it never wraps forward.
+   */
+  suspend fun previousArticle(expectedId: String): ArticleRound? = db.withTransaction {
+    val envelope = readEnvelope()
+    val round = envelope.article ?: return@withTransaction null
+    val present = db.highlights().idsForDocument(round.documentId).toSet()
+    val stepped = round.previous(expectedId, present)
+    writeEnvelope(envelope.copy(article = stepped))
+    stepped
   }
 }

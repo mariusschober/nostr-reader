@@ -20,7 +20,8 @@ import com.reader.app.ui.NoticeCoordinator
 import com.reader.app.ui.theme.*
 import kotlinx.coroutines.launch
 
-@Composable fun HighlightDetailScreen(id: String, db: ReaderDb, onBack: () -> Unit, onSource: (String, String) -> Unit, notices: NoticeCoordinator) {
+@Composable fun HighlightDetailScreen(id: String, db: ReaderDb, onBack: () -> Unit, onSource: (String, String) -> Unit, notices: NoticeCoordinator,
+  onArticleHighlights: (String) -> Unit = {}) {
   BackHandler(onBack = onBack)
   val c = appColors()
   val quote by remember(id) { db.highlights().observeById(id) }.collectAsState(initial = null)
@@ -57,5 +58,7 @@ import kotlinx.coroutines.launch
     onImportant = { mutate("Importance updated") { repo.toggleImportant(id) } },
     onShare = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
       type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "“${value.quote}”\n— ${value.sourceTitle}" + (value.sourceUrl?.let { " ($it)" } ?: ""))
-    }, "Share highlight")) }, onRemove = { actions = false; mutate("Highlight removed") { repo.remove(id) } }, onDismiss = { actions = false })
+    }, "Share highlight")) },
+    onArticleHighlights = { actions = false; onArticleHighlights(value.documentId) },
+    onRemove = { actions = false; mutate("Highlight removed") { repo.remove(id) } }, onDismiss = { actions = false })
 }

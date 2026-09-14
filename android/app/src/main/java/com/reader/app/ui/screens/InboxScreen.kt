@@ -112,6 +112,8 @@ fun InboxScreen(
   onLabelSelect: (String?) -> Unit = {},
   labelsByDoc: Map<String, Set<String>> = emptyMap(),
   onToggleLabel: (Set<String>, String) -> Unit = { _, _ -> },
+  /** Open the article-scoped highlight list for one saved article. */
+  onOpenArticleHighlights: (String) -> Unit = {},
   // Library search (offline FTS). All optional so previews stay source-stable;
   // MainActivity wires the real flow. Blank query always means "no search".
   searchActive: Boolean = false,
@@ -431,6 +433,7 @@ fun InboxScreen(
       Text(menu.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
       TextButton(onClick = { rowMenu = null; moveIds = setOf(menu.documentId) }) { Text("Move to…") }
       TextButton(onClick = { rowMenu = null; labelIds = setOf(menu.documentId) }) { Text("Edit labels") }
+      TextButton(onClick = { rowMenu = null; onOpenArticleHighlights(menu.documentId) }) { Text("View article highlights") }
       TextButton(onClick = { rowMenu = null; toggle(menu.documentId) }) { Text("Select") }
       if (menu.list == Triage.ARCHIVED) TextButton(onClick = { rowMenu = null; deleteId = menu.documentId }) { Text("Delete article…", color = c.error) }
     }

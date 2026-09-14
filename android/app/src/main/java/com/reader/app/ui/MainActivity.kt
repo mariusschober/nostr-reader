@@ -426,6 +426,7 @@ class MainActivity : ComponentActivity() {
             onLibrarySettings = { lifecycleScope.launch { prefs.save(it) } },
             labelIdsByDoc = labelIdsByDoc,
             onManageLabels = { go(Route.Labels) },
+            onOpenArticleHighlights = { go(Route.ArticleHighlights(it)) },
             onSample = { lifecycleScope.launch {
               val existing = lists.values.flatten().find { it.title == "Welcome to Reader" }
               val id = existing?.documentId ?: Ingest.importPasted(this@MainActivity, WELCOME_MARKDOWN)
@@ -453,6 +454,7 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch { highlightsScrollState.scrollToItem(0) }
           },
             listState = highlightsScrollState,
+            onOpenArticleHighlights = { go(Route.ArticleHighlights(it)) },
             // A quote tap enters Review at that quote without losing the round.
             onReviewFromQuote = { id -> lifecycleScope.launch {
               try { com.reader.app.data.ReviewRepository(db).focus(id); go(Route.Review) }
@@ -689,6 +691,7 @@ class MainActivity : ComponentActivity() {
           onHighlightRemoved = { change -> notices.show("Highlight removed") {
             if (!com.reader.app.data.HighlightRepository(db).undo(change)) notices.show("Later highlight changes were kept.")
           } },
+          onOpenArticleHighlights = { go(Route.ArticleHighlights(r.id)) },
           onPauseAudio = { ttsController?.pause() },
           onResumeAudio = { ttsController?.play() },
           speechPlaying = ttsDocId == r.id && ttsState?.playing == true,
@@ -826,7 +829,18 @@ class MainActivity : ComponentActivity() {
           )
         }
         is Route.Highlight -> HighlightDetailScreen(r.id, db, notices = notices, onBack = ::pop,
-          onSource = { documentId, quoteId -> go(Route.Reader(documentId, quoteId)) })
+          onSource = { documentId, quoteId -> go(Route.Reader(documentId, quoteId)) },
+          onArticleHighlights = { go(Route.ArticleHighlights(it)) })
+        is Route.ArticleHighlights -> ArticleHighlightsScreen(
+          documentId = r.documentId, onBack = ::pop, notices = notices,
+          onReview = { startId -> go(Route.ArticleReview(r.documentId, startId)) },
+          onOpenSource = { documentId, quoteId -> go(Route.Reader(documentId, quoteId)) },
+        )
+        is Route.ArticleReview -> ArticleReviewScreen(
+          documentId = r.documentId, startHighlightId = r.startHighlightId,
+          onBack = { pop() },
+          onOpenSource = { documentId, quoteId -> go(Route.Reader(documentId, quoteId)) },
+        )
         is Route.Labels -> ManageLabelsScreen(db, onBack = ::pop,
           onMerge = { from, to -> lifecycleScope.launch {
             val current = prefs.load()
