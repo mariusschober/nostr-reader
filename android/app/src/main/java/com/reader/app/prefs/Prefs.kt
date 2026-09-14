@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.Flow
 
 private val Context.store by preferencesDataStore("reader_settings")
 
@@ -79,6 +80,8 @@ class Prefs(private val ctx: Context) {
     val BOLD = booleanPreferencesKey("boldText")
     val ARCHIVE_COACH = booleanPreferencesKey("archiveCoachShown")
     val HIGHLIGHT_COACH = booleanPreferencesKey("highlightCoachSeen")
+    /** Label-id to palette key; a dedicated map so whole-settings saves cannot drop it. */
+    val LABEL_COLORS = stringSetPreferencesKey("labelColors")
     val WELCOME = booleanPreferencesKey("welcomeShown")
     val MILESTONES = stringSetPreferencesKey("milestonesDone")
   }
@@ -144,6 +147,48 @@ class Prefs(private val ctx: Context) {
   suspend fun isWelcomeShown(): Boolean = ctx.store.data.map { it[K.WELCOME] == true }.first()
   suspend fun setWelcomeShown() {
     ctx.store.updateData { it.toMutablePreferences().apply { set(K.WELCOME, true) } }
+  }
+
+  // ---- Label appearance (brief section D) ----------------------------------
+  // A dedicated appearance map so a concurrent font/theme/spacing save (which
+  // only sets its own keys) can never overwrite a label colour. Writes are
+  // independent of [save].
+
+  /** Reactive label-id → palette key map. */
+  fun labelColors(): Flow<Map<String, LabelColorKey>> =
+    ctx.store.data.map { decodeLabelColors(it[K.LABEL_COLORS].orEmpty()) }.distinctUntilChanged()
+
+  /** Set (or, for NEUTRAL, clear) one label's colour. */
+  suspend fun setLabelColor(labelId: String, key: LabelColorKey) {
+    ctx.store.updateData { stored ->
+      val current = decodeLabelColors(stored[K.LABEL_COLORS].orEmpty()).toMutableMap()
+      if (key == LabelColorKey.NEUTRAL) current.remove(labelId) else current[labelId] = key
+      stored.toMutablePreferences().apply { set(K.LABEL_COLORS, encodeLabelColors(current)) }
+    }
+  }
+
+  /** Drop appearance entries for labels that were deleted or merged away. */
+  suspend fun removeLabelColors(labelIds: Collection<String>) {
+    if (labelIds.isEmpty()) return
+    ctx.store.updateData { stored ->
+      val current = decodeLabelColors(stored[K.LABEL_COLORS].orEmpty()).toMutableMap()
+      var changed = false
+      for (id in labelIds) changed = current.remove(id) != null || changed
+      if (!changed) stored else stored.toMutablePreferences().apply { set(K.LABEL_COLORS, encodeLabelColors(current)) }
+    }
+  }
+
+  /**
+   * Prune entries whose label no longer exists. Never called with an empty
+   * [validIds]: an initial/loading empty label list must not delete colours.
+   */
+  suspend fun pruneLabelColors(validIds: Set<String>) {
+    if (validIds.isEmpty()) return
+    ctx.store.updateData { stored ->
+      val current = decodeLabelColors(stored[K.LABEL_COLORS].orEmpty())
+      val pruned = current.filterKeys { it in validIds }
+      if (pruned == current) stored else stored.toMutablePreferences().apply { set(K.LABEL_COLORS, encodeLabelColors(pruned)) }
+    }
   }
 
   /** Milestone keys already celebrated (each fires once per install). */

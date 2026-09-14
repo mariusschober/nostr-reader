@@ -139,6 +139,8 @@ fun InboxScreen(
 
   onLibrarySettings: (ReaderSettings) -> Unit = {},
   labelIdsByDoc: Map<String, Set<String>> = emptyMap(),
+  /** labelId → palette key; drives the compact row badges without a DB query. */
+  labelPalette: Map<String, com.reader.app.prefs.LabelColorKey> = emptyMap(),
   onManageLabels: () -> Unit = {},
   onSample: () -> Unit = {},
   highlightReviewSummary: com.reader.app.data.ReviewSummary = com.reader.app.data.ReviewSummary(),
@@ -181,6 +183,25 @@ fun InboxScreen(
   BackHandler(enabled = searchActive) { onToggleSearch() }
   BackHandler(enabled = selecting) { selectedIds = emptyList() }
   val all = lists.values.flatten()
+  // Compact label badges per document, joined in memory from the already
+  // observed label counts/assignments plus the appearance palette — no per-row
+  // database query. LabelBadgesRow shows at most two names plus "+N".
+  val badgesByDoc = remember(labelIdsByDoc, labelCounts, labelPalette) {
+    val byId = labelCounts.associateBy { it.labelId }
+    labelIdsByDoc.mapValues { (_, ids) ->
+      ids.mapNotNull { id ->
+        val label = byId[id] ?: return@mapNotNull null
+        LabelBadgeSpec(
+          label.labelId, label.name,
+          labelPalette[label.labelId] ?: com.reader.app.prefs.LabelColorKey.NEUTRAL,
+        )
+      }
+    }
+  }
+  // Normalized name → palette key, for the assignment sheet's badge identity.
+  val labelColorsByName = remember(labelPalette, labelCounts) {
+    labelCounts.associate { it.normalized to (labelPalette[it.labelId] ?: com.reader.app.prefs.LabelColorKey.NEUTRAL) }
+  }
   val constrained = settings.age != com.reader.app.prefs.AgeFilter.ANY || settings.labelIds.isNotEmpty() || settings.unlabeled
   val filtered = lists[tab].orEmpty().filter { doc ->
     val assigned = labelIdsByDoc[doc.documentId].orEmpty()
@@ -365,9 +386,11 @@ fun InboxScreen(
             val select = { toggle(doc.documentId) }
             if (searchActive) Text(Triage.tabLabel(doc.list), color = c.secondary, style = MaterialTheme.typography.labelSmall)
             if (doc.list == Triage.ARCHIVED) ArchiveSwipeRow(doc, c, selecting, doc.documentId in selectedIds,
-              open, select, select, { rowMenu = doc }, { action -> if (action == ArticleAction.Delete) deleteId = doc.documentId else action.target?.let { onMove(setOf(doc.documentId), it) } })
+              open, select, select, { rowMenu = doc }, { action -> if (action == ArticleAction.Delete) deleteId = doc.documentId else action.target?.let { onMove(setOf(doc.documentId), it) } },
+              badges = badgesByDoc[doc.documentId].orEmpty())
             else SwipeRow(doc, doc.list, c, selecting, doc.documentId in selectedIds,
-              open, select, select, { rowMenu = doc }, { onMove(setOf(doc.documentId), it) })
+              open, select, select, { rowMenu = doc }, { onMove(setOf(doc.documentId), it) },
+              badges = badgesByDoc[doc.documentId].orEmpty())
             HorizontalDivider(color = c.divider.copy(alpha = .6f))
           }
           if (searchActive && librarySearch.hasMore) item { TextButton(onClick = onMoreResults, modifier = Modifier.fillMaxWidth()) { Text("Show 50 more") } }
@@ -445,7 +468,8 @@ fun InboxScreen(
     }
   } }
   labelIds?.let { ids -> LabelsDialog("Labels", ids.flatMap { labelsByDoc[it].orEmpty() }.groupingBy { norm -> labelCounts.find { it.normalized == norm }?.name ?: norm }.eachCount(), ids.size,
-    labelCounts.map { it.name }, { onToggleLabel(ids, it) }, { labelIds = null }, c) }
+    labelCounts.map { it.name }, { onToggleLabel(ids, it) }, { labelIds = null }, c,
+    palette = labelColorsByName, onManageLabels = { labelIds = null; onManageLabels() }) }
   deleteId?.let { id -> AlertDialog(onDismissRequest = { deleteId = null }, title = { Text("Delete article?") },
     text = { Text("This permanently removes the saved article. Your highlights and their attribution stay saved.") },
     confirmButton = { TextButton(onClick = { deleteId = null; onDelete(id) }) { Text("Delete article", color = c.error) } },
@@ -582,6 +606,7 @@ private fun SwipeRow(
   onToggle: () -> Unit,
   onMenu: () -> Unit,
   onSwiped: (target: String) -> Unit,
+  badges: List<LabelBadgeSpec> = emptyList(),
 ) {
   // Tap-vs-swipe arbitration, textbook pattern: stock clickable owns
   // taps (long-press enters selection); detectHorizontalDragGestures owns
@@ -686,7 +711,7 @@ private fun SwipeRow(
       // double-fire the row tap.
       ArticleRow(doc, colors, onOpen = { if (!gestureDrag) onOpen() }, onMenu = if (selecting) null else onMenu,
         selecting = selecting, selected = selected, onToggleSelect = onToggle,
-        onLongPress = onLongPress)
+        onLongPress = onLongPress, badges = badges)
     }
   }
 }
@@ -702,6 +727,8 @@ fun ArticleRow(
   selected: Boolean = false,
   onToggleSelect: (() -> Unit)? = null,
   onLongPress: (() -> Unit)? = null,
+  /** Compact descriptive label badges under the meta line; never a tap target. */
+  badges: List<LabelBadgeSpec> = emptyList(),
 ) {
   val complete = d.finishedAt != null
   // Finished pieces are the memory layer, not a defect: full-strength title,
@@ -775,6 +802,10 @@ fun ArticleRow(
       else -> "${ReaderCore.shortDisplaySource(d.sourceType, d.sourceName, d.sourceUrl)} · $mins min · Unread"
     }
     Text(metaLine, fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
+    if (badges.isNotEmpty()) {
+      Spacer(Modifier.height(6.dp))
+      LabelBadgesRow(badges)
+    }
     if (d.progressFraction > 0.01f && d.progressFraction < 0.999f) {
       Spacer(Modifier.height(6.dp))
       // Subordinate to the title: progress informs, it does not compete.
@@ -793,7 +824,8 @@ fun ArticleRow(
 private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.theme.ReaderColors,
                             selecting: Boolean, selected: Boolean,
                             onOpen: () -> Unit, onLongPress: () -> Unit, onToggle: () -> Unit,
-                            onMenu: () -> Unit, onAction: (ArticleAction) -> Unit) {
+                            onMenu: () -> Unit, onAction: (ArticleAction) -> Unit,
+                            badges: List<LabelBadgeSpec> = emptyList()) {
   var offset by remember(doc.documentId) { mutableFloatStateOf(0f) }
   var dragging by remember { mutableStateOf(false) }
   val latestAction by rememberUpdatedState(onAction)
@@ -844,7 +876,7 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
         onOpen = { if (!dragging) onOpen() },
         onMenu = if (selecting) null else onMenu,
         selecting = selecting, selected = selected, onToggleSelect = onToggle,
-        onLongPress = onLongPress)
+        onLongPress = onLongPress, badges = badges)
     }
   }
 }

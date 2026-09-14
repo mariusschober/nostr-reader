@@ -170,6 +170,13 @@ class MainActivity : ComponentActivity() {
       // assignment change. Selection is session state (a persisted label that
       // later empties out simply shows an empty state, never an error).
       val labelCounts by remember { db.labels().observeLabels() }.collectAsState(initial = emptyList())
+      // Label badge palette (labelId → key) and a normalized-name view for the
+      // assignment sheet, both joined in memory — no per-row DB query.
+      val labelPalette by remember { prefs.labelColors() }
+        .collectAsState(initial = emptyMap<String, com.reader.app.prefs.LabelColorKey>())
+      val labelColorsByName = remember(labelPalette, labelCounts) {
+        labelCounts.associate { it.normalized to (labelPalette[it.labelId] ?: com.reader.app.prefs.LabelColorKey.NEUTRAL) }
+      }
       var selectedLabelNorm by rememberSaveable { mutableStateOf<String?>(null) }
       var labelsTick by remember { mutableIntStateOf(0) }
       val labelPairs by remember { db.labels().observePairs() }.collectAsState(initial = emptyList())
@@ -425,6 +432,7 @@ class MainActivity : ComponentActivity() {
             },
             onLibrarySettings = { lifecycleScope.launch { prefs.save(it) } },
             labelIdsByDoc = labelIdsByDoc,
+            labelPalette = labelPalette,
             onManageLabels = { go(Route.Labels) },
             onOpenArticleHighlights = { go(Route.ArticleHighlights(it)) },
             onSample = { lifecycleScope.launch {
@@ -676,6 +684,8 @@ class MainActivity : ComponentActivity() {
             labelCounts.firstOrNull { it.normalized == norm }?.name
           }.orEmpty(),
           labelSuggestions = labelCounts.map { it.name },
+          labelPalette = labelColorsByName,
+          onManageLabels = { go(Route.Labels) },
           onToggleLabel = { label -> toggleLabel(setOf(r.id), label) },
           onSettingsChange = { lifecycleScope.launch { prefs.save(it) } },
           onBack = {
@@ -841,7 +851,7 @@ class MainActivity : ComponentActivity() {
           onBack = { pop() },
           onOpenSource = { documentId, quoteId -> go(Route.Reader(documentId, quoteId)) },
         )
-        is Route.Labels -> ManageLabelsScreen(db, onBack = ::pop,
+        is Route.Labels -> ManageLabelsScreen(db, prefs, onBack = ::pop,
           onMerge = { from, to -> lifecycleScope.launch {
             val current = prefs.load()
             if (from in current.labelIds) prefs.save(current.copy(labelIds = current.labelIds - from + to))

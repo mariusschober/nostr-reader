@@ -220,6 +220,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                           atEnd: Int? = null,
                           docLabels: List<String> = emptyList(),
                           labelSuggestions: List<String> = emptyList(),
+                          /** Normalized label name → palette key for badge identity. */
+                          labelPalette: Map<String, com.reader.app.prefs.LabelColorKey> = emptyMap(),
+                          /** Opens the full label editor from the assignment sheet. */
+                          onManageLabels: (() -> Unit)? = null,
                          onToggleLabel: (String) -> Unit = {},
                          onOpenArticleHighlights: () -> Unit = {},
                          player: @Composable () -> Unit = {},
@@ -919,6 +923,8 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       onToggle = onToggleLabel,
       onDismiss = { showLabels = false },
       colors = colors,
+      palette = labelPalette,
+      onManageLabels = onManageLabels?.let { manage -> { showLabels = false; manage() } },
     )
   }
   activeQuote?.let { quote -> HighlightActionsSheet(quote, actions.size > 1,
