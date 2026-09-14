@@ -2,7 +2,11 @@
 
 Executes [NEXT_AGENT_PROMPT_DEEPSEEK_TRIAL_FIXES_20260914.md](NEXT_AGENT_PROMPT_DEEPSEEK_TRIAL_FIXES_20260914.md)
 on `codex/reliability-finalize`, starting from documentation commit `e91fdf4`.
-All work is local; nothing was pushed, merged or released.
+The branch is pushed to `origin/codex/reliability-finalize`; nothing was merged and
+no release was produced. Four pre-existing untracked captures under
+`evidence/polish-20260911/` (`21-feed`, `22-feed`, `22-reader-tab`, `23-archive`)
+are deliberately preserved uncommitted, as the 11 September plan requires, so a
+clean `git status` is not expected.
 
 ## Source
 
@@ -89,10 +93,13 @@ cleared), the pulled-back `base.apk` matches the archive
 
 **PASS (TCL owner integrity).** All eight Room tables byte-identical before and
 after (6 articles, 71 highlights, 2 labels, 1 channel, review state, reading
-days), schema v13, and the encrypted key-file digest unchanged
+days), schema v13, and the digest of the Keystore-encrypted
+`shared_prefs/reader_keys.xml` unchanged
 (`c076b845...`). Preferences changed only by the specified one-time migration:
-the file gained `displayMode = STANDARD` (333 to 360 bytes) and nothing was
-reset. Detail in `evidence/focused-20260910/owner-tcl-0ca22ac-{before,after}.json`.
+the file gained `displayMode = STANDARD` and nothing was reset; it read 360 bytes
+at the install snapshot and 362 bytes after a later launch (owner `themeMode`
+still `SYSTEM`, `displayMode` `STANDARD`). Detail in
+`evidence/focused-20260910/owner-tcl-0ca22ac-{before,after}.json`.
 
 **PASS (NXTPAPER appearance, TCL QA package).** Monochrome dark on the e-ink
 panel: the Settings screen carries **App theme** and **Display** with inverse

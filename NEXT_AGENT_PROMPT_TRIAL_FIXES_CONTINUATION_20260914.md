@@ -7,7 +7,12 @@ and [artifacts/trial-fixes-20260914/EVIDENCE.md](artifacts/trial-fixes-20260914/
 ## State
 
 - Branch `codex/reliability-finalize`, pushed to `origin/codex/reliability-finalize`
-  at the owner's request. Tip is the docs commit that adds this prompt.
+  at the owner's request. The docs tip advances with each handoff commit; the
+  stable anchors are this branch and the frozen source commit `0ca22ac` below.
+- Pre-existing untracked captures
+  `evidence/polish-20260911/{21-feed,22-feed,22-reader-tab,23-archive}.xml` are
+  preserved on purpose and must never be committed; a clean `git status` is not
+  expected.
 - The brief [NEXT_AGENT_PROMPT_DEEPSEEK_TRIAL_FIXES_20260914.md](NEXT_AGENT_PROMPT_DEEPSEEK_TRIAL_FIXES_20260914.md)
   is implemented: packages A-E (separate display treatment with monochrome
   light/dark and one window-appearance source; focus-compatible hold/drag/release
