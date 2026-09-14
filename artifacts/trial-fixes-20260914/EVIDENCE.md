@@ -1,115 +1,140 @@
-# Trial-fix pass evidence — 14 September 2026
+# Trial-fix pass evidence - 14 September 2026
 
-Source frozen at `d58067f` on `codex/reliability-finalize` (documentation
-baseline `e91fdf4`). Implementation packages A–E were authored earlier in this
-pass; this record is the freeze, installation and preliminary-device evidence.
+Source frozen at `0ca22ac` on `codex/reliability-finalize` (documentation
+baseline `e91fdf4`). Implementation packages A-E were authored earlier in this
+pass; `0ca22ac` repaired the one behavioural deviation the S23 walkthrough
+found, so the frozen source is `0ca22ac`, not `d58067f`. This record covers the
+freeze gates, the TCL installation and owner integrity, the NXTPAPER
+appearance checks and the device verification of the repair.
 
 ## Artifacts
 
 | Artifact | SHA-256 | Notes |
 |---|---|---|
-| `reader-debug-d58067f.apk` | `7ff086955e9fc4bc63e3668d6a293818cbea910c8f90ee93a651119fb108e61f` | Normal package `com.reader.app`, installed on S23 `R3CW404GVBL`. |
-| `reader-qa-d58067f.apk` | `faeb8c9f8b162b2517f2b0ee28c2d4c9e491545f1f74f4113884bccf21568322` | QA package `com.reader.app.qa`, installed on S23 for the preliminary check. |
+| `reader-debug-0ca22ac.apk` | `003b4863a61aec09d7d4fbc2b4fad82cece9d224ebc89b180834cd77b7d2b0de` | Normal `com.reader.app`; installed in place on TCL `ZXKRS4VKGQ8PWGEQ`. |
+| `reader-qa-0ca22ac.apk` | `506d77d06e8f4f4046105857e703616290c11ed5f48afc6d7456b2b27eacda9f` | QA `com.reader.app.qa`; installed on the TCL for the NXTPAPER check. |
 
-`reader-qa-debug.apk` and `reader-qa-debug-androidTest.apk` (13:16) were built
-from the intermediate working tree before `d58067f`; they are superseded by the
-two artifacts above and were not used for the checks below.
+Both APKs were rebuilt from `0ca22ac` after the freeze and are byte-identical to
+the archived files, so the archive is the frozen source. APK binaries are not
+tracked in Git.
 
-Signing certificate (both packages): `3af50cab6e0515f478413e79786958671913b2cae67037defe537bb1e7465069`.
+Signing certificate (both packages):
+`3af50cab6e0515f478413e79786958671913b2cae67037defe537bb1e7465069`.
 
-## Host freeze gates — PASS
+## Host freeze gates - PASS
 
 | Gate | Result |
 |---|---|
-| `:app:lintDebug` | PASS — 0 errors (was 19: one `WrongConstant` + eighteen `UnsafeOptInUsageError`). |
-| `:app:testDebugUnitTest` | PASS — 268 tests, 0 failures, 0 errors. |
-| `:app:assembleDebug` (normal) | PASS — package `com.reader.app`. |
-| `:app:assembleDebug -PreaderQa=true` (QA) | PASS — package `com.reader.app.qa`. |
-| `:app:verify16KbAlignment` | PASS — all native libraries 16 KiB aligned. |
+| `:app:lintDebug` | PASS - 0 errors, 42 warnings. |
+| `:app:testDebugUnitTest` | PASS - 268 tests, 0 failures, 0 errors. |
+| `:app:assembleDebug` (normal) | PASS - package `com.reader.app`. |
+| `:app:assembleDebug -PreaderQa=true` (QA) | PASS - package `com.reader.app.qa`. |
+| `:app:verify16KbAlignment` | PASS - all native libraries 16 KiB aligned. |
 
-The lint fix replaced `SessionResult.RESULT_ERROR_NOT_SUPPORTED` with
-`SessionError.ERROR_NOT_SUPPORTED` (the name in the `@SessionResult.Code`
-allow-list; identical code) and moved `TtsPlaybackClient` from `@UnstableApi`
-(which propagated the opt-in requirement to all eighteen MainActivity call
-sites) to an internal `@androidx.annotation.OptIn(UnstableApi::class)`.
+Re-run on the frozen source this pass. The earlier `d58067f` lint repair (one
+`WrongConstant`, eighteen `UnsafeOptInUsageError`) still holds at `0ca22ac`.
 
-## Normal installation — PASS
+## TCL installation - PASS
 
-- S23 Ultra `R3CW404GVBL` (SM-S918B), Android 16 / SDK 36, build
-  `BP4A.251205.006.S918BXXSAFZH3`.
-- Installed in place with `adb install -r`; never uninstalled or cleared.
-- Pulled-back `base.apk` is byte-identical to `reader-debug-d58067f.apk`
-  (`cmp` clean, identical SHA-256).
+- TCL `ZXKRS4VKGQ8PWGEQ` (T807D), Android 16. The previously installed
+  `com.reader.app` was the 11 September build, pulled hash
+  `d3bdcdae7dc1dae525d5b04805fe31aaf331eb4cb98420df8163dd8278ea0236`, which
+  matches the brief.
+- Installed `reader-debug-0ca22ac.apk` in place with `adb install -r`; never
+  uninstalled or cleared.
+- The pulled-back `base.apk` is byte-identical to the archive
+  (`003b4863...`).
 - Launched once and left usable; `topResumedActivity` was
-  `com.reader.app/.ui.MainActivity`, no FATAL EXCEPTION.
+  `com.reader.app/.ui.MainActivity` and the crash buffer held no FATAL
+  EXCEPTION.
 
 ### Owner integrity
 
-`scripts/qa-owner-integrity.py R3CW404GVBL {before,after} d58067f-`
-(`evidence/focused-20260910/owner-d58067f-{before,after}.json`):
+`scripts/qa-owner-integrity.py ZXKRS4VKGQ8PWGEQ {before,after} tcl-0ca22ac-`
+(`evidence/focused-20260910/owner-tcl-0ca22ac-{before,after}.json`). Before the
+install: 6 articles, 71 highlights, 2 labels, 1 channel.
 
-- Room schema v13, all eight compared tables byte-identical before/after:
-  `documents` (1), `document_content` (1), `highlights` (0), `labels` (0),
-  `document_labels` (0), `channels` (0), `review_state` (0), `reading_days` (0).
-- Preferences changed only by the specified one-time display migration: the
-  DataStore file gained a materialized `displayMode = STANDARD` alongside the
-  preserved `themeMode = SYSTEM`, `welcomeShown` and `highlightCoachSeen`. No
-  preference was reset.
-- Encrypted key file `shared_prefs/reader_keys.xml` is absent before and after
-  (0 channels, so no channel key was ever sealed); no key contents exist to
-  export. `shared_prefs/` holds only `android.app.ActivityThread.IDS.xml`.
+- Room schema v13 before and after; all eight compared tables byte-identical:
+  `documents` 6, `document_content` 7, `highlights` 71, `labels` 2,
+  `document_labels` 2, `channels` 1, `review_state` 1, `reading_days` 1.
+- Preferences changed only by the specified one-time migration: the DataStore
+  file gained `displayMode = STANDARD` (333 to 360 bytes). Decoding the current
+  file shows `displayMode` as the only new key; `themeMode = SYSTEM`,
+  `welcomeShown`, `highlightCoachSeen`, `font`, `fontSize`, `margin`,
+  `lineSpacing`, `sort`, `age`, `boldText` and `tts` are all retained. No
+  preference was reset. The previous build predates `displayMode`, so this is
+  the documented materialization, not a data change.
+- The encrypted key file `shared_prefs/reader_keys.xml` is present and its
+  SHA-256 is unchanged before and after:
+  `c076b845a4eab1d06b2797df4c946c54a59c396b90d72aab8df59118b4596203`. Key
+  contents were never exported; only a stream digest was taken. The owner had
+  1 channel before and after.
 
-## S23 preliminary appearance check — PASS (preliminary)
+## NXTPAPER appearance check - PASS (TCL QA package)
 
-Run on the isolated QA package; the QA preferences were restored
-byte-identically afterwards (`themeMode = LIGHT`, `displayMode = STANDARD`).
+Run on the isolated `com.reader.app.qa` package installed on the TCL, with
+**Display: E-ink & NXTPAPER**. Screenshots are in this directory.
 
 | Screenshot | Observation |
 |---|---|
-| `s23-qa-2-settings-display-control.png` | Settings shows **Display: Standard · E-ink & NXTPAPER** immediately below **App theme: Follow system · Light · Dark**. |
-| `s23-qa-3-monochrome-light.png` | Monochrome light: white ground, black text/edges, dark-gray secondary, inverse-filled selected controls, thin outlines. |
-| `s23-qa-4-monochrome-dark-reader.png` | Monochrome dark library list. |
-| `s23-qa-5-monochrome-dark-article-highlight.png` | Monochrome dark article: black ground, white text, saved highlight filled dark with a white patterned edge — legible. |
-| `s23-normal-launch.png` | Normal `com.reader.app` after install: dark app chrome, owner Inbox clear (the single owner article is archived), bottom navigation intact. |
+| `tcl-qa-1-settings-monochrome-dark.png` | Settings shows **App theme: Follow system / Light / Dark** with **Display: Standard / E-ink & NXTPAPER** directly below it; the selected Dark and E-ink controls are inverse-filled; the status and navigation regions are black with no light strip. |
+| `tcl-qa-2-article-monochrome-dark.png` | Monochrome-dark article: black ground, white text, gray secondary, thin outlined reading actions. |
+| `tcl-qa-3-focus-monochrome-dark.png` | Fullscreen focus in monochrome dark: text runs to the top edge with no top bar, footer or action row, and **no light outer border**. This settles the owner-reported dark-mode edge symptom and is the view the S23 could not measure. |
+| `tcl-qa-4-pen-dock-monochrome-dark.png` | Highlighting dock: a compact bottom capsule with the current colour, the focus toggle and Done. |
+| `tcl-qa-5-highlight-settled-monochrome-dark.png` | A single hold-drag-release saved exactly one highlight, drawn with a dark fill and a white patterned edge, with a quiet "Undo highlight" offered. |
+| `tcl-qa-6-monochrome-light-settings.png`, `tcl-qa-7-monochrome-light-library.png` | Monochrome light on the NXTPAPER panel: white ground, black text, dark-gray secondary, inverse-selected controls and a white status bar with dark icons. |
+| `tcl-qa-8-pen-control-second-highlight.png` | The control gesture from the cancel test below produced a second highlight. |
 
-This is preliminary: the S23 is an OLED panel and **does not** establish
-NXTPAPER/e-ink appearance.
+## Pen-cancel repair - PASS (TCL QA package, source `0ca22ac`)
 
-## BLOCKED / NOT MEASURED
+The S23 walkthrough recorded that pressing Back while a pen highlight drag was
+still held did not cancel it. `0ca22ac` resets the pen gesture session inside
+`NativeArticleView.clearSelection()`. Verified on the TCL with injected
+`motionevent` sequences and a read of the QA Room rows:
 
-- **TCL `ZXKRS4VKGQ8PWGEQ` is not connected**, so the TCL installation hash and
-  the NXTPAPER physical-appearance checks are **BLOCKED** (not run). The brief's
-  QA walkthrough (pen gesture, article-scoped Review, labels, background audio
-  continuation) is deferred to the TCL pass.
-- `ReaderFlowInstrumentedTest` remains opt-in and its residual failure is the
-  Android 16 / One UI 8 share-sheet layout assumption, not a product defect; it
-  is **NOT MEASURED** as a product check on this device.
+- Baseline `highlights` = 1.
+- Cancel gesture `DOWN`, hold, `MOVE`, `keyevent 4` (Back), `MOVE`, `UP`: the
+  row count stayed at 1 and the app remained in the reader in highlighting
+  mode, so Back cancelled the gesture instead of navigating away.
+- Control, the same sequence without the Back press, on a different passage:
+  the row count went 1 to 2. The harness therefore commits when it should, so
+  the cancel result is not a no-op artefact.
 
-## S23 walkthrough — pen, appearance and ordinary selection
+## One gesture, one row - PASS (TCL QA package)
 
-Added after the freeze commit, from a later run on the same frozen build
-(`d58067f`, QA package `com.reader.app.qa`) on S23 Ultra `R3CW404GVBL`
-(Android 16 / SDK 36). The QA database was read through `run-as` together with
-its WAL before and after each check, so row counts and committed ranges are
-measured, not inferred. The QA preferences were left at their prior values
-(App theme Light, Display Standard, Text size 19, Spacing Comfort, Margins
-Default, Font Newsreader, Bold text off).
+A `draganddrop` hold-drag-release over a wrapped line produced exactly one new
+`highlights` row (0 to 1) with no duplicate, and the dock offered a single
+quiet "Undo highlight".
 
-| Brief row | Result | Evidence |
-|---|---|---|
-| Pen: hold/drag/release settles automatically, no native menu, exactly one row | **PASS** | Long-press + drag across a wrapped line persisted exactly one new row: total `highlights` 9 → 10, document `f051e679…` 1 → 2, quote ". A saved quote remains a single record while its handles move", block `b2` offsets 13 → 75, colour `YELLOW`. No native Copy/Share menu appeared in pen mode; a quiet "Undo highlight" was offered. `s23-qa-6-pen-dock.png`, `s23-qa-7-pen-settled-highlight.png` |
-| Pen: Undo reverses the gesture | **PASS** | "Undo highlight" returned the total to 9 and document `f051e679…` to 1, leaving the pre-existing "deliberate" highlight intact. |
-| Pen: short drag still scrolls | **PASS** | A 300 ms drag scrolled the article (footer 2% → 5%) and added no row (total stayed 9). |
-| Pen: cancellation saves nothing | **PASS** | `ACTION_CANCEL` after long-press and drag left the total at 9. |
-| Pen: cancellation visual | minor deviation | The native selection highlight is not cleared by `ACTION_CANCEL` and stayed painted after leaving pen mode (`s23-qa-8-pen-off-residual-selection.png`); it cleared as soon as the next selection replaced it. Cosmetic only, no data effect. |
-| Ordinary mode: native handles and actions | **PASS** | Outside pen mode a long-press produced native handles and the system menu "Highlight · Kopieren · Übersetzen · ⋮" (device locale German). `s23-qa-9-ordinary-selection-actions.png` |
-| Appearance sheet: partially open, one hierarchy, no expand button | **PASS** | It opens partially expanded with a pinned Appearance/Done header and a usable passage visible; pulling up reveals Text size, Spacing, App theme, Display, Background (Standard only), Font, Margins and Bold text with no "More options" control. `s23-qa-10-appearance-partial.png`, `s23-qa-11-appearance-expanded-bottom.png` |
-| Appearance sheet: pinned header | minor deviation | The Appearance/Done header is pinned while the sheet is partially open but scrolls away once it is fully expanded; the drag handle remains for dismissal. |
-| Appearance sheet: change applies immediately, passage preserved | **PASS** | "+" changed "Text size · 19" → "Text size · 20" with no confirmation step and "−" restored 19; closing the sheet left the footer at 5% (same passage). |
-| Back cancels an active selection gesture | **FAIL (deviation, not repaired)** | With the finger still down, Back cleared the native selection but the release still committed a highlight: total 9 → 10, quote "remains exact." (document `f051e679…`, offsets 93–107). Reproduced with a single-process 3 s drag and Back at 1.6 s, and contrasted with a run that held the finger down without releasing (total stayed 9), which shows the release is the commit point. Cause: `PreparedReaderScreen.leave()` calls `NativeArticleView.clearSelection()`, which clears the native selection but not the pen gesture session; later MOVE events re-establish the native selection, so `settlePenGesture()` commits on release. `setPenMode(false)` and the `ACTION_CANCEL` branch both reset that session (`selectionSession`, `sessionRange`, `settledSession`); `clearSelection()` does not. **Not repaired in this pass** — changing the frozen source would invalidate the archived APK hashes and the S23 install/owner-integrity evidence, so it needs a deliberate re-freeze. |
+## Deviations
 
-**NOT MEASURED on the S23:** entering/leaving fullscreen focus and a *focused*
-monochrome-dark capture. The archived monochrome set (light, dark reader, dark
-article highlight) was captured earlier in the pass and re-checked here, but it
-contains no focused view, so the owner-reported light outer border in dark mode
-is still not device-verified. TCL `ZXKRS4VKGQ8PWGEQ` remains BLOCKED.
+1. **Back during a live pen gesture** - FIXED at `0ca22ac` and verified on the
+   TCL above. Supersedes the "not repaired" note in the earlier S23 record.
+2. **Native selection remnant (cosmetic)** - after a settled highlight the
+   native selection handles can remain painted until the next gesture replaces
+   them. There is no data effect; the stored row and quoted range are correct.
+   Reproduced on the TCL as well as the S23. Not repaired in this pass.
+3. **Appearance/Done header (minor)** - the header is pinned while the sheet is
+   partially open and scrolls away once it is fully expanded; the drag handle
+   remains for dismissal. Unchanged from the S23 record.
+
+## NOT MEASURED / BLOCKED
+
+- `ReaderFlowInstrumentedTest` remains opt-in; its residual failure is the
+  Android 16 / One UI 8 share-sheet layout assumption, not a product defect.
+  It is not counted as a product check.
+- Sustained listening, electrophoretic ghosting and battery remain owner-trial
+  observations rather than device-verified properties.
+- Physical e-ink refresh quality cannot be established from a screenshot.
+
+## Left state
+
+- TCL owner package: normal `com.reader.app` from `0ca22ac` installed in place,
+  launched once, owner data intact. QA package `com.reader.app.qa` is also
+  installed (isolated, holding the built-in sample article plus two test
+  highlights) with its display restored to E-ink & NXTPAPER and App theme
+  Dark. Remove it with
+  `adb -s ZXKRS4VKGQ8PWGEQ uninstall com.reader.app.qa` if unwanted.
+- The four pre-existing untracked captures
+  `evidence/polish-20260911/{21-feed,22-feed,22-reader-tab,23-archive}.xml` are
+  untouched.
