@@ -4,6 +4,11 @@ Updated 2026-09-10 for the user-approved focused implementation, then again afte
 
 Updated 2026-09-14 (trial-fix pass): **Display: Standard · E-ink & NXTPAPER** is now a separate setting directly below **App theme: Follow system · Light · Dark**, exposed in both Settings and Reading appearance. New surfaces: a focus-compatible highlighting dock with hold/drag/release auto-save, an article-scoped **Article highlights** list and **Review this article** round, label colour choices with compact library badges (**Save label** replaces Save name), and a now-playing row with service-owned background listening. The rows below reflect these strings.
 
+Copy-deck note (2026-09-14, TCL pass): the `0ca22ac` repair changed behaviour
+only, so no user-facing string changed and the rows below are unchanged from
+the 2026-09-14 trial-fix update. The existing statement that a cancelled
+gesture saves nothing is now true on device.
+
 ## Voice
 
 Use clear, quiet language. Describe the stored outcome accurately and give a useful next action. Never claim an article is available offline before its text is stored. No streak pressure, automatic tutorial labels or unsolicited celebrations.
