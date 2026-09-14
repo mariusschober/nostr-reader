@@ -37,11 +37,22 @@ data class LibraryStats(val total: Int = 0, val weekMinutes: Int = 0, val weekFi
       TextButton(onClick = { appearance = true }) { Text("Reading appearance", style = MaterialTheme.typography.titleMedium) }
       Text("App theme", style = MaterialTheme.typography.labelMedium, color = c.secondary)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        com.reader.app.prefs.ThemeMode.entries.forEach { mode -> FilterChip(settings.themeMode == mode,
+        listOf(
+          com.reader.app.prefs.ThemeMode.SYSTEM,
+          com.reader.app.prefs.ThemeMode.LIGHT,
+          com.reader.app.prefs.ThemeMode.DARK,
+        ).forEach { mode -> FilterChip(settings.themeMode == mode,
           { onSettingsChange(settings.copy(themeMode = mode)) }, { Text(when (mode) {
             com.reader.app.prefs.ThemeMode.SYSTEM -> "Follow system"
-            com.reader.app.prefs.ThemeMode.EINK -> "E-ink / NXTPAPER"
             else -> mode.name.lowercase().replaceFirstChar { it.uppercase() }
+          }) }) }
+      }
+      Text("Display", style = MaterialTheme.typography.labelMedium, color = c.secondary)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.reader.app.prefs.DisplayMode.entries.forEach { mode -> FilterChip(settings.display == mode,
+          { onSettingsChange(settings.copy(display = mode)) }, { Text(when (mode) {
+            com.reader.app.prefs.DisplayMode.STANDARD -> "Standard"
+            com.reader.app.prefs.DisplayMode.MONOCHROME -> "E-ink & NXTPAPER"
           }) }) }
       }
       HorizontalDivider(color = c.divider)

@@ -381,7 +381,7 @@ private fun HighlightSwipeRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
           if (action == HighlightAction.Important) {
             val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
-            Icon(Icons.Default.Star, contentDescription = null, tint = if (mono) com.reader.app.ui.theme.EinkColors.text else Flexoki.StarYellow, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.Star, contentDescription = null, tint = if (mono) MaterialTheme.colorScheme.onSurface else Flexoki.StarYellow, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
           } else {
             Icon(Icons.Default.Delete, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
@@ -444,6 +444,9 @@ private fun HighlightSwipeRow(
         val saved = com.reader.app.ui.theme.HighlightColor.parse(quote.color)
         val mono = com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome
         val pres = com.reader.app.ui.theme.highlightPresentation(quote.color, mono, dark)
+        val monoInk = MaterialTheme.colorScheme.onSurface
+        val monoSurface = MaterialTheme.colorScheme.surface
+        val markerColor = if (mono) monoInk else saved.background(dark)
 
         // Source context comes first, so a long passage is identifiable before
         // the reader starts reading it. The action footer below remains
@@ -477,7 +480,7 @@ private fun HighlightSwipeRow(
             Modifier.fillMaxWidth()
               .clip(RoundedCornerShape(8.dp))
               .background(if (mono) pres.fill else saved.background(dark).copy(alpha = if (dark) .32f else .55f))
-              .drawBehind { drawRect(color = if (mono) com.reader.app.ui.theme.EinkColors.text else saved.background(dark), size = Size(if (mono) 2.dp.toPx() else 3.dp.toPx(), size.height)) }
+              .drawBehind { drawRect(color = markerColor, size = Size(if (mono) 2.dp.toPx() else 3.dp.toPx(), size.height)) }
               .semantics { contentDescription = "Highlight color ${pres.label}" },
           ) {
             Text(
@@ -487,17 +490,17 @@ private fun HighlightSwipeRow(
                 fontSize = quoteSp.sp,
                 lineHeight = (quoteSp * 1.5f).sp,
               ),
-              color = if (mono) com.reader.app.ui.theme.EinkColors.text else com.reader.app.ui.theme.HighlightColor.text(dark),
+              color = if (mono) MaterialTheme.colorScheme.onSurface else com.reader.app.ui.theme.HighlightColor.text(dark),
               modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
             )
           }
           if (quote.important) {
             Box(
-              Modifier.align(Alignment.TopEnd).offset(y = (-12).dp).size(24.dp).background(if (mono) com.reader.app.ui.theme.EinkColors.surface else Flexoki.Base800, CircleShape)
+              Modifier.align(Alignment.TopEnd).offset(y = (-12).dp).size(24.dp).background(if (mono) monoSurface else Flexoki.Base800, CircleShape)
                 .semantics { contentDescription = "Important highlight" },
               contentAlignment = Alignment.Center,
             ) {
-              Icon(Icons.Default.Star, contentDescription = null, tint = if (mono) com.reader.app.ui.theme.EinkColors.text else Flexoki.StarYellow, modifier = Modifier.size(15.dp))
+              Icon(Icons.Default.Star, contentDescription = null, tint = if (mono) MaterialTheme.colorScheme.onSurface else Flexoki.StarYellow, modifier = Modifier.size(15.dp))
             }
           }
         }

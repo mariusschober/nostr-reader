@@ -2,6 +2,7 @@ package com.reader.app
 
 import androidx.datastore.preferences.core.preferencesOf
 import com.reader.app.prefs.ArticleFont
+import com.reader.app.prefs.DisplayMode
 import com.reader.app.prefs.Prefs
 import com.reader.app.prefs.ThemeMode
 import com.reader.app.prefs.decodeSettings
@@ -56,7 +57,27 @@ class PrefsMigrationTest {
   }
 
   @Test fun einkThemeModeDecodesFromStorage() {
-    assertEquals("The e-ink theme must persist without renaming existing values",
-      ThemeMode.EINK, decodeSettings(preferencesOf(Prefs.K.THEME to "EINK")).themeMode)
+    // A legacy `EINK` theme value migrates to monochrome + System so the
+    // existing install keeps its look and starts following the phone setting.
+    val s = decodeSettings(preferencesOf(Prefs.K.THEME to "EINK"))
+    assertEquals(ThemeMode.SYSTEM, s.themeMode)
+    assertEquals(DisplayMode.MONOCHROME, s.display)
+  }
+
+  @Test fun displayDefaultsToStandardForEveryNonEinkInstall() {
+    assertEquals(DisplayMode.STANDARD, decodeSettings(preferencesOf()).display)
+    assertEquals(DisplayMode.STANDARD, decodeSettings(preferencesOf(Prefs.K.FONT to "ASUL")).display)
+    assertEquals(DisplayMode.STANDARD, decodeSettings(preferencesOf(Prefs.K.THEME to "DARK")).display)
+  }
+
+  @Test fun explicitDisplayValueWinsOverLegacyTheme() {
+    // Once the migration has materialized, an explicit STANDARD display must
+    // not be re-derived to MONOCHROME from a stale theme value.
+    val s = decodeSettings(preferencesOf(Prefs.K.DISPLAY to "STANDARD", Prefs.K.THEME to "EINK"))
+    assertEquals(DisplayMode.STANDARD, s.display)
+    assertEquals(ThemeMode.SYSTEM, s.themeMode)
+    assertEquals(DisplayMode.MONOCHROME, decodeSettings(preferencesOf(Prefs.K.DISPLAY to "MONOCHROME")).display)
+    assertEquals("Unknown display values resolve safely to Standard",
+      DisplayMode.STANDARD, decodeSettings(preferencesOf(Prefs.K.DISPLAY to "NOT_A_MODE")).display)
   }
 }

@@ -87,6 +87,19 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onSwipeProgress: (Float, Boolean) -> Unit = { _, _ -> }
   var articleList: String? = null
   var deleteTint: Int = 0xFFAF3029.toInt()
+  /**
+   * Explicit edge color for monochrome saved-mark underlines, resolved by the
+   * reader's presentation (black on the white ground, white on the dark
+   * ground). The platform default of a hard-coded black rule made dark
+   * monochrome edges invisible.
+   */
+  var monoEdgeColor: Int = android.graphics.Color.BLACK
+    set(value) {
+      if (field != value) {
+        field = value
+        if (markRanges.any { it.edge != "none" }) invalidate()
+      }
+    }
   private var swipeX = 0f
   private var swipeY = 0f
   private var swipeEligible = false
@@ -722,6 +735,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       monoDotEffect = android.graphics.DashPathEffect(floatArrayOf(1.5f * density, 4f * density), 0f)
     }
     val contentLeft = body.left + body.paddingLeft
+    monoEdgePaint.color = monoEdgeColor
     canvas.save()
     canvas.clipRect(body.left.toFloat(), body.top.toFloat(), (body.left + body.width).toFloat(), (body.top + body.height).toFloat())
     for (run in monoRuns) {

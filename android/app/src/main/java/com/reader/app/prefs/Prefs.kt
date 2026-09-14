@@ -14,6 +14,13 @@ enum class ArticleFont { NEWSREADER, CRIMSON_PRO, ASUL, ATKINSON, ABEEZEE, INTER
 enum class ArticleMargin { NARROW, DEFAULT, WIDE }
 enum class ArticleBackground { FOLLOW_APP, PAPER, SOFT, SEPIA, INK, BLACK }
 enum class ThemeMode { SYSTEM, LIGHT, DARK, EINK }
+/**
+ * Display treatment, independent of Light/Dark/System. STANDARD keeps hue;
+ * MONOCHROME is the app-wide E-ink / NXTPAPER presentation and follows the
+ * theme's resolved darkness. The stored `EINK` theme value decodes to
+ * MONOCHROME + SYSTEM so existing installs keep their appearance.
+ */
+enum class DisplayMode { STANDARD, MONOCHROME }
 enum class LineSpacing { COMPACT, COMFORT, AIRY }
 enum class LibrarySort { NEWEST, OLDEST, QUICKEST, LONGEST, TITLE }
 enum class AgeFilter { ANY, TODAY, WEEK, MONTH, OLDER }
@@ -24,6 +31,7 @@ data class ReaderSettings(
   val margin: ArticleMargin = ArticleMargin.DEFAULT,
   val background: ArticleBackground = ArticleBackground.FOLLOW_APP,
   val themeMode: ThemeMode = ThemeMode.SYSTEM,
+  val display: DisplayMode = DisplayMode.STANDARD,
   val ttsSpeed: Float = 1.0f,
   val rsvpWpm: Int = 300,
   val lineSpacing: LineSpacing = LineSpacing.COMFORT,
@@ -60,6 +68,7 @@ class Prefs(private val ctx: Context) {
     val TTS = floatPreferencesKey("tts")
     val WPM = intPreferencesKey("wpm")
     val THEME = stringPreferencesKey("themeMode")
+    val DISPLAY = stringPreferencesKey("displayMode")
     val SPACING = stringPreferencesKey("lineSpacing")
     val SORT = stringPreferencesKey("sort")
     val AGE = stringPreferencesKey("age")
@@ -74,7 +83,7 @@ class Prefs(private val ctx: Context) {
     val MILESTONES = stringSetPreferencesKey("milestonesDone")
   }
 
-  val flow = ctx.store.data.onStart { materializeCoach() }.map(::decode).distinctUntilChanged()
+  val flow = ctx.store.data.onStart { materializeMigrations() }.map(::decode).distinctUntilChanged()
   suspend fun load(): ReaderSettings = flow.first()
 
   private fun decode(d: Preferences): ReaderSettings = decodeSettings(d)
@@ -85,11 +94,23 @@ class Prefs(private val ctx: Context) {
    * make the legacy-install heuristic true and wrongly skip the explanation.
    * Fresh installs persist `false`; established installs persist `true`.
    */
-  private suspend fun materializeCoach() {
+  private suspend fun materializeMigrations() {
     val first = ctx.store.data.first()
-    if (first[K.HIGHLIGHT_COACH] != null) return
-    val decision = decodeSettings(first).highlightCoachSeen
-    ctx.store.updateData { it.toMutablePreferences().apply { set(K.HIGHLIGHT_COACH, decision) } }
+    val needCoach = first[K.HIGHLIGHT_COACH] == null
+    val needDisplay = first[K.DISPLAY] == null
+    if (!needCoach && !needDisplay) return
+    val decoded = decodeSettings(first)
+    ctx.store.updateData {
+      it.toMutablePreferences().apply {
+        if (needCoach) set(K.HIGHLIGHT_COACH, decoded.highlightCoachSeen)
+        // Materialize the display migration once: a legacy `EINK` theme value
+        // becomes MONOCHROME + SYSTEM, and a Standard install records STANDARD.
+        if (needDisplay) {
+          set(K.DISPLAY, decoded.display.name)
+          set(K.THEME, decoded.themeMode.name)
+        }
+      }
+    }
   }
 
   suspend fun save(s: ReaderSettings) {
@@ -102,6 +123,7 @@ class Prefs(private val ctx: Context) {
         set(K.TTS, s.ttsSpeed)
         set(K.WPM, s.rsvpWpm)
         set(K.THEME, s.themeMode.name)
+        set(K.DISPLAY, s.display.name)
         set(K.SPACING, s.lineSpacing.name)
         set(K.SORT, s.sort.name)
         set(K.AGE, s.age.name)
@@ -152,13 +174,29 @@ internal fun decodeSettings(d: Preferences): ReaderSettings {
       Prefs.K.FONT, Prefs.K.FONT_SIZE, Prefs.K.MARGIN, Prefs.K.BG, Prefs.K.THEME,
       Prefs.K.SPACING, Prefs.K.SORT, Prefs.K.AGE, Prefs.K.BOLD, Prefs.K.WELCOME,
     ).any { d.contains(it) }
+  val rawTheme = d[Prefs.K.THEME]
+  // The legacy `EINK` theme value predates the separate display setting. It
+  // becomes MONOCHROME + SYSTEM so existing E-ink installs keep their look and
+  // begin following the phone's dark setting.
+  val legacyEink = rawTheme == "EINK"
+  val themeMode = when {
+    legacyEink -> ThemeMode.SYSTEM
+    else -> runCatching { ThemeMode.valueOf(rawTheme ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM)
+  }
+  val display = when {
+    d.contains(Prefs.K.DISPLAY) ->
+      runCatching { DisplayMode.valueOf(d[Prefs.K.DISPLAY] ?: "STANDARD") }.getOrDefault(DisplayMode.STANDARD)
+    legacyEink -> DisplayMode.MONOCHROME
+    else -> DisplayMode.STANDARD
+  }
   return ReaderSettings(
     font = runCatching { ArticleFont.valueOf(d[Prefs.K.FONT] ?: "NEWSREADER") }.getOrDefault(ArticleFont.NEWSREADER),
     fontSizeSp = (d[Prefs.K.FONT_SIZE] ?: 19f).coerceIn(14f, 32f),
     margin = runCatching { ArticleMargin.valueOf(d[Prefs.K.MARGIN] ?: "DEFAULT") }.getOrDefault(ArticleMargin.DEFAULT),
     // Existing explicit backgrounds survive; only new/unset installs follow the app.
     background = runCatching { ArticleBackground.valueOf(d[Prefs.K.BG] ?: "FOLLOW_APP") }.getOrDefault(ArticleBackground.FOLLOW_APP),
-    themeMode = runCatching { ThemeMode.valueOf(d[Prefs.K.THEME] ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM),
+    themeMode = themeMode,
+    display = display,
     ttsSpeed = (d[Prefs.K.TTS] ?: 1f).coerceIn(0.75f, 2.5f),
     rsvpWpm = (d[Prefs.K.WPM] ?: 300).coerceIn(100, 1200),
     lineSpacing = runCatching { LineSpacing.valueOf(d[Prefs.K.SPACING] ?: "COMFORT") }.getOrDefault(LineSpacing.COMFORT),

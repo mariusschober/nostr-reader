@@ -298,49 +298,18 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     transition(onBack)
   }
   BackHandler(enabled = !transitioning) { leave() }
-  // Fullscreen focus owns the window boundary: edge-to-edge into the cutout
-  // region with transparent bars so the reading surface paints to the edges.
-  // Only real camera occlusion keeps protection; no black letterbox or hidden
-  // control spacer remains. Restored on exit/disposal.
-  DisposableEffect(immersed, colors.background) {
-    val window = (context as? android.app.Activity)?.window
-    val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
-    val prevCutout = if (android.os.Build.VERSION.SDK_INT >= 28) window?.attributes?.layoutInDisplayCutoutMode else null
-    val prevStatus = window?.statusBarColor
-    val prevNav = window?.navigationBarColor
-    if (window != null && controller != null) {
-      if (immersed) {
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
-        if (android.os.Build.VERSION.SDK_INT >= 28) {
-          window.attributes = window.attributes.apply {
-            layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-          }
-        }
-        window.statusBarColor = android.graphics.Color.TRANSPARENT
-        window.navigationBarColor = android.graphics.Color.TRANSPARENT
-        window.decorView.setBackgroundColor(colors.background.toArgb())
-        controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-      } else {
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
-        if (android.os.Build.VERSION.SDK_INT >= 28 && prevCutout != null) {
-          window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = prevCutout }
-        }
-        if (prevStatus != null) window.statusBarColor = prevStatus
-        if (prevNav != null) window.navigationBarColor = prevNav
-        controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-      }
-    }
+  // Fullscreen focus reports its state to the Activity-owned window coordinator,
+  // which recomputes the decor/bars/icon contrast from the current surface. The
+  // reader copies no captured bar colors, so exiting focus or switching theme
+  // never restores a stale light strip.
+  SideEffect {
+    com.reader.app.ui.theme.ReaderWindow.readerFocused = immersed
+    com.reader.app.ui.theme.ReaderWindow.readerSurface = colors.background
+  }
+  DisposableEffect(Unit) {
     onDispose {
-      if (window != null) {
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
-        if (android.os.Build.VERSION.SDK_INT >= 28 && prevCutout != null) {
-          window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = prevCutout }
-        }
-        if (prevStatus != null) window.statusBarColor = prevStatus
-        if (prevNav != null) window.navigationBarColor = prevNav
-      }
-      controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+      com.reader.app.ui.theme.ReaderWindow.readerFocused = false
+      com.reader.app.ui.theme.ReaderWindow.readerSurface = null
     }
   }
   // Reading sessions run long: never let the lock screen interrupt
@@ -708,6 +677,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             native.tag = styleKey
           }
           native.deleteTint = colors.error.toArgb()
+          native.monoEdgeColor = colors.text.toArgb()
           native.reducedMotion = effectiveReducedMotion
           native.articleList = null
           native.onArticleSwipe = { action -> transition { onArticleAction(action) } }

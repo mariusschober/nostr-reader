@@ -1,7 +1,10 @@
 <resources>
   <style name="Theme.Reader" parent="android:Theme.Material.NoActionBar">
     <item name="android:windowBackground">#1C1B1A</item>
-    <item name="android:statusBarColor">#FFFCF0</item>
-    <item name="android:navigationBarColor">#FFFCF0</item>
+    <!-- Neutral pre-draw state. The Activity coordinator owns the live
+         status/navigation bar colors from the resolved route surface, so no
+         light strip can leak during a transition or focus change. -->
+    <item name="android:statusBarColor">#1C1B1A</item>
+    <item name="android:navigationBarColor">#1C1B1A</item>
   </style>
 </resources>

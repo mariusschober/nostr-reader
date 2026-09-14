@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import com.reader.app.prefs.ThemeMode
+import com.reader.app.prefs.DisplayMode
 import com.reader.app.R
 import com.reader.app.prefs.ArticleBackground
 import com.reader.app.prefs.ArticleFont
@@ -85,6 +86,7 @@ fun colorsFor(bg: ArticleBackground): ReaderColors = when (bg) {
  * tinted fills, and black links that also carry an underline. Hue never
  * carries meaning in this theme.
  */
+/** Monochrome light: white ground, black text/edges, #333 secondary. */
 val EinkColors = ReaderColors(
   background = Color(0xFFFFFFFF),
   surface = Color(0xFFFFFFFF),
@@ -98,15 +100,35 @@ val EinkColors = ReaderColors(
   focal = Color(0xFF000000),
 )
 
+/** Monochrome dark: black ground, white text/edges, #CCCCCC secondary. */
+val EinkColorsDark = ReaderColors(
+  background = Color(0xFF000000),
+  surface = Color(0xFF000000),
+  text = Color(0xFFFFFFFF),
+  secondary = Color(0xFFCCCCCC),
+  divider = Color(0xFFFFFFFF),
+  link = Color(0xFFFFFFFF),
+  success = Color(0xFFFFFFFF),
+  warning = Color(0xFFFFFFFF),
+  error = Color(0xFFFFFFFF),
+  focal = Color(0xFFFFFFFF),
+)
+
+/** Resolved monochrome palette for the current darkness. */
+fun einkColors(dark: Boolean): ReaderColors = if (dark) EinkColorsDark else EinkColors
+
 /**
  * Effective presentation policy for the current theme. [monochrome] drives
  * the e-ink palette and non-colour state indicators; [reducedMotion] swaps
  * animated transitions for instant changes while leaving native drag physics
- * and direct touch scrolling intact.
+ * and direct touch scrolling intact; [dark] is the resolved darkness so a
+ * nested reader theme can preserve monochrome and its Light/Dark/System
+ * choice instead of inferring it from the stored article background.
  */
 data class DisplayPolicy(
   val monochrome: Boolean = false,
   val reducedMotion: Boolean = false,
+  val dark: Boolean = false,
 )
 
 val LocalReaderDark = staticCompositionLocalOf { false }
@@ -119,25 +141,29 @@ fun resolvedBackground(background: ArticleBackground, dark: Boolean): ArticleBac
 
 @Composable
 fun readerColors(background: ArticleBackground): ReaderColors =
-  if (LocalDisplayPolicy.current.monochrome) EinkColors
+  if (LocalDisplayPolicy.current.monochrome) einkColors(LocalDisplayPolicy.current.dark)
   else colorsFor(resolvedBackground(background, LocalReaderDark.current))
 
 @Composable
 fun appColors(): ReaderColors =
-  if (LocalDisplayPolicy.current.monochrome) EinkColors
+  if (LocalDisplayPolicy.current.monochrome) einkColors(LocalDisplayPolicy.current.dark)
   else colorsFor(if (LocalReaderDark.current) ArticleBackground.INK else ArticleBackground.PAPER)
 
 @Composable
-fun ReaderTheme(mode: ThemeMode, content: @Composable () -> Unit) {
+fun ReaderTheme(mode: ThemeMode, display: DisplayMode = DisplayMode.STANDARD, content: @Composable () -> Unit) {
   val outer = LocalDisplayPolicy.current
   val systemReduceMotion = rememberReduceMotion()
-  val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.DARK -> true; else -> false }
   // A nested ReaderTheme (the reading surface re-themes itself LIGHT/DARK)
-  // must not silently drop an active e-ink override, so inherit it.
-  val monochrome = mode == ThemeMode.EINK || outer.monochrome
+  // must not silently drop an active monochrome override, so inherit it.
+  val monochrome = display == DisplayMode.MONOCHROME || mode == ThemeMode.EINK || outer.monochrome
+  // In monochrome the app's Light/Dark/System choice owns both article and
+  // chrome; a nested reader theme keeps the resolved darkness rather than
+  // re-deriving it from the stored article background.
+  val dark = if (outer.monochrome) outer.dark
+    else when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.DARK -> true; else -> false }
   val reducedMotion = monochrome || systemReduceMotion || outer.reducedMotion
-  val c = if (monochrome) EinkColors else colorsFor(if (dark) ArticleBackground.INK else ArticleBackground.PAPER)
-  val accentSurface = if (monochrome) Color(0xFFFFFFFF) else if (dark) Color(0xFF153E5A) else Color(0xFFD8E8F2)
+  val c = if (monochrome) einkColors(dark) else colorsFor(if (dark) ArticleBackground.INK else ArticleBackground.PAPER)
+  val accentSurface = if (monochrome) c.surface else if (dark) Color(0xFF153E5A) else Color(0xFFD8E8F2)
   val scheme = when {
     monochrome -> lightColorScheme(
       // Selected containers invert to a black fill with white content so a
@@ -168,7 +194,7 @@ fun ReaderTheme(mode: ThemeMode, content: @Composable () -> Unit) {
   }
   CompositionLocalProvider(
     LocalReaderDark provides dark,
-    LocalDisplayPolicy provides DisplayPolicy(monochrome = monochrome, reducedMotion = reducedMotion),
+    LocalDisplayPolicy provides DisplayPolicy(monochrome = monochrome, reducedMotion = reducedMotion, dark = dark),
   ) { MaterialTheme(colorScheme = scheme, typography = readerTypography(), content = content) }
 }
 

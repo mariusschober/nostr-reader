@@ -23,11 +23,22 @@ fun highlightPresentation(colorName: String, monochrome: Boolean, dark: Boolean)
   if (!monochrome) {
     return HighlightPresentation(color.label, color.label.take(1), color.background(dark), HighlightColor.text(dark), MonoEdge.SOLID)
   }
+  // Monochrome dark: grey fills on the black ground with white quote text and
+  // white patterned edges, so identity survives without hue.
+  val text = if (dark) Color.White else Color.Black
+  if (dark) {
+    return when (color) {
+      HighlightColor.YELLOW -> HighlightPresentation("Yellow", "Y", Color(0xFF202020), text, MonoEdge.SOLID)
+      HighlightColor.GREEN -> HighlightPresentation("Green", "G", Color(0xFF323232), text, MonoEdge.DOUBLE)
+      HighlightColor.CYAN -> HighlightPresentation("Cyan", "C", Color(0xFF484848), text, MonoEdge.DASHED)
+      HighlightColor.PURPLE -> HighlightPresentation("Purple", "P", Color(0xFF606060), text, MonoEdge.DOTTED)
+    }
+  }
   return when (color) {
-    HighlightColor.YELLOW -> HighlightPresentation("Yellow", "Y", Color(0xFFE0E0E0), Color.Black, MonoEdge.SOLID)
-    HighlightColor.GREEN -> HighlightPresentation("Green", "G", Color(0xFFC8C8C8), Color.Black, MonoEdge.DOUBLE)
-    HighlightColor.CYAN -> HighlightPresentation("Cyan", "C", Color(0xFFB0B0B0), Color.Black, MonoEdge.DASHED)
-    HighlightColor.PURPLE -> HighlightPresentation("Purple", "P", Color(0xFF989898), Color.Black, MonoEdge.DOTTED)
+    HighlightColor.YELLOW -> HighlightPresentation("Yellow", "Y", Color(0xFFE0E0E0), text, MonoEdge.SOLID)
+    HighlightColor.GREEN -> HighlightPresentation("Green", "G", Color(0xFFC8C8C8), text, MonoEdge.DOUBLE)
+    HighlightColor.CYAN -> HighlightPresentation("Cyan", "C", Color(0xFFB0B0B0), text, MonoEdge.DASHED)
+    HighlightColor.PURPLE -> HighlightPresentation("Purple", "P", Color(0xFF989898), text, MonoEdge.DOTTED)
   }
 }
 

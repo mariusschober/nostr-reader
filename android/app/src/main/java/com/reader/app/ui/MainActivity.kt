@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
     setContent {
       val loadedSettings by remember { prefs.flow }.collectAsState(initial = null)
       val settings = loadedSettings ?: return@setContent
-      com.reader.app.ui.theme.ReaderTheme(settings.themeMode) {
+      com.reader.app.ui.theme.ReaderTheme(settings.themeMode, settings.display) {
       var savedRoutes by rememberSaveable { mutableStateOf("[]") }
       val stack = remember { RouteStack(runCatching { Json.decodeFromString<List<Route>>(savedRoutes) }.getOrDefault(emptyList())) }
       var tick by remember { mutableIntStateOf(0) }
@@ -231,15 +231,38 @@ class MainActivity : ComponentActivity() {
       var syncing by remember { mutableStateOf(false) }
       var libraryStats by remember { mutableStateOf<com.reader.app.ui.screens.LibraryStats?>(null) }
       val windowColors = if (route is Route.Reader || route is Route.Rsvp) com.reader.app.ui.theme.readerColors(settings.background) else com.reader.app.ui.theme.appColors()
+      // One Activity-owned source of window appearance. The reader reports focus
+      // and its painted surface; nothing restores captured bar colors, so theme
+      // and route changes recompute the decor/bars from the current surface.
+      val readerFocused = com.reader.app.ui.theme.ReaderWindow.readerFocused
+      val readerSurface = com.reader.app.ui.theme.ReaderWindow.readerSurface
       SideEffect {
-        val bg = windowColors.background
+        val bg = (if (readerFocused) readerSurface else null) ?: windowColors.background
+        window.decorView.setBackgroundColor(bg.toArgb())
         window.statusBarColor = bg.toArgb()
         window.navigationBarColor = bg.toArgb()
         // Light system-bar icons are unreadable on the white e-ink ground and
         // on Paper/Soft; decide from the background's luminance, not the text token.
         val lightBars = bg.luminance() > 0.5f
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = lightBars
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = lightBars
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.isAppearanceLightStatusBars = lightBars
+        controller.isAppearanceLightNavigationBars = lightBars
+        WindowCompat.setDecorFitsSystemWindows(window, !readerFocused)
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+          window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = if (readerFocused)
+              android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            else
+              android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+          }
+        }
+        if (readerFocused) {
+          controller.systemBarsBehavior =
+            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+          controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        } else {
+          controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
       }
 
       suspend fun computeLibraryStats(summaries: List<com.reader.app.data.DocumentSummary>): com.reader.app.ui.screens.LibraryStats =
