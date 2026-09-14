@@ -206,9 +206,11 @@ class UiCompletionInstrumentedTest {
       for (label in listOf("Priority", "Later", "Archive", "Highlights", "Settings")) assertNotNull(node(label))
       tap(d.title); waitFor("reader ready") { node("Contents") != null }
       tap("Appearance"); assertNotNull(node("Text size · 19")); assertEquals(LineSpacing.COMFORT, Prefs(context).load().lineSpacing)
-      tap("Font, margins & bold ▾"); reach("Bold text"); tap("Bold text")
+      // The appearance sheet is now one continuous scrollable list with no
+      // More options expander; reach() pulls the list to the control.
+      reach("Bold text"); tap("Bold text")
       waitFor("bold saved") { runBlocking { Prefs(context).load().bold } }
-      back(); tap("Appearance"); tap("Font, margins & bold ▾"); reach("Bold text")
+      back(); tap("Appearance"); reach("Bold text")
       assertTrue(node("Bold text")!!.isChecked)
       tap("Bold text"); waitFor("bold off saved") { !runBlocking { Prefs(context).load().bold } }
       back(); tap("Back"); waitFor("continue entry") { node("Continue reading") != null }

@@ -408,6 +408,11 @@ class ReaderFlowInstrumentedTest {
   @Test fun speechFocusBackgroundAndThemeChanges() = runBlocking {
     assumeTrue(InstrumentationRegistry.getArguments().getString("qaReaderLifecycle") == "true")
     check(context.packageName == "com.reader.app.qa")
+    // A previously aborted run can legitimately leave narration alive in the
+    // background; start from a clean session so these assertions describe this
+    // run only.
+    context.stopService(android.content.Intent(context, com.reader.app.tts.TtsPlaybackService::class.java))
+    SystemClock.sleep(600)
     val db = ReaderDb.get(context)
     val original = Prefs(context).load()
     val unique = System.nanoTime()
@@ -488,7 +493,19 @@ class ReaderFlowInstrumentedTest {
         waitFor("explicit appearance survives recreation") { node("Appearance") != null }
         assertEquals(ArticleBackground.PAPER, Prefs(context).load().background)
         tap("Back"); tap("Settings")
-        waitFor("versioned settings and theme controls") { node("Dark") != null && node("Reader 0.9.0-beta.1 · Licenses bundled in-app") != null }
+        waitFor("theme and display controls") { node("Dark") != null && node("E-ink & NXTPAPER") != null }
+        // The version banner sits below the fold in the settings list; scroll
+        // the list up rather than asserting on an off-screen node.
+        val settingsScreen = context.resources.displayMetrics
+        val settingsX = settingsScreen.widthPixels * .5f
+        val settingsDown = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, settingsX, settingsScreen.heightPixels * .6f, settingsDown)
+        for (step in 1..16) {
+          event(MotionEvent.ACTION_MOVE, settingsX, settingsScreen.heightPixels * (.6f - .35f * step / 16f), settingsDown)
+          SystemClock.sleep(20)
+        }
+        event(MotionEvent.ACTION_UP, settingsX, settingsScreen.heightPixels * .25f, settingsDown)
+        waitFor("versioned settings") { node("Version 0.9.0-beta.1") != null }
         screenshot("reader-settings-dark-beta")
       }
     } finally {
