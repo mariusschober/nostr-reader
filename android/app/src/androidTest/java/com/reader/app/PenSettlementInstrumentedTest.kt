@@ -96,6 +96,7 @@ class PenSettlementInstrumentedTest {
     }
 
     fun event(action: Int, p: Pair<Float, Float>, down: Long) {
+      if (action == MotionEvent.ACTION_DOWN) QaTouch.releaseStalePointer(runner.uiAutomation, p.first, p.second, down)
       val e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, p.first, p.second, 0)
       e.source = InputDevice.SOURCE_TOUCHSCREEN
       check(runner.uiAutomation.injectInputEvent(e, true)); e.recycle()

@@ -79,6 +79,7 @@ class NativeSelectionSpikeInstrumentedTest {
         return result
       }
       fun event(action: Int, point: Pair<Float, Float>, down: Long) {
+        if (action == MotionEvent.ACTION_DOWN) QaTouch.releaseStalePointer(runner.uiAutomation, point.first, point.second, down)
         val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, point.first, point.second, 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
         check(runner.uiAutomation.injectInputEvent(event, true)); event.recycle()

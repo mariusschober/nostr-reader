@@ -67,7 +67,13 @@ class UiCompletionInstrumentedTest {
     bitmap.recycle()
   }
   private fun event(action: Int, x: Float, y: Float, down: Long) {
+    // A launched activity or sheet can briefly leave no active app window
+    // between the node read and the injection; wait for one to settle.
+    val settle = SystemClock.elapsedRealtime() + 2000
+    while (SystemClock.elapsedRealtime() < settle &&
+      automation.rootInActiveWindow?.packageName?.toString() != context.packageName) SystemClock.sleep(50)
     check(automation.rootInActiveWindow?.packageName?.toString() == context.packageName)
+    if (action == MotionEvent.ACTION_DOWN) QaTouch.releaseStalePointer(automation, x, y, down)
     MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0).also {
       it.source = InputDevice.SOURCE_TOUCHSCREEN
       check(automation.injectInputEvent(it, true)); it.recycle()
@@ -112,6 +118,11 @@ class UiCompletionInstrumentedTest {
     SystemClock.sleep(300)
   }
   private fun scroll(forward: Boolean = true) {
+    // A sheet/dialog transition can briefly leave no active app window between
+    // reads; wait for one before injecting a gesture.
+    val settle = SystemClock.elapsedRealtime() + 3000
+    while (SystemClock.elapsedRealtime() < settle &&
+      automation.rootInActiveWindow?.packageName?.toString() != context.packageName) SystemClock.sleep(100)
     val n = nodes().filter { it.isVisibleToUser && it.isScrollable }.maxByOrNull {
       Rect().also(it::getBoundsInScreen).height()
     } ?: error("No scrollable surface")
@@ -210,10 +221,16 @@ class UiCompletionInstrumentedTest {
       // More options expander; reach() pulls the list to the control.
       reach("Bold text"); tap("Bold text")
       waitFor("bold saved") { runBlocking { Prefs(context).load().bold } }
-      back(); tap("Appearance"); reach("Bold text")
+      // Back first collapses the pull-up expansion and dismisses on the next
+      // press; the article must never be left while the sheet is open.
+      repeat(3) { if (node("Contents") == null) { back(); SystemClock.sleep(500) } }
+      waitFor("appearance sheet dismissed") { node("Contents") != null }
+      tap("Appearance"); reach("Bold text")
       assertTrue(node("Bold text")!!.isChecked)
       tap("Bold text"); waitFor("bold off saved") { !runBlocking { Prefs(context).load().bold } }
-      back(); tap("Back"); waitFor("continue entry") { node("Continue reading") != null }
+      repeat(3) { if (node("Contents") == null) { back(); SystemClock.sleep(500) } }
+      waitFor("reader restored") { node("Contents") != null }
+      tap("Back"); waitFor("continue entry") { node("Continue reading") != null }
       tap("Settings"); assertNotNull(node("Reading appearance")); tap("Reader")
       assertNotNull(node("Continue reading"))
     }

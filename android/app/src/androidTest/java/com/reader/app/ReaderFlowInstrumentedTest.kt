@@ -55,12 +55,17 @@ class ReaderFlowInstrumentedTest {
     }
     return find(runner.uiAutomation.rootInActiveWindow)
   }
+  /** NativeArticleView hosts a swipe affordance at index 0; the article text is
+   *  the selectable TextView among its children. */
+  private fun selectableBody(view: NativeArticleView): TextView =
+    (0 until view.childCount).map { view.getChildAt(it) }.filterIsInstance<TextView>().first { it.isTextSelectable }
   private fun event(action: Int, x: Float, y: Float, down: Long) {
     val foreground = runner.uiAutomation.rootInActiveWindow?.packageName?.toString()
     check(foreground in setOf(context.packageName, "${context.packageName}.test", "android",
       "com.android.intentresolver", "com.android.systemui")) {
       "Stopped touch test: an unrelated app is foreground ($foreground)"
     }
+    if (action == MotionEvent.ACTION_DOWN) QaTouch.releaseStalePointer(runner.uiAutomation, x, y, down)
     MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0).also {
       it.source = InputDevice.SOURCE_TOUCHSCREEN
       check(runner.uiAutomation.injectInputEvent(it, true)); it.recycle()
@@ -167,11 +172,16 @@ class ReaderFlowInstrumentedTest {
       waitFor("native reader content") {
         scenario.onActivity { native = find(it.window.decorView) }
         var ready = false
-        runner.runOnMainSync { ready = native?.let { (it.getChildAt(0) as TextView).text.contains("deliberate") } == true }
+        runner.runOnMainSync {
+          ready = native?.let { selectableBody(it).text.contains("deliberate") } == true
+        }
         ready
       }
-      val textView = native!!.getChildAt(0) as TextView
+      val textView = selectableBody(native!!)
       tap("Highlight")
+      // A fresh profile shows the once-only "Keep a passage" coach before pen
+      // mode opens; clear it so the release-to-save gesture reaches the article.
+      if (node("Start highlighting") != null) tap("Start highlighting")
       runner.waitForIdleSync()
       SystemClock.sleep(500)
       var point = 0f to 0f
@@ -277,8 +287,12 @@ class ReaderFlowInstrumentedTest {
         assertTrue("Handle scrolls the production article", scroll > 0 && selectionEnd() > reversedEnd)
         verifySameRecord()
       }
-      tap("Undo")
+      // The automatic pen save offers its Undo in the dock ("Undo highlight"),
+      // not as a snackbar action.
+      tap("Undo highlight")
       waitFor("undo removed quote") { runBlocking { db.highlights().observeForDocument(id).first().isEmpty() } }
+      // Leaving continuous highlighting restores the four reading actions.
+      if (node("Done") != null) tap("Done")
       tap("Speed")
       waitFor("speed reader") { node("Play") != null }
       assertNull(node("offset out of bounds"))
@@ -293,7 +307,8 @@ class ReaderFlowInstrumentedTest {
       tap("☆ Important")
       waitFor("important saved") { runBlocking { db.highlights().byId(saved.id)?.important == true } }
       waitFor("important indicated") { node("★ Important") != null }
-      tap(title)
+      // The review card opens the passage through its explicit source action.
+      tap("Open source")
       waitFor("review source reader") { node("Appearance") != null }
       screenshot("reader-review-source")
       tap("Back")
@@ -443,7 +458,9 @@ class ReaderFlowInstrumentedTest {
         }
         tap("1.0x")
         waitFor("active speech uses the changed speed") { state().let { it.playing && it.speed == 1.25f } }
-        assertEquals(1.25f, Prefs(context).load().ttsSpeed)
+        // The Activity persists the speed on its lifecycle scope, so wait for the
+        // stored value rather than racing the asynchronous save.
+        waitFor("speed persisted") { runBlocking { Prefs(context).load().ttsSpeed } == 1.25f }
         assertEquals(android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED, audio.requestAudioFocus(focus))
         waitFor("audio focus loss pauses speech") { !state().playing && node("Play") != null }
         audio.abandonAudioFocusRequest(focus)
@@ -477,7 +494,7 @@ class ReaderFlowInstrumentedTest {
           return null
         }
         scenario.onActivity { native = find(it.window.decorView) }
-        val body = native!!.getChildAt(0) as TextView
+        val body = selectableBody(native!!)
         var before: com.reader.app.cursor.SemanticCursor? = null
         runner.runOnMainSync { before = native!!.currentCursor() }
         Prefs(context).save(Prefs(context).load().copy(themeMode = ThemeMode.DARK))
@@ -557,12 +574,12 @@ class ReaderFlowInstrumentedTest {
           scenario.onActivity { native = find(it.window.decorView) }
           var ready = false
           runner.runOnMainSync {
-            ready = native?.let { (it.getChildAt(0) as TextView).let { body -> body.length() > 100000 && body.layout != null } } == true
+            ready = native?.let { selectableBody(it).let { body -> body.length() > 100000 && body.layout != null } } == true
           }
           ready
         }
         val openMillis = SystemClock.elapsedRealtime() - openedAt
-        val body = native!!.getChildAt(0) as TextView
+        val body = selectableBody(native!!)
         val bounds = Rect()
         runner.runOnMainSync { native!!.getGlobalVisibleRect(bounds) }
         var beforeCursor: com.reader.app.cursor.SemanticCursor? = null

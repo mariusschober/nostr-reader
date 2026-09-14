@@ -121,6 +121,7 @@ class HighlightMenuGateInstrumentedTest {
         return result
       }
       fun event(action: Int, point: Pair<Float, Float>, down: Long) {
+        if (action == MotionEvent.ACTION_DOWN) QaTouch.releaseStalePointer(runner.uiAutomation, point.first, point.second, down)
         val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, point.first, point.second, 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
         check(runner.uiAutomation.injectInputEvent(event, true)); event.recycle()
@@ -136,9 +137,15 @@ class HighlightMenuGateInstrumentedTest {
         File(runner.targetContext.getExternalFilesDir("qa"), "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
       }
+      // Continuous highlighting owns the whole gesture: hold a word, drag
+      // across the wrapped paragraph, keep dragging below the reserved dock so
+      // the article autoscrolls, then release once. Package B settles the
+      // range on release, so the extension must happen inside a single pointer
+      // sequence rather than a release-and-regrab of a native handle.
       val first = point(text.indexOf("selection") + 3)
-      var down = SystemClock.uptimeMillis()
-      event(MotionEvent.ACTION_DOWN, first, down); SystemClock.sleep(700); event(MotionEvent.ACTION_UP, first, down)
+      val down = SystemClock.uptimeMillis()
+      event(MotionEvent.ACTION_DOWN, first, down)
+      SystemClock.sleep(700)
       waitFor("native word selection") { val (a,b) = selection(); a >= 0 && b > a }
       val word = selection(); screenshot("highlight-menu-gate-word")
       fun hasMenu(root: android.view.accessibility.AccessibilityNodeInfo?): Boolean {
@@ -147,30 +154,26 @@ class HighlightMenuGateInstrumentedTest {
         return (0 until root.childCount).any { hasMenu(root.getChild(it)) }
       }
       assertFalse("Highlight mode must not display Android's text action menu", hasMenu(runner.uiAutomation.rootInActiveWindow))
-      val handle = point(word.second, handle = true)
       val target = point(text.indexOf("Paragraph 2.") + 10)
-      down = SystemClock.uptimeMillis(); event(MotionEvent.ACTION_DOWN, handle, down)
       for (step in 1..30) {
         val f = step / 30f
-        event(MotionEvent.ACTION_MOVE, handle.first + (target.first - handle.first) * f to handle.second + (target.second - handle.second) * f, down)
+        event(MotionEvent.ACTION_MOVE, first.first + (target.first - first.first) * f to first.second + (target.second - first.second) * f, down)
         SystemClock.sleep(20)
       }
-      event(MotionEvent.ACTION_UP, target, down)
       val cross = selection(); screenshot("highlight-menu-gate-paragraphs")
-      assertTrue("A real handle drag crosses the first paragraph boundary", cross.second > text.indexOf("\n\n") + 2)
-      val endHandle = point(cross.second, handle = true)
+      assertTrue("A held drag crosses the first paragraph boundary", cross.second > text.indexOf("\n\n") + 2)
       val location = IntArray(2); runner.runOnMainSync { view.getLocationOnScreen(location) }
-      // Drag through the reserved 64dp dock area. Android offsets the handle
-      // from the finger, so 24dp does not cross a tightly padded text viewport.
+      // Keep dragging through the reserved 64dp dock area. Android offsets the
+      // touched range from the finger, so 24dp does not cross a tightly padded
+      // text viewport.
       val bottom = view.width * 0.65f to (location[1] + view.height + 56 * view.resources.displayMetrics.density)
-      down = SystemClock.uptimeMillis(); event(MotionEvent.ACTION_DOWN, endHandle, down)
       for (step in 1..100) {
         val f = (step / 20f).coerceAtMost(1f)
-        event(MotionEvent.ACTION_MOVE, endHandle.first + (bottom.first - endHandle.first) * f to endHandle.second + (bottom.second - endHandle.second) * f, down)
+        event(MotionEvent.ACTION_MOVE, target.first + (bottom.first - target.first) * f to target.second + (bottom.second - target.second) * f, down)
         SystemClock.sleep(25)
       }
-      event(MotionEvent.ACTION_UP, bottom, down)
       val extended = selection(); screenshot("highlight-menu-gate-scrolled")
+      event(MotionEvent.ACTION_UP, bottom, down)
       val result = buildJsonObject {
         put("bytes", text.toByteArray().size); put("firstLayoutMillis", firstLayoutMillis)
         put("wordStart", word.first); put("wordEnd", word.second)
@@ -180,7 +183,7 @@ class HighlightMenuGateInstrumentedTest {
         put("editable", view.onCheckIsTextEditor())
       }
       File(runner.targetContext.getExternalFilesDir("qa"), "highlight-menu-gate.json").writeText(result.toString())
-      assertTrue("Native handles scroll while extending the selection", view.scrollY > 0 && extended.second > cross.second)
+      assertTrue("Continuous highlighting autoscrolls while extending", view.scrollY > 0 && extended.second > cross.second)
     }
   }
 }
