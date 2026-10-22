@@ -19,6 +19,7 @@ import com.reader.app.data.DocumentEntity
 import com.reader.app.data.ChannelEntity
 import com.reader.app.data.ProcessedEventEntity
 import com.reader.app.data.ReaderDb
+import com.reader.app.nostr.Secp256k1
 import com.reader.app.security.KeystoreWrap
 import com.reader.app.sync.PairingCoordinator
 import com.reader.app.sync.openActiveChannelKeyOrRevoke
@@ -170,6 +171,22 @@ class ReaderDbMigrationInstrumentedTest {
     } finally {
       migrated.close()
       context.deleteDatabase(name)
+    }
+  }
+
+  @Test
+  fun sealedChannelKeyIsDurablyReadableBeforeChannelPromotion() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val keys = KeystoreWrap(context)
+    val channelId = "seal-${System.nanoTime()}"
+    val seckey = Secp256k1.randomPrivateKey()
+    try {
+      assertTrue(keys.sealChannelKey(channelId, seckey))
+      assertArrayEquals(seckey, keys.openChannelKey(channelId))
+      keys.deleteChannelKey(channelId)
+      assertNull(keys.openChannelKey(channelId))
+    } finally {
+      keys.deleteChannelKey(channelId)
     }
   }
 

@@ -176,7 +176,8 @@ class PairingCoordinator(
           ),
         )
       }
-      keys.sealChannelKey(channelId, channelSeckey)
+      val sealed = withContext(Dispatchers.IO) { keys.sealChannelKey(channelId, channelSeckey) }
+      check(sealed) { "The channel key could not be stored durably. Pair again." }
       withContext(Dispatchers.IO) {
         db.channels().updatePairingState(
           id = channelId,

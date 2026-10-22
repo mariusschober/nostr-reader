@@ -36,14 +36,28 @@ class KeystoreWrap(ctx: Context) {
     return gen.generateKey()
   }
 
-  fun sealChannelKey(channelId: String, seckey: ByteArray) {
+  /**
+   * Commits the wrapped key synchronously and reads it back. Callers may only
+   * promote a channel to a usable state when this returns true: [apply] could
+   * leave a pending channel without durable key material after process death.
+   */
+  fun sealChannelKey(channelId: String, seckey: ByteArray): Boolean {
     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(Cipher.ENCRYPT_MODE, wrapKey())
     val ct = cipher.doFinal(seckey)
-    prefs.edit()
+    val committed = prefs.edit()
       .putString("ch_$channelId", Base64.encodeToString(ct, Base64.NO_WRAP))
       .putString("iv_$channelId", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-      .apply()
+      .commit()
+    if (!committed) return false
+    val readBack = runCatching { openChannelKey(channelId) }.getOrNull()
+    val matches = readBack != null && readBack.contentEquals(seckey)
+    readBack?.fill(0)
+    if (!matches) {
+      deleteChannelKey(channelId)
+      return false
+    }
+    return true
   }
 
   fun openChannelKey(channelId: String): ByteArray? {
@@ -58,6 +72,6 @@ class KeystoreWrap(ctx: Context) {
   }
 
   fun deleteChannelKey(channelId: String) {
-    prefs.edit().remove("ch_$channelId").remove("iv_$channelId").apply()
+    prefs.edit().remove("ch_$channelId").remove("iv_$channelId").commit()
   }
 }
