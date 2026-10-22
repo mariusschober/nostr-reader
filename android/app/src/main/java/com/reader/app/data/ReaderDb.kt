@@ -148,6 +148,12 @@ abstract class DocumentDao {
   @Query("SELECT documentId, title, sourceType, sourceName, wordCount, state, list, progressFraction, createdAt, updatedAt FROM documents WHERE deletedAt IS NULL ORDER BY createdAt DESC, documentId ASC")
   abstract fun observeSummaries(): Flow<List<DocumentSummary>>
 
+  @Query("""SELECT d.documentId, d.title, d.sourceType, d.sourceName, d.wordCount, d.state, d.list, d.progressFraction, d.createdAt, d.updatedAt
+    FROM documents d WHERE d.deletedAt IS NULL AND (d.title LIKE :pattern ESCAPE '\' OR EXISTS (
+      SELECT 1 FROM document_content c WHERE c.documentId = d.documentId AND c.text LIKE :pattern ESCAPE '\'
+    )) ORDER BY d.createdAt DESC, d.documentId ASC LIMIT :limit""")
+  abstract suspend fun search(pattern: String, limit: Int = 200): List<DocumentSummary>
+
   @Query("SELECT * FROM documents WHERE documentId = :id AND deletedAt IS NULL LIMIT 1")
   abstract fun observeMetadata(id: String): Flow<DocumentEntity?>
 

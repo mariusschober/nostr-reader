@@ -19,6 +19,7 @@ import com.reader.app.data.DocumentEntity
 import com.reader.app.data.ChannelEntity
 import com.reader.app.data.ProcessedEventEntity
 import com.reader.app.data.ReaderDb
+import com.reader.app.data.SearchQuery
 import com.reader.app.nostr.Secp256k1
 import com.reader.app.security.KeystoreWrap
 import com.reader.app.sync.PairingCoordinator
@@ -187,6 +188,33 @@ class ReaderDbMigrationInstrumentedTest {
       assertNull(keys.openChannelKey(channelId))
     } finally {
       keys.deleteChannelKey(channelId)
+    }
+  }
+
+  @Test
+  fun searchFindsTitleAndBodyAndIgnoresEscapedWildcards() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = Room.inMemoryDatabaseBuilder(context, ReaderDb::class.java).build()
+    val id = "search-test"
+    val document = DocumentEntity(
+      documentId = id, title = "Harbor Lights", sourceType = "web", sourceName = null,
+      sourceUrl = null, author = null, publishedAt = null, capturedAt = 1, language = null,
+      canonicalMarkdown = "# Harbor Lights\n\nA needle in the body with no wildcard.", wordCount = 10,
+      parserVersion = 1, state = "unread", list = "inbox", progressBlockId = null,
+      progressCharOffset = 0, progressFraction = 0f, lastOpenedAt = 0, createdAt = 1, updatedAt = 1,
+    )
+    try {
+      db.documents().insert(document)
+      assertEquals(1, db.documents().search(SearchQuery.pattern("harbor")!!).size)
+      assertEquals(1, db.documents().search(SearchQuery.pattern("needle in the body")!!).size)
+      assertEquals(0, db.documents().search(SearchQuery.pattern("%")!!).size)
+      assertEquals(0, db.documents().search(SearchQuery.pattern("missing")!!).size)
+
+      db.documents().setList(id, "archived", 2)
+      assertEquals(1, db.documents().deleteArchivedById(id, 3))
+      assertEquals(0, db.documents().search(SearchQuery.pattern("harbor")!!).size)
+    } finally {
+      db.close()
     }
   }
 

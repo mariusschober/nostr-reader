@@ -24,7 +24,9 @@ import androidx.compose.foundation.background
 import com.reader.app.ui.ArticleAction
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,6 +47,7 @@ import com.reader.app.ui.SourceLabels
 import com.reader.app.ui.Triage
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -63,6 +66,7 @@ fun InboxScreen(
   onRestoreDelete: (String) -> Unit = {},
   onImportFile: () -> Unit,
   onPasteText: (String) -> Unit,
+  search: suspend (String) -> List<DocumentSummary> = { emptyList() },
   onPair: () -> Unit,
   onSettings: () -> Unit,
   loaded: Boolean,
@@ -87,6 +91,20 @@ fun InboxScreen(
   var menuFor by remember { mutableStateOf<String?>(null) }
   var showAdd by remember { mutableStateOf(false) }
   var showPaste by remember { mutableStateOf(false) }
+  var query by remember { mutableStateOf("") }
+  var searchResults by remember { mutableStateOf<List<DocumentSummary>>(emptyList()) }
+  var searching by remember { mutableStateOf(false) }
+  LaunchedEffect(query) {
+    if (query.isBlank()) {
+      searchResults = emptyList()
+      searching = false
+      return@LaunchedEffect
+    }
+    delay(250)
+    searching = true
+    searchResults = runCatching { search(query) }.getOrDefault(emptyList())
+    searching = false
+  }
   val snackbar = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   LaunchedEffect(readerMove) {
@@ -153,10 +171,28 @@ fun InboxScreen(
           fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary,
         )
       }
-      val list = lists[tab].orEmpty()
-      if (!loaded) CircularProgressIndicator(Modifier.padding(24.dp))
-      else if (tab == "highlights") highlights()
-      else if (list.isEmpty()) {
+      if (!archiveMode && tab != "highlights") {
+        OutlinedTextField(
+          value = query,
+          onValueChange = { query = it },
+          placeholder = { Text("Search titles and article text", fontFamily = ReaderFonts.Ui) },
+          leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+          trailingIcon = if (query.isEmpty()) null else {
+            { IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, contentDescription = "Clear search") } }
+          },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+      }
+      val searchingNow = query.isNotBlank()
+      val list = if (searchingNow) searchResults else lists[tab].orEmpty()
+      if (!loaded || (searchingNow && searching)) CircularProgressIndicator(Modifier.padding(24.dp))
+      else if (tab == "highlights" && !searchingNow) highlights()
+      else if (list.isEmpty() && searchingNow) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+          Text("No matches for “${query.trim()}”.", fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 15.sp)
+        }
+      } else if (list.isEmpty()) {
         if (tab == Triage.INBOX) {
           FirstRunOrEmptyInbox(
             c, documentCount = lists.values.sumOf { it.size },
@@ -168,17 +204,19 @@ fun InboxScreen(
       } else {
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = listState) {
           items(list, key = { it.documentId }) { d ->
-            if (tab == Triage.ARCHIVED) {
+            val rowList = if (searchingNow) d.list else tab
+            if (rowList == Triage.ARCHIVED) {
               ArchiveSwipeRow(d, c, onOpen = { onOpen(d.documentId) }, onMenu = { menuFor = d.documentId }, onAction = { action ->
                 if (action == ArticleAction.Delete) onDelete(d.documentId) else onUnarchive(d.documentId)
               })
             } else {
               SwipeRow(
-                doc = d, list = tab, colors = c,
+                doc = d, list = rowList, colors = c,
+                showList = searchingNow,
                 onOpen = { onOpen(d.documentId) },
                 onMenu = { menuFor = d.documentId },
                 onSwiped = { target ->
-                  val previous = tab
+                  val previous = rowList
                   onMove(d.documentId, target)
                   scope.launch {
                     val res = snackbar.showSnackbar(Triage.movedLabel(target), actionLabel = "Undo")
@@ -401,6 +439,7 @@ private fun SwipeRow(
   doc: DocumentSummary,
   list: String,
   colors: com.reader.app.ui.theme.ReaderColors,
+  showList: Boolean = false,
   onOpen: () -> Unit,
   onMenu: () -> Unit,
   onSwiped: (target: String) -> Unit,
@@ -482,7 +521,7 @@ private fun SwipeRow(
           )
         },
     ) {
-      ArticleRow(doc, colors, onOpen = onOpen, onMenu = onMenu)
+      ArticleRow(doc, colors, onOpen = onOpen, onMenu = onMenu, showList = showList)
     }
   }
 }
@@ -493,6 +532,7 @@ fun ArticleRow(
   c: com.reader.app.ui.theme.ReaderColors,
   onOpen: () -> Unit,
   onMenu: (() -> Unit)?,
+  showList: Boolean = false,
 ) {
   val complete = d.progressFraction >= 0.999f
   Column(
@@ -524,7 +564,8 @@ fun ArticleRow(
     }
     Spacer(Modifier.height(2.dp))
     val mins = ReaderCore.readingMinutes(d.wordCount)
-    Text("${SourceLabels.label(d.sourceType)} · $mins min", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
+    val listSuffix = if (showList) " · ${Triage.tabLabel(d.list)}" else ""
+    Text("${SourceLabels.label(d.sourceType)}$listSuffix · $mins min", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
     if (d.progressFraction > 0.01f && d.progressFraction < 0.999f) {
       Spacer(Modifier.height(6.dp))
       LinearProgressIndicator(

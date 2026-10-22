@@ -307,6 +307,9 @@ class MainActivity : ComponentActivity() {
           },
           onPair = { go(Route.Pairing) },
           onSettings = { go(Route.Settings) },
+          search = { raw ->
+            com.reader.app.data.SearchQuery.pattern(raw)?.let { db.documents().search(it) } ?: emptyList()
+          },
         )
         is Route.Review -> {
           val review = remember { com.reader.app.data.ReviewRepository(db) }
