@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.reader.app.core.ReaderCore
 import com.reader.app.data.DocumentSummary
 import com.reader.app.prefs.ReaderSettings
+import com.reader.app.ui.Onboarding
 import com.reader.app.ui.Triage
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
@@ -154,8 +156,12 @@ fun InboxScreen(
       if (!loaded) CircularProgressIndicator(Modifier.padding(24.dp))
       else if (tab == "highlights") highlights()
       else if (list.isEmpty()) {
-        if (tab == Triage.INBOX) EmptyInbox(c, onPair = onPair, onImportFile = onImportFile, onPaste = { showPaste = true })
-        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (tab == Triage.INBOX) {
+          FirstRunOrEmptyInbox(
+            c, documentCount = lists.values.sumOf { it.size },
+            onPair = onPair, onImportFile = onImportFile, onPaste = { showPaste = true },
+          )
+        } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
           Text(emptyHint(tab), fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 15.sp)
         }
       } else {
@@ -302,6 +308,59 @@ private fun TabText(
     }
     Spacer(Modifier.height(2.dp))
     if (selected) Divider(color = color.focal, thickness = 2.dp, modifier = Modifier.width(28.dp))
+  }
+}
+
+@Composable
+private fun FirstRunOrEmptyInbox(
+  c: com.reader.app.ui.theme.ReaderColors,
+  documentCount: Int,
+  onPair: () -> Unit,
+  onImportFile: () -> Unit,
+  onPaste: () -> Unit,
+) {
+  val context = LocalContext.current
+  val prefs = remember { context.getSharedPreferences(Onboarding.PREFS, android.content.Context.MODE_PRIVATE) }
+  var dismissed by remember { mutableStateOf(prefs.getBoolean(Onboarding.DISMISSED, false)) }
+  if (!Onboarding.shouldShow(dismissed, documentCount)) {
+    EmptyInbox(c, onPair = onPair, onImportFile = onImportFile, onPaste = onPaste)
+    return
+  }
+  Column(
+    Modifier.fillMaxSize().padding(horizontal = 32.dp),
+    verticalArrangement = Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Text("Welcome to Reader", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = c.text)
+    Spacer(Modifier.height(6.dp))
+    Text(
+      "A local-first inbox for articles you want to read or listen to later.",
+      fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary,
+      textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
+    Spacer(Modifier.height(16.dp))
+    Onboarding.steps.forEachIndexed { index, step ->
+      Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+        Text("${index + 1}.", fontFamily = ReaderFonts.Ui, color = c.secondary)
+        Spacer(Modifier.width(8.dp))
+        Text(step, fontFamily = ReaderFonts.Ui, fontSize = 14.sp, color = c.text)
+      }
+    }
+    Spacer(Modifier.height(18.dp))
+    Button(onClick = onPair) { Text("Pair Chrome", fontFamily = ReaderFonts.Ui) }
+    Spacer(Modifier.height(4.dp))
+    TextButton(onClick = onImportFile, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+      Text("Import a file", fontFamily = ReaderFonts.Ui)
+    }
+    TextButton(onClick = onPaste, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+      Text("Paste text", fontFamily = ReaderFonts.Ui)
+    }
+    TextButton(onClick = {
+      dismissed = true
+      prefs.edit().putBoolean(Onboarding.DISMISSED, true).apply()
+    }, colors = ButtonDefaults.textButtonColors(contentColor = c.secondary)) {
+      Text("Dismiss", fontFamily = ReaderFonts.Ui)
+    }
   }
 }
 
