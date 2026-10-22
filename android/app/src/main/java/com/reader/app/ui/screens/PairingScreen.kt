@@ -37,12 +37,14 @@ import com.google.zxing.common.HybridBinarizer
 import com.reader.app.nostr.PairingProtocol
 import com.reader.app.nostr.ValidatedPairingRequest
 import com.reader.app.prefs.ReaderSettings
+import com.reader.app.ui.PairingScanGate
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
 import kotlinx.serialization.json.*
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import android.os.SystemClock
 
 /** Pairing: QR scanner opens immediately; manual paste as fallback. */
 @Composable
@@ -61,6 +63,7 @@ fun PairingScreen(
   var permissionRequested by rememberSaveable { mutableStateOf(false) }
   var manual by remember { mutableStateOf("") }
   var scanError by remember { mutableStateOf<String?>(null) }
+  var scannerGeneration by remember { mutableIntStateOf(0) }
   var reviewText by rememberSaveable { mutableStateOf<String?>(null) }
   var cameraPermissionGranted by remember {
     mutableStateOf(
@@ -105,9 +108,9 @@ fun PairingScreen(
     onDispose { lifecycle.lifecycle.removeObserver(observer) }
   }
 
-  fun prepareReview(text: String) {
+  fun prepareReview(text: String): Boolean {
     val normalized = text.trim()
-    runCatching {
+    return runCatching {
       PairingProtocol.validateRequest(normalized, System.currentTimeMillis() / 1000)
     }.onSuccess {
       scanError = null
@@ -115,7 +118,7 @@ fun PairingScreen(
     }.onFailure {
       scanError = it.message?.take(200) ?: "That pairing code is invalid."
       reviewText = null
-    }
+    }.isSuccess
   }
 
   val review = reviewText?.let { text ->
@@ -144,10 +147,12 @@ fun PairingScreen(
         Spacer(Modifier.height(12.dp))
         Box(Modifier.fillMaxWidth().weight(1f)) {
           if (cameraPermissionGranted) {
-            CameraScanner(
-              onScanned = ::prepareReview,
-              onError = { scanError = it },
-            )
+            key(scannerGeneration) {
+              CameraScanner(
+                onScanned = ::prepareReview,
+                onError = { scanError = it },
+              )
+            }
           } else {
             CameraPermissionPrompt(
               denied = cameraPermissionDenied,
@@ -165,7 +170,12 @@ fun PairingScreen(
         }
         (error ?: scanError)?.let {
           Text(it, fontFamily = ReaderFonts.Ui, color = c.error, fontSize = 13.sp)
-          Spacer(Modifier.height(8.dp))
+          Spacer(Modifier.height(4.dp))
+        }
+        if (scanError != null) {
+          TextButton(onClick = { scanError = null; scannerGeneration++ }) {
+            Text("Scan again", fontFamily = ReaderFonts.Ui, color = c.text)
+          }
         }
         status?.let {
           Text(it, fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 13.sp)
@@ -275,7 +285,7 @@ private fun Context.cameraPermissionActivity(): Activity? = when (this) {
 
 @Composable
 private fun CameraScanner(
-  onScanned: (String) -> Unit,
+  onScanned: (String) -> Boolean,
   onError: (String) -> Unit,
 ) {
   val context = LocalContext.current
@@ -295,7 +305,7 @@ private fun CameraScanner(
 
   DisposableEffect(context, lifecycle, previewView) {
     val active = AtomicBoolean(true)
-    val delivered = AtomicBoolean(false)
+    val gate = PairingScanGate()
     val analyzerFailed = AtomicBoolean(false)
     val reader = MultiFormatReader().apply {
       setHints(
@@ -314,9 +324,15 @@ private fun CameraScanner(
       try {
         val source = image.toLuminanceSource()
         val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
-        if (result.text.contains("reader-pair/2") && delivered.compareAndSet(false, true)) {
+        val now = SystemClock.elapsedRealtime()
+        if (result.text.contains("reader-pair/2") && gate.claim(result.text, now)) {
           mainExecutor.execute {
-            if (active.get()) currentOnScanned(result.text)
+            if (!active.get()) {
+              gate.rejected(result.text, SystemClock.elapsedRealtime())
+              return@execute
+            }
+            val accepted = currentOnScanned(result.text)
+            if (accepted) gate.accepted() else gate.rejected(result.text, SystemClock.elapsedRealtime())
           }
         }
       } catch (_: ReaderException) {
