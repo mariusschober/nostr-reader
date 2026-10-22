@@ -39,6 +39,7 @@ fun SettingsScreen(
   val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "beta" }
   var showAdvanced by remember { mutableStateOf(false) }
   var confirmExport by remember { mutableStateOf(false) }
+  var confirmRevoke by remember { mutableStateOf<ChannelEntity?>(null) }
   Scaffold(
     containerColor = c.background,
     topBar = {
@@ -76,7 +77,7 @@ fun SettingsScreen(
               Text("Chrome device", fontFamily = ReaderFonts.Ui, color = c.text)
               Text(ch.trustedSenderPubkey.take(12) + "…", fontFamily = ReaderFonts.Ui, fontSize = 12.sp, color = c.secondary)
             }
-            TextButton(onClick = { onRevokeChannel(ch.channelId) }) {
+            TextButton(onClick = { confirmRevoke = ch }) {
               Text("Revoke", fontFamily = ReaderFonts.Ui, color = c.error)
             }
           }
@@ -116,6 +117,30 @@ fun SettingsScreen(
         )
       }
     }
+  }
+  confirmRevoke?.let { channel ->
+    AlertDialog(
+      onDismissRequest = { confirmRevoke = null },
+      containerColor = c.background,
+      title = { Text("Revoke this device?", fontFamily = ReaderFonts.Ui, color = c.text) },
+      text = {
+        Text(
+          "Reader will delete the channel key and send a signed disconnect to Chrome. If Chrome is offline, it may still show Connected until you also choose Disconnect there.",
+          fontFamily = ReaderFonts.Ui, color = c.text,
+        )
+      },
+      confirmButton = {
+        TextButton(onClick = { confirmRevoke = null; onRevokeChannel(channel.channelId) },
+          colors = ButtonDefaults.textButtonColors(contentColor = c.error)) {
+          Text("Revoke", fontFamily = ReaderFonts.Ui)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { confirmRevoke = null }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+          Text("Cancel", fontFamily = ReaderFonts.Ui)
+        }
+      },
+    )
   }
   if (confirmExport) {
     AlertDialog(

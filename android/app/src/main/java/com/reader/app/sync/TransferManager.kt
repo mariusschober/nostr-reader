@@ -40,7 +40,12 @@ class TransferManager(
     val manifestId: String,
     val status: String,
     val expiresAt: Long,
-  )
+  ) {
+    companion object {
+      /** Authenticated peer teardown; carries no document identity. */
+      val DISCONNECT = Intake("", "", "", DisconnectProtocol.TYPE, 0)
+    }
+  }
 
   private val hex16 = Regex("^[0-9a-f]{32}$")
   private val hex32 = Regex("^[0-9a-f]{64}$")
@@ -64,9 +69,10 @@ class TransferManager(
     val payload = StrictJson.parseObject(envelope.payloadJson)
     val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverSeckey))
     return db.withTransaction {
-      when (payload["type"]?.jsonPrimitive?.content) {
+      when (payload["type"]?.jsonPrimitive?.contentOrNull) {
         "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
         "chunk" -> handleChunk(payload)
+        DisconnectProtocol.TYPE -> if (DisconnectProtocol.validate(payload, System.currentTimeMillis() / 1000)) Intake.DISCONNECT else null
         else -> null
       }
     }
@@ -103,7 +109,20 @@ class TransferManager(
     return db.withTransaction {
       if (db.processedEvents().byId(wrap.id) != null) return@withTransaction null
       if (db.processedEvents().count() >= limits.processedEvents) throw StagingCapacityException()
-      val intake = when (payload["type"]?.jsonPrimitive?.content) {
+      if (payload["type"]?.jsonPrimitive?.contentOrNull == DisconnectProtocol.TYPE) {
+        if (!DisconnectProtocol.validate(payload, nowSecs)) return@withTransaction null
+        val inserted = db.processedEvents().insert(
+          ProcessedEventEntity(
+            eventId = wrap.id,
+            channelId = channelId,
+            transferId = DisconnectProtocol.TYPE,
+            processedAt = System.currentTimeMillis(),
+            expiresAt = ledgerExpiresAt,
+          ),
+        )
+        return@withTransaction if (inserted != -1L) Intake.DISCONNECT else null
+      }
+      val intake = when (payload["type"]?.jsonPrimitive?.contentOrNull) {
         "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
         "chunk" -> handleChunk(payload)
         else -> return@withTransaction null
@@ -121,7 +140,9 @@ class TransferManager(
           expiresAt = ledgerExpiresAt,
         ),
       )
-      if (inserted != -1L && intake != null) queueAckIntent(channelId, trustedSender, intake, nowSecs)
+      if (inserted != -1L && intake != null && intake !== Intake.DISCONNECT) {
+        queueAckIntent(channelId, trustedSender, intake, nowSecs)
+      }
       intake
     }
   }

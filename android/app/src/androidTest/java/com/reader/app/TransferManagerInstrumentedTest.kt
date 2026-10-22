@@ -122,6 +122,27 @@ class TransferManagerInstrumentedTest {
     ).second
 
   @Test
+  fun authenticatedDisconnectIsSignalledOnceAndWrongSenderIsIgnored() = runBlocking {
+    val senderKey = Secp256k1.randomPrivateKey()
+    val receiverKey = Secp256k1.randomPrivateKey()
+    val otherKey = Secp256k1.randomPrivateKey()
+    val senderPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(senderKey))
+    val now = System.currentTimeMillis() / 1000
+    val payload = buildJsonObject {
+      put("protocol", ReaderCore.READER_PROTOCOL)
+      put("type", "disconnect")
+      put("createdAt", now)
+      put("expiresAt", now + 600)
+      put("reasonCode", "user-disconnect")
+    }
+    val event = wrap(payload, senderKey, receiverKey)
+    assertSame(TransferManager.Intake.DISCONNECT, manager.ingestForSync(event, "channel", senderPubkey, receiverKey))
+    assertNull(manager.ingestForSync(event, "channel", senderPubkey, receiverKey))
+    assertNull(manager.ingestForSync(wrap(payload, otherKey, receiverKey), "channel", senderPubkey, receiverKey))
+    assertTrue(db.processedEvents().count() >= 1)
+  }
+
+  @Test
   fun reorderedAndDuplicateChunksCommitAtomicallyThenProduceBoundAck() = runBlocking {
     val senderKey = Secp256k1.randomPrivateKey()
     val receiverKey = Secp256k1.randomPrivateKey()

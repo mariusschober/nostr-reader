@@ -31,6 +31,7 @@ import {
   validatePairResponse,
 } from "../protocol/pairing.js";
 import { manifestIdentity, validateEndpointAck } from "../protocol/messages.js";
+import { createDisconnectPayload, validateDisconnectPayload } from "../protocol/disconnect.js";
 import {
   configuredRelays,
   DEFAULT_RELAYS,
@@ -579,6 +580,20 @@ async function publishTransfer(
 }
 
 // ---- E2E ACK catch-up (rolling window: NIP-59 timestamps are randomized) ----
+/** Applies a peer-authenticated disconnect: drop only the channel binding and pairing sessions. */
+async function handleRemoteDisconnect(): Promise<void> {
+  transportEpoch += 1;
+  await pairingOperations.run(async () => {
+    const sessions = cancelActivePairingSessions(
+      await loadPairingSessions(),
+      "The Android device disconnected this channel.",
+    );
+    await savePairingSessions(sessions);
+    await chrome.storage.local.remove([...PAIRED_CHANNEL_STORAGE_KEYS]);
+  });
+  for (const stop of activePublicationStops.values()) stop();
+}
+
 async function pollForAcksInternal(): Promise<void> {
   const st = await chrome.storage.local.get(["deviceSeckey", ...PAIRED_CHANNEL_STORAGE_KEYS]);
   const paired = await pairedChannelState(st as Record<string, unknown>);
@@ -598,6 +613,14 @@ async function pollForAcksInternal(): Promise<void> {
         expectedProtocols: [READER_PROTOCOL],
         nowSecs: now,
       });
+      if (envelope.payload["type"] === "disconnect") {
+        // A peer-authenticated teardown is a local channel removal, not a
+        // transfer outcome. Validate before touching durable state.
+        validateDisconnectPayload(envelope.payload, now);
+        storageOperation = true;
+        await handleRemoteDisconnect();
+        continue;
+      }
       if (envelope.payload["type"] !== "ack") continue;
       const transferId = String(envelope.payload["transferId"] ?? "");
       storageOperation = true;
@@ -747,6 +770,7 @@ async function publishFreshPayload(
   recipientPubkey: string,
   payload: unknown,
   expireSecs = 600,
+  timeoutMs = 10_000,
 ): Promise<string[]> {
   const pool = new SimplePool();
   const accepted = await Promise.all(relays.map(async (url) => {
@@ -757,7 +781,7 @@ async function publishFreshPayload(
       wrapKind: WRAP_KIND,
       expireSecs,
     });
-    const [result] = await publishPerRelay(pool, [url], wrap as never, senderSeckey);
+    const [result] = await publishPerRelay(pool, [url], wrap as never, senderSeckey, timeoutMs);
     return result?.ok ? url : null;
   }));
   try { pool.close(relays); } catch { /* ignore */ }
@@ -1137,6 +1161,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       });
     } else if (msg?.kind === "reader-disconnect") {
       transportEpoch += 1;
+      // Best-effort signed teardown so an online phone does not keep a dead
+      // channel. The local disconnect is authoritative even if no relay answers.
+      const paired = await loadPairedChannelState();
+      if (paired) {
+        try {
+          const { seckey } = await getDeviceKey();
+          await publishFreshPayload(
+            paired.relays, seckey, paired.channelPubkey,
+            createDisconnectPayload(Math.floor(Date.now() / 1000)), 600, 2500,
+          );
+        } catch { /* offline or relay refusal: local state still clears */ }
+      }
       await pairingOperations.run(async () => {
         const sessions = cancelActivePairingSessions(
           await loadPairingSessions(),

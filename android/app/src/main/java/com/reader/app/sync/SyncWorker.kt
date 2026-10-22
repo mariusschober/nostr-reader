@@ -133,6 +133,14 @@ class ReaderSyncSession(private val applicationContext: Context) {
             for (ev in intakeQueue) {
               try {
                 val intake = tm.ingestForSync(ev, ch.channelId, ch.trustedSenderPubkey, seckey)
+                if (intake === TransferManager.Intake.DISCONNECT) {
+                  // Peer-authenticated teardown: drop the channel and its wrapped
+                  // key immediately so the UI stops claiming a live connection.
+                  db.channels().revoke(ch.channelId, System.currentTimeMillis())
+                  keys.deleteChannelKey(ch.channelId)
+                  Log.i("NostrReaderSync", "channel=${ch.channelId.take(8)} disconnected_by_peer")
+                  return@launch
+                }
                 if (intake != null) ackSignals.trySend(Unit)
               } catch (error: CancellationException) { throw error
               } catch (_: java.io.IOException) {

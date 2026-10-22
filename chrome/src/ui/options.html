@@ -242,7 +242,7 @@
       if (!confirm("Disconnect this Android device? Queued articles stay local until you pair again.")) return;
       const result = await chrome.runtime.sendMessage({kind:"reader-disconnect"});
       if (!result.ok) return deliveryMessage(result.error || "The device could not be disconnected.", true);
-      deliveryMessage("Device disconnected. Pair again when you are ready.");
+      deliveryMessage("Device disconnected. If the phone was offline, also Revoke this Chrome device in Reader settings.");
       await refresh();
     });
     discardFailed.addEventListener("click", async () => {

@@ -155,6 +155,23 @@ reproduce its response and completion, and each receiving runtime must accept
 the opposite platform's fixed message only with the recorded authenticated
 sender and validation time.
 
+## Channel disconnect
+
+Either endpoint can tear down an established channel with a bounded
+`disconnect` payload (`shared/schemas/disconnect.json`) inside the same NIP-59
+kind-1059 envelope as every other control message. The payload contains only
+`protocol`, `type`, `createdAt`, `expiresAt`, and `reasonCode`; it never carries
+keys, article text, or transfer identity.
+
+Android sends it from the channel key to the stable Chrome device key and
+Chrome sends it from the stable device key to the channel key, so the existing
+seal-sender binding authenticates the request. A receiver validates the
+payload, then transactionally revokes/deletes its local channel row and wrapped
+key. Delivery is best-effort: the local revoke or disconnect is authoritative
+even when the peer is offline, and the UI tells the user to disconnect the
+other side as well. A replayed, expired, wrong-sender, or wrong-type payload
+never mutates channel state.
+
 ## NIP-59 envelope
 
 Every pairing, manifest, chunk, and endpoint ACK uses a fresh outer key and a

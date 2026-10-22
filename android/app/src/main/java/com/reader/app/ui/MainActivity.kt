@@ -503,9 +503,25 @@ class MainActivity : ComponentActivity() {
           onBack = { backToInbox(); lifecycleScope.launch { refresh() } },
           onRevokeChannel = { id ->
             lifecycleScope.launch {
-              withContext(Dispatchers.IO) { db.channels().revoke(id, System.currentTimeMillis()) }
-              keys.deleteChannelKey(id)
-              refresh()
+              try {
+                val channel = withContext(Dispatchers.IO) { db.channels().byId(id) }
+                val channelKey = runCatching { keys.openChannelKey(id) }.getOrNull()
+                if (channel != null && channelKey != null) {
+                  withContext(Dispatchers.IO) {
+                    com.reader.app.sync.DisconnectDispatcher((application as com.reader.app.ReaderApp).relayClient)
+                      .publish(channel, channelKey)
+                  }
+                }
+              } finally {
+                withContext(Dispatchers.IO) { db.channels().revoke(id, System.currentTimeMillis()) }
+                keys.deleteChannelKey(id)
+                refresh()
+                Toast.makeText(
+                  this@MainActivity,
+                  "Revoked on this phone. If Chrome was offline, also choose Disconnect in Chrome.",
+                  Toast.LENGTH_LONG,
+                ).show()
+              }
             }
           },
           exporting = exporting,

@@ -178,6 +178,15 @@ describe("production publication and ACK interleavings", () => {
     });
   });
 
+  async function signedDisconnect(overrides: object = {}) {
+    const now = Math.floor(Date.now() / 1000);
+    const { wrap } = await realTransport.sealAndWrap({ senderSeckey: phoneKey, recipientPubkey: devicePubkey, expireSecs: 3600,
+      payload: { protocol: "reader/2", type: "disconnect", createdAt: now, expiresAt: now + 600,
+        reasonCode: "user-disconnect", ...overrides },
+    });
+    return wrap;
+  }
+
   async function signedAck(item: any, overrides: object = {}) {
     const now = Math.floor(Date.now() / 1000);
     const { wrap } = await realTransport.sealAndWrap({ senderSeckey: phoneKey, recipientPubkey: devicePubkey, expireSecs: 3600,
@@ -205,6 +214,28 @@ describe("production publication and ACK interleavings", () => {
     await new Promise(resolve => setTimeout(resolve, 30));
     expect(await records("items")).toHaveLength(0);
     expect(await records("captures")).toHaveLength(1);
+  });
+
+  it("peer-authenticated disconnect removes the channel binding but preserves identity and captures", async () => {
+    const worker = await boot();
+    await worker.queueCapture(doc, captureId);
+    const identity = storage.deviceSeckey;
+    incoming = [await signedDisconnect()];
+    expect(await message({ kind: "reader-check-acks" }, trusted)).toMatchObject({ ok: true });
+    expect(storage.channelPubkey).toBeUndefined();
+    expect(storage.channelDevicePubkey).toBeUndefined();
+    expect(storage.deviceSeckey).toBe(identity);
+    expect(await records("items")).toHaveLength(1);
+    expect(await records("captures")).toHaveLength(1);
+    release();
+  });
+
+  it("an expired disconnect never removes the channel", async () => {
+    const worker = await boot();
+    incoming = [await signedDisconnect({ expiresAt: Math.floor(Date.now() / 1000) - 1 })];
+    expect(await message({ kind: "reader-check-acks" }, trusted)).toMatchObject({ ok: true });
+    expect(storage.channelPubkey).toBe(phonePubkey);
+    release();
   });
 
   it("wrong manifest ACK never clears a capture despite valid phone signature", async () => {
