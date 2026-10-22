@@ -99,14 +99,34 @@ object Ingest {
     }
   }
 
-  fun handleIntentText(intent: Intent): Pair<String, String?>? {
+  data class SharedContent(val text: String, val isHtml: Boolean, val subject: String?)
+
+  /**
+   * Explicit content-type choice replaces the old "__HTML__" string sentinel,
+   * so shared text that happens to start with that prefix stays literal.
+   */
+  fun chooseSharedContent(
+    rawText: String?,
+    htmlText: String?,
+    mimeType: String?,
+    subject: String?,
+  ): SharedContent? {
+    val text = rawText?.takeIf { it.isNotBlank() }
+    val html = htmlText?.takeIf { it.isNotBlank() }
+    val prefersHtml = mimeType?.equals("text/html", ignoreCase = true) == true
+    return when {
+      prefersHtml && html != null -> SharedContent(html, true, subject)
+      text != null -> SharedContent(text, false, subject)
+      html != null -> SharedContent(html, true, subject)
+      else -> null
+    }
+  }
+
+  fun handleIntentText(intent: Intent): SharedContent? {
     val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
       ?: intent.getCharSequenceExtra("android.intent.extra.PROCESS_TEXT")?.toString()
-      ?: return null
-    if (text.isBlank()) return null
-    val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
     val html = intent.getStringExtra(Intent.EXTRA_HTML_TEXT)
-    return if (html != null) "__HTML__$html" to subject else text to subject
+    return chooseSharedContent(text, html, intent.type, intent.getStringExtra(Intent.EXTRA_SUBJECT))
   }
 
   private suspend fun commit(ctx: Context, markdown: String, sourceType: String, title: String?): String = withContext(Dispatchers.Default) {

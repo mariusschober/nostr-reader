@@ -9,13 +9,21 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.reader.app.core.ArticleBlock
 import com.reader.app.core.ArticleParser
@@ -61,6 +69,8 @@ class MainActivity : ComponentActivity() {
   private var ttsEngine: AndroidTtsEngine? = null
   private var ttsController: TtsController? = null
   private var refreshTick = androidx.compose.runtime.mutableStateOf(0)
+  private val pendingShare = androidx.compose.runtime.mutableStateOf<Ingest.SharedContent?>(null)
+  private val shareTimes = ArrayDeque<Long>()
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -77,7 +87,7 @@ class MainActivity : ComponentActivity() {
         }
       }
     }
-    handleIncomingIntent(intent)
+    if (savedInstanceState == null) handleIncomingIntent(intent)
     window.setBackgroundDrawableResource(android.R.color.black)
     setContent {
       val loadedSettings by remember { prefs.flow }.collectAsState(initial = null)
@@ -543,6 +553,31 @@ class MainActivity : ComponentActivity() {
           },
         )
       }
+      pendingShare.value?.let { shared ->
+        AlertDialog(
+          onDismissRequest = { pendingShare.value = null },
+          containerColor = com.reader.app.ui.theme.appColors().background,
+          title = { Text("Add shared content?") },
+          text = {
+            Column {
+              Text("Another app sent this to Reader. It will be stored locally until you delete it.")
+              Spacer(Modifier.height(8.dp))
+              Text(
+                shared.text.replace(Regex("\\s+"), " ").take(280) + if (shared.text.length > 280) "…" else "",
+                style = MaterialTheme.typography.bodySmall,
+              )
+            }
+          },
+          confirmButton = {
+            TextButton(onClick = { pendingShare.value = null; importShared(shared, "android-share") }) {
+              Text("Add to Reader")
+            }
+          },
+          dismissButton = {
+            TextButton(onClick = { pendingShare.value = null }) { Text("Cancel") }
+          },
+        )
+      }
       }
     }
   }
@@ -564,18 +599,36 @@ class MainActivity : ComponentActivity() {
 
   private fun handleIncomingIntent(intent: Intent) {
     if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_PROCESS_TEXT) return
+    val shared = Ingest.handleIntentText(intent) ?: return
+    if (intent.action == Intent.ACTION_PROCESS_TEXT) {
+      // The user explicitly chose Reader from the selection menu; keep it quick.
+      importShared(shared, "android-process-text")
+      return
+    }
+    // An exported share target can be launched by any app. Bound repeated
+    // imports and require one explicit confirmation before touching the library.
+    val now = android.os.SystemClock.elapsedRealtime()
+    while (shareTimes.isNotEmpty() && now - shareTimes.first() > 60_000) shareTimes.removeFirst()
+    if (shareTimes.size >= 5) {
+      Toast.makeText(this, "Too many shared items. Try again in a minute.", Toast.LENGTH_LONG).show()
+      return
+    }
+    shareTimes.addLast(now)
+    pendingShare.value = shared
+  }
+
+  private fun importShared(shared: Ingest.SharedContent, sourceType: String) {
     lifecycleScope.launch {
       try {
-        val (text, subject) = Ingest.handleIntentText(intent) ?: return@launch
-        val id = if (text.startsWith("__HTML__")) {
-          Ingest.importHtml(this@MainActivity, text.removePrefix("__HTML__"), "android-share")
+        val id = if (shared.isHtml) {
+          Ingest.importHtml(this@MainActivity, shared.text, sourceType)
         } else {
-          Ingest.importPlainText(this@MainActivity, text, if (intent.action == Intent.ACTION_PROCESS_TEXT) "android-process-text" else "android-share", subject)
+          Ingest.importPlainText(this@MainActivity, shared.text, sourceType, shared.subject)
         }
         Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
         refreshTick.value++
       } catch (e: Exception) {
-        Toast.makeText(this@MainActivity, "Import failed", Toast.LENGTH_LONG).show()
+        Toast.makeText(this@MainActivity, "Import failed: ${e.message?.take(120) ?: "unknown"}", Toast.LENGTH_LONG).show()
       }
     }
   }

@@ -30,6 +30,24 @@ class PasteDetectTest {
   }
 
   @Test
+  fun htmlIsChosenByTypeNotByAStringSentinel() {
+    val html = checkNotNull(Ingest.chooseSharedContent("__HTML__literal", "<p>Shared HTML</p>", "text/html", "Subject"))
+    assertTrue(html.isHtml)
+    assertEquals("<p>Shared HTML</p>", html.text)
+    assertEquals("Subject", html.subject)
+
+    val literal = checkNotNull(Ingest.chooseSharedContent("__HTML__literal", null, "text/plain", null))
+    assertFalse(literal.isHtml)
+    assertEquals("__HTML__literal", literal.text)
+  }
+
+  @Test
+  fun blankSharesAreRejected() {
+    assertNull(Ingest.chooseSharedContent("   ", null, "text/plain", null))
+    assertNull(Ingest.chooseSharedContent(null, "\n", "text/html", null))
+  }
+
+  @Test
   fun linksAndTablesNeedBlankLine() {
     assertTrue(Ingest.looksLikeMarkdown("Read this.\n\nSee [the docs](https://example.com) for more."))
     assertFalse(Ingest.looksLikeMarkdown("See [the docs](https://example.com) ok"))
