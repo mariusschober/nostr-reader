@@ -3,6 +3,7 @@ package com.reader.app
 import com.reader.app.nostr.PAIRING_CAPABILITIES
 import com.reader.app.nostr.PAIRING_PROTOCOL
 import com.reader.app.nostr.PairingProtocol
+import com.reader.app.nostr.PairingSas
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -130,6 +131,29 @@ class PairingProtocolTest {
     assertEquals(request.sessionId, complete["sessionId"]!!.jsonPrimitive.content)
     assertEquals(request.chromeDevicePubkey, complete["chromeDevicePubkey"]!!.jsonPrimitive.content)
     assertEquals(request.relaySetDigest, complete["relaySetDigest"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun shortAuthenticationStringMatchesCrossRuntimeVector() {
+    val vector = checkNotNull(javaClass.classLoader?.getResourceAsStream("pairing-v2.json")) {
+      "shared pairing-v2.json test resource missing"
+    }.bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }
+    val request = vector["request"]!!.jsonObject
+    val expected = vector["sas"]!!.jsonPrimitive.content
+    val actual = PairingSas.words(
+      request["sessionId"]!!.jsonPrimitive.content,
+      request["chromeDevicePubkey"]!!.jsonPrimitive.content,
+      request["pairingPubkey"]!!.jsonPrimitive.content,
+      request["nonce"]!!.jsonPrimitive.content,
+    )
+    assertEquals(expected, actual)
+    assertEquals(6, actual.split(" ").size)
+    assertNotEquals(actual, PairingSas.words(
+      request["sessionId"]!!.jsonPrimitive.content,
+      request["chromeDevicePubkey"]!!.jsonPrimitive.content,
+      request["pairingPubkey"]!!.jsonPrimitive.content,
+      "03".repeat(32),
+    ))
   }
 
   @Test

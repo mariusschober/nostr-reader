@@ -35,6 +35,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 import com.reader.app.nostr.PairingProtocol
+import com.reader.app.nostr.PairingSas
 import com.reader.app.nostr.ValidatedPairingRequest
 import com.reader.app.prefs.ReaderSettings
 import com.reader.app.ui.PairingScanGate
@@ -213,9 +214,23 @@ private fun PairingReview(
     Text("Review connection", fontFamily = ReaderFonts.Ui, fontSize = 18.sp)
     Spacer(Modifier.height(8.dp))
     Text(
-      "Chrome device ${request.chromeDevicePubkey.take(12)}… is asking to create a private Reader channel.",
+      "Compare these six words with the Chrome pairing page before you connect.",
       fontFamily = ReaderFonts.Ui,
       fontSize = 14.sp,
+    )
+    Spacer(Modifier.height(6.dp))
+    Text(
+      PairingSas.forRequest(request),
+      fontFamily = ReaderFonts.Ui,
+      fontSize = 24.sp,
+      fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+    )
+    Spacer(Modifier.height(6.dp))
+    Text(
+      "Chrome device ${request.chromeDevicePubkey.take(12)}…",
+      fontFamily = ReaderFonts.Ui,
+      fontSize = 12.sp,
+      color = c.secondary,
     )
     Spacer(Modifier.height(16.dp))
     Text("Relays (${request.relays.size})", fontFamily = ReaderFonts.Ui, fontSize = 15.sp)

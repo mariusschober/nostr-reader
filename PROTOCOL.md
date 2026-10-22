@@ -78,8 +78,11 @@ worker need not remain alive.
 ### 2. Android validates and asks for consent
 
 Before network activity Android enforces the exact schema, size, time, point,
-capability, relay-count, URL, uniqueness, and digest rules. It then presents a
-human-readable Chrome fingerprint and full relay list. Only the explicit
+capability, relay-count, URL, uniqueness, and digest rules. It then presents the
+full relay list and a six-word short authentication string (SAS) derived from
+`sessionId`, `pairingPubkey`, `chromeDevicePubkey`, and `nonce`. Chrome shows
+the same six words on the pairing page; the user compares them before tapping
+Connect. The SAS is a public transcript digest, not a secret. Only the explicit
 **Connect** action permits DNS resolution and network activity.
 
 Android first persists a `provisioning` intent, wraps a fresh channel private

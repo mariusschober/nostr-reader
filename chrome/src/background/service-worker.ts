@@ -32,6 +32,7 @@ import {
 } from "../protocol/pairing.js";
 import { manifestIdentity, validateEndpointAck } from "../protocol/messages.js";
 import { createDisconnectPayload, validateDisconnectPayload } from "../protocol/disconnect.js";
+import { pairingSas } from "../protocol/sas.js";
 import {
   configuredRelays,
   DEFAULT_RELAYS,
@@ -1093,7 +1094,7 @@ async function recoverPairingSessions(): Promise<void> {
   return pairingRecovery;
 }
 
-async function startPairingInternal(): Promise<{ qr: PairingRequestV2; sessionId: string }> {
+async function startPairingInternal(): Promise<{ qr: PairingRequestV2; sessionId: string; sas: string }> {
   let sessions = await loadPairingSessions();
   const active = sessions.filter((session) => isActivePairingState(session.state));
   if (active.length >= MAX_PAIRING_SESSIONS) throw new Error("Two pairing codes are already active. Cancel or let one expire.");
@@ -1128,10 +1129,11 @@ async function startPairingInternal(): Promise<{ qr: PairingRequestV2; sessionId
     state: "waiting_response",
   }];
   await savePairingSessions(sessions);
-  return { qr: request, sessionId: request.sessionId };
+  const sas = await pairingSas(request);
+  return { qr: request, sessionId: request.sessionId, sas };
 }
 
-async function startPairing(): Promise<{ qr: PairingRequestV2; sessionId: string }> {
+async function startPairing(): Promise<{ qr: PairingRequestV2; sessionId: string; sas: string }> {
   await recoverPairingSessions();
   return pairingOperations.run(startPairingInternal);
 }
