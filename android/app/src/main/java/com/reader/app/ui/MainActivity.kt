@@ -159,6 +159,21 @@ class MainActivity : ComponentActivity() {
         }
       }
 
+      var exporting by remember { mutableStateOf(false) }
+      val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        lifecycleScope.launch {
+          exporting = true
+          try {
+            exportArchive(uri)
+            Toast.makeText(this@MainActivity, "Archive exported. The ZIP contains plaintext article text.", Toast.LENGTH_LONG).show()
+          } catch (e: Exception) {
+            Toast.makeText(this@MainActivity, "Export failed: ${e.message?.take(120)}", Toast.LENGTH_LONG).show()
+          } finally {
+            exporting = false
+          }
+        }
+      }
       val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         lifecycleScope.launch {
@@ -493,7 +508,8 @@ class MainActivity : ComponentActivity() {
               refresh()
             }
           },
-          onExport = { lifecycleScope.launch { exportArchive() } },
+          exporting = exporting,
+          onExport = { if (!exporting) exportPicker.launch(com.reader.app.data.ArchiveExport.filename(System.currentTimeMillis())) },
           onSignerInfo = {
             Toast.makeText(this, "Random local keys by default. External signers only add provenance, never transport.", Toast.LENGTH_LONG).show()
           },
@@ -539,13 +555,13 @@ class MainActivity : ComponentActivity() {
   private suspend fun completePairing(qrText: String): PairingCoordinator.BeginResult =
     PairingCoordinator(this).begin(qrText)
 
-  /** Manual archive export: ZIP of md + metadata JSON. Never keys. */
-  private suspend fun exportArchive() {
-    try {
-      val list = withContext(Dispatchers.IO) { db.documents().observeSummaries().first() }
-      val out = getExternalFilesDir(null)?.resolve("reader-archive.zip") ?: throw IllegalStateException("no storage")
-      withContext(Dispatchers.IO) {
-        ZipOutputStream(out.outputStream()).use { zip ->
+  /** Manual archive export to a user-chosen SAF location: ZIP of md + metadata JSON. Never keys. */
+  private suspend fun exportArchive(uri: Uri) {
+    val list = withContext(Dispatchers.IO) { db.documents().observeSummaries().first() }
+    val out = contentResolver.openOutputStream(uri) ?: throw IllegalStateException("Could not open the selected file")
+    withContext(Dispatchers.IO) {
+      out.use { stream ->
+        ZipOutputStream(stream).use { zip ->
           for (summary in list) {
             val d = db.documents().observeMetadata(summary.documentId).first() ?: continue
             zip.putNextEntry(ZipEntry("${d.documentId}.md"))
@@ -577,9 +593,6 @@ class MainActivity : ComponentActivity() {
           zip.closeEntry()
         }
       }
-      Toast.makeText(this, "Exported ${list.size} articles. Note: exported Markdown is plaintext.", Toast.LENGTH_LONG).show()
-    } catch (e: Exception) {
-      Toast.makeText(this, "Export failed: ${e.message?.take(120)}", Toast.LENGTH_LONG).show()
     }
   }
 

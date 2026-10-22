@@ -25,6 +25,7 @@ fun SettingsScreen(
   relaySummary: String,
   onBack: () -> Unit,
   onRevokeChannel: (String) -> Unit,
+  exporting: Boolean = false,
   onExport: () -> Unit,
   onSignerInfo: () -> Unit,
   onSettingsChange: (ReaderSettings) -> Unit,
@@ -37,6 +38,7 @@ fun SettingsScreen(
   val context = androidx.compose.ui.platform.LocalContext.current
   val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "beta" }
   var showAdvanced by remember { mutableStateOf(false) }
+  var confirmExport by remember { mutableStateOf(false) }
   Scaffold(
     containerColor = c.background,
     topBar = {
@@ -104,8 +106,38 @@ fun SettingsScreen(
           fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.text,
         )
         Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onExport) { Text("Export archive (ZIP)", fontFamily = ReaderFonts.Ui, color = c.text) }
+        TextButton(enabled = !exporting, onClick = { confirmExport = true }) {
+          Text(if (exporting) "Exporting…" else "Export archive (ZIP)", fontFamily = ReaderFonts.Ui, color = c.text)
+        }
+        if (exporting) LinearProgressIndicator(Modifier.fillMaxWidth())
+        Text(
+          "Choose a destination such as Downloads. The ZIP is a one-way plaintext copy and is not restorable yet.",
+          fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary,
+        )
       }
     }
+  }
+  if (confirmExport) {
+    AlertDialog(
+      onDismissRequest = { confirmExport = false },
+      containerColor = c.background,
+      title = { Text("Export archive?", fontFamily = ReaderFonts.Ui, color = c.text) },
+      text = {
+        Text(
+          "The ZIP contains every article and highlight as plaintext. It never includes channel keys. Anyone with the file can read it.",
+          fontFamily = ReaderFonts.Ui, color = c.text,
+        )
+      },
+      confirmButton = {
+        TextButton(onClick = { confirmExport = false; onExport() }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+          Text("Choose location", fontFamily = ReaderFonts.Ui)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { confirmExport = false }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+          Text("Cancel", fontFamily = ReaderFonts.Ui)
+        }
+      },
+    )
   }
 }
