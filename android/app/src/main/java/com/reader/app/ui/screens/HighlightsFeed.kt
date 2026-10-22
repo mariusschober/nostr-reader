@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -12,12 +15,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.reader.app.core.ReviewScheduler
 import com.reader.app.data.HighlightSummary
+import com.reader.app.ui.HighlightSearch
 
 @Composable
 fun HighlightsFeed(quotes: List<HighlightSummary>, seed: Long, newest: Boolean, onNewest: (Boolean) -> Unit, onReview: (String?) -> Unit) {
-  val sorted = remember(quotes, newest, seed) {
-    if (newest) quotes.sortedWith(compareByDescending<HighlightSummary> { it.createdAt }.thenBy { it.id })
-    else quotes.sortedWith(compareBy<HighlightSummary> { ReviewScheduler.feedKey(seed, it.id) }.thenBy { it.id })
+  var query by rememberSaveable { mutableStateOf("") }
+  val sorted = remember(quotes, newest, seed, query) {
+    val filtered = quotes.filter { HighlightSearch.matches(it, query) }
+    if (newest) filtered.sortedWith(compareByDescending<HighlightSummary> { it.createdAt }.thenBy { it.id })
+    else filtered.sortedWith(compareBy<HighlightSummary> { ReviewScheduler.feedKey(seed, it.id) }.thenBy { it.id })
   }
   Column(Modifier.fillMaxSize()) {
     Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -25,7 +31,18 @@ fun HighlightsFeed(quotes: List<HighlightSummary>, seed: Long, newest: Boolean, 
       FilterChip(selected = newest, onClick = { onNewest(true) }, label = { Text("Newest") })
       Button(enabled = quotes.isNotEmpty(), onClick = { onReview(null) }) { Text("Review") }
     }
+    OutlinedTextField(
+      value = query, onValueChange = { query = it },
+      placeholder = { Text("Search quotes and sources") },
+      leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+      trailingIcon = if (query.isEmpty()) null else {
+        { IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, contentDescription = "Clear search") } }
+      },
+      singleLine = true,
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+    )
     if (quotes.isEmpty()) Text("Save a passage while reading to find it here.", modifier = Modifier.padding(24.dp))
+    else if (sorted.isEmpty()) Text("No highlights match “${query.trim()}”.", modifier = Modifier.padding(24.dp))
     else LazyColumn(Modifier.fillMaxSize()) {
       items(sorted, key = { it.id }) { quote ->
         Column(Modifier.fillMaxWidth().clickable { onReview(quote.id) }.padding(20.dp)) {
