@@ -77,13 +77,13 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         if (pen || actionMode != null || body.selectionStart != body.selectionEnd) swipeEligible = false
         if (!swiping && kotlin.math.abs(dy) > dp(12)) swipeEligible = false
         if (!swiping && swipeEligible && kotlin.math.abs(dx) > dp(20) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.7f &&
-          (ArticleAction.forArticle(articleList, dx > 0) != null)) {
+          (ArticleAction.forSwipe(articleList, dx > 0) != null)) {
           swiping = true
           val cancel = MotionEvent.obtain(event); cancel.action = MotionEvent.ACTION_CANCEL
           super.dispatchTouchEvent(cancel); cancel.recycle()
         }
         if (swiping) {
-          val action = ArticleAction.forArticle(articleList, dx > 0)
+          val action = ArticleAction.forSwipe(articleList, dx > 0)
           val allowed = action != null
           val offset = if (allowed && swipeEligible) dx.coerceIn(-width.toFloat(), width.toFloat()) else 0f
           body.translationX = offset
@@ -93,7 +93,13 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           swipeLabel.layoutParams = LayoutParams(kotlin.math.abs(offset).toInt().coerceAtLeast(1), LayoutParams.WRAP_CONTENT,
             android.view.Gravity.CENTER_VERTICAL or (if (offset > 0) android.view.Gravity.LEFT else android.view.Gravity.RIGHT))
           swipeLabel.gravity = android.view.Gravity.CENTER
-          val icon = context.getDrawable(when (action) { ArticleAction.Delete -> R.drawable.ic_swipe_delete; ArticleAction.Unarchive -> R.drawable.ic_swipe_unarchive; ArticleAction.Later -> R.drawable.ic_swipe_later; else -> R.drawable.ic_swipe_archive })?.mutate()
+          val icon = context.getDrawable(when (action) {
+            ArticleAction.Delete -> R.drawable.ic_swipe_delete
+            ArticleAction.Unarchive, ArticleAction.Inbox -> R.drawable.ic_swipe_unarchive
+            ArticleAction.Later -> R.drawable.ic_swipe_later
+            ArticleAction.Priority -> R.drawable.ic_swipe_priority
+            else -> R.drawable.ic_swipe_archive
+          })?.mutate()
           val tint = if (action == ArticleAction.Delete) deleteTint else body.currentTextColor
           swipeLabel.setTextColor(tint)
           icon?.setTint(tint)
@@ -112,7 +118,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         swipeLabel.text = ""
         swipeLabel.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)
         onSwipeProgress(0f, false)
-        if (commit) ArticleAction.forArticle(articleList, later)?.let { reportCursor(); onArticleSwipe(it) }
+        if (commit) ArticleAction.forSwipe(articleList, later)?.let { reportCursor(); onArticleSwipe(it) }
         return true
       }
     }

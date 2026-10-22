@@ -136,11 +136,16 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         Box {
           IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More actions") }
           DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            val archived = doc?.list == com.reader.app.ui.Triage.ARCHIVED
-            val menuActions = if (archived) listOf(ArticleAction.Unarchive, ArticleAction.Delete) else listOf(ArticleAction.Later, ArticleAction.Archive)
+            val menuActions = ArticleAction.forMenu(doc?.list)
             menuActions.forEach { action ->
-              DropdownMenuItem(enabled = action.target == null || doc?.list != action.target,
-                text = { Text(action.label, color = if (action == ArticleAction.Delete) colors.error else colors.text) },
+              DropdownMenuItem(
+                enabled = action.target == null || doc?.list != action.target,
+                text = {
+                  Text(
+                    if (action.target == doc?.list) "${action.label} (current)" else action.label,
+                    color = if (action == ArticleAction.Delete) colors.error else colors.text,
+                  )
+                },
                 onClick = { menu = false; view?.flushSelection(); scope.launch { selections.withLock { }; onArticleAction(action) } })
             }
             if (undo != null) DropdownMenuItem(text = { Text("Undo highlight change") }, onClick = {
@@ -192,7 +197,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     Column(Modifier.padding(padding).fillMaxSize()) {
       if (showSwipeHint) Surface(color = colors.surface) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-          Text(if (doc?.list == com.reader.app.ui.Triage.ARCHIVED) "Swipe inside the page: ← Delete · Unarchive →" else "Swipe inside the page: ← Archive · Later →", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+          Text(
+            ArticleAction.swipeHint(doc?.list) ?: "Swipe actions are unavailable for this article.",
+            modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+          )
           IconButton(onClick = { showSwipeHint = false; hints.edit().putBoolean("article_swipe_seen", true).apply() }) {
             Icon(Icons.Default.Close, contentDescription = "Dismiss swipe hint", modifier = Modifier.size(18.dp))
           }

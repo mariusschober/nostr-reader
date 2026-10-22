@@ -410,7 +410,7 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
   val latestAction by rememberUpdatedState(onAction)
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     val width = with(LocalDensity.current) { maxWidth.toPx() }
-    val action = ArticleAction.forArticle(Triage.ARCHIVED, offset > 0)!!
+    val action = ArticleAction.forSwipe(Triage.ARCHIVED, offset > 0)!!
     val armed = ArticleAction.commits(action, offset, width)
     if (offset != 0f) Row(Modifier.matchParentSize().padding(8.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -425,7 +425,7 @@ private fun ArchiveSwipeRow(doc: DocumentSummary, colors: com.reader.app.ui.them
         onDragStart = { dragging = true },
         onDragCancel = { offset = 0f; dragging = false },
         onDragEnd = {
-          val selected = ArticleAction.forArticle(Triage.ARCHIVED, offset > 0)!!
+          val selected = ArticleAction.forSwipe(Triage.ARCHIVED, offset > 0)!!
           val commit = ArticleAction.commits(selected, offset, width)
           offset = 0f; dragging = false
           if (commit) latestAction(selected)
