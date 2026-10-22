@@ -59,3 +59,63 @@ it("streaming consumers do not retain accumulated relay history after durable co
   expect(consumed).toEqual(["ack"]);
   expect(result.events).toEqual([]);
 });
+
+it("escalates instead of accepting a relay that silently caps at 50 below the requested limit", async () => {
+  const events = Array.from({ length: 500 }, (_, i) => ({ id: String(i), created_at: i }));
+  let state: ScanState | undefined;
+  const found = new Set<string>();
+  let queries = 0;
+  for (let i = 0; i < 100; i++) {
+    const result = await scanHistory({ since: 0, until: 600, state, budget: 3,
+      query: async w => {
+        queries++;
+        return events.filter(e => e.created_at >= w.since && e.created_at <= w.until).reverse().slice(0, Math.min(50, w.limit));
+      },
+      checkpoint: async value => { state = JSON.parse(JSON.stringify(value)); },
+    });
+    result.events.forEach(e => found.add(e.id));
+    if (result.complete) break;
+  }
+  expect(found.size).toBe(500);
+  expect(state?.pending).toEqual([]);
+  expect(state?.incompleteWindows).toEqual([]);
+  expect(queries).toBeGreaterThan(1);
+});
+
+it("escalates the requested limit when timestamp ties exceed the conservative cap", async () => {
+  const ties = Array.from({ length: 60 }, (_, i) => ({ id: String(i), created_at: 5 }));
+  const limits = new Set<number>();
+  const result = await scanHistory({ since: 5, until: 5, budget: 4,
+    query: async w => {
+      limits.add(w.limit);
+      return ties.slice(0, Math.min(60, w.limit));
+    },
+    checkpoint: async () => {},
+  });
+  expect([...limits]).toContain(4096);
+  expect(result.events).toHaveLength(60);
+  expect(result.complete).toBe(false);
+  expect(result.state.incompleteBuckets).toBe(1);
+});
+
+it("persists an unenumerable second and retries it at the largest limit", async () => {
+  const ties = Array.from({ length: 200 }, (_, i) => ({ id: String(i), created_at: 5 }));
+  const first = await scanHistory({ since: 5, until: 5, budget: 4,
+    query: async w => ties.slice(0, Math.min(50, w.limit)), checkpoint: async () => {},
+  });
+  expect(first.complete).toBe(false);
+  expect(first.state.incompleteWindows).toHaveLength(1);
+  expect(first.state.incompleteWindows[0]).toMatchObject({ since: 5, until: 5, limit: 4096 });
+
+  let retriedAt = 0;
+  const second = await scanHistory({ since: 5, until: 5, state: first.state, budget: 2,
+    query: async w => {
+      retriedAt = w.limit;
+      return ties.slice(0, 40); // the relay now returns everything it has
+    },
+    checkpoint: async () => {},
+  });
+  expect(retriedAt).toBe(4096);
+  expect(second.complete).toBe(true);
+  expect(second.state.incompleteWindows).toEqual([]);
+});
