@@ -65,7 +65,6 @@ dependencies {
   // Media / images
   implementation("androidx.media3:media3-session:1.4.1")
   implementation("androidx.media3:media3-ui:1.4.1")
-  implementation("io.coil-kt:coil-compose:2.6.0")
   // Nostr transport (no NDK: BC secp256k1 + OkHttp WS)
   implementation("com.squareup.okhttp3:okhttp:4.12.0")
   implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")

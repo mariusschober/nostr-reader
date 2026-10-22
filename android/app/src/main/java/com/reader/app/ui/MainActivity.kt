@@ -25,15 +25,11 @@ import androidx.core.view.WindowCompat
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import com.reader.app.core.ArticleBlock
-import com.reader.app.core.ArticleParser
 import com.reader.app.cursor.SemanticCursor
 import com.reader.app.data.ReaderDb
 import com.reader.app.nostr.READER_DEFAULT_RELAYS
 import com.reader.app.nostr.READER_RELAY_WRITE_QUORUM
 import com.reader.app.prefs.Prefs
-import com.reader.app.prefs.ArticleBackground
-import com.reader.app.prefs.ReaderSettings
 import com.reader.app.rsvp.RsvpModel
 import com.reader.app.security.KeystoreWrap
 import com.reader.app.signer.AmberSigner
@@ -52,7 +48,6 @@ import com.reader.app.ui.Route
 import com.reader.app.ui.RouteStack
 import com.reader.app.ui.Triage
 import com.reader.app.ui.screens.*
-import com.reader.app.ui.theme.colorsFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -696,46 +691,3 @@ class MainActivity : ComponentActivity() {
   }
 }
 
-@Composable
-private fun ReaderWithTts(
-  docId: String,
-  blocks: List<ArticleBlock>,
-  settings: ReaderSettings,
-  docState: com.reader.app.data.DocumentEntity,
-  ttsState: TtsController.State?,
-  onSettingsChange: (ReaderSettings) -> Unit,
-  onBack: () -> Unit,
-  onCursor: (SemanticCursor, Float) -> Unit,
-  onEnterTts: (SemanticCursor) -> Unit,
-  onEnterRsvp: (SemanticCursor) -> Unit,
-  onReadLater: () -> Unit,
-  onArchive: () -> Unit,
-  onTtsPrev: () -> Unit,
-  onTtsToggle: () -> Unit,
-  onTtsNext: () -> Unit,
-  onTtsSpeed: (Float) -> Unit,
-  onTtsClose: () -> Unit,
-) {
-  Scaffold(
-    containerColor = colorsFor(settings.background).background,
-    bottomBar = {
-      if (ttsState != null) {
-        TtsBar(
-          state = ttsState, colors = colorsFor(settings.background),
-          onPrev = onTtsPrev, onToggle = onTtsToggle, onNext = onTtsNext,
-          onSpeed = onTtsSpeed, onClose = onTtsClose,
-        )
-      }
-    },
-  ) { pad ->
-    Box(Modifier.padding(pad).fillMaxSize()) {
-      ReaderScreen(
-        doc = docState, blocks = blocks, settings = settings,
-        onSettingsChange = onSettingsChange, onBack = onBack, onCursor = onCursor,
-        initialBlockId = docState.progressBlockId, initialOffset = docState.progressCharOffset,
-        onEnterTts = onEnterTts, onEnterRsvp = onEnterRsvp,
-        onReadLater = onReadLater, onArchive = onArchive,
-      )
-    }
-  }
-}
