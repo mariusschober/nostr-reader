@@ -54,6 +54,13 @@ class TransferManager(
     "android-share", "android-process-text", "file", "mac-share", "mac-quick-action",
   )
 
+  /** Staging is transactional; decompression/parsing happens only after it commits. */
+  private sealed interface Staged {
+    data object Pending : Staged
+    data class Ready(val manifest: ManifestEntity, val chunks: List<ChunkEntity>) : Staged
+    data class Duplicate(val manifest: ManifestEntity) : Staged
+  }
+
   suspend fun ingestWrap(
     wrap: NostrEvent,
     channelId: String,
@@ -68,13 +75,17 @@ class TransferManager(
     }
     val payload = StrictJson.parseObject(envelope.payloadJson)
     val receiverPubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(receiverSeckey))
-    return db.withTransaction {
-      when (payload["type"]?.jsonPrimitive?.contentOrNull) {
-        "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
-        "chunk" -> handleChunk(payload)
-        DisconnectProtocol.TYPE -> if (DisconnectProtocol.validate(payload, System.currentTimeMillis() / 1000)) Intake.DISCONNECT else null
-        else -> null
-      }
+    if (payload["type"]?.jsonPrimitive?.contentOrNull == DisconnectProtocol.TYPE) {
+      return if (DisconnectProtocol.validate(payload, System.currentTimeMillis() / 1000)) Intake.DISCONNECT else null
+    }
+    return when (val staged = when (payload["type"]?.jsonPrimitive?.contentOrNull) {
+      "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
+      "chunk" -> handleChunk(payload)
+      else -> Staged.Pending
+    }) {
+      Staged.Pending -> null
+      is Staged.Duplicate -> assembleOnly(staged.manifest, emptyList(), duplicate = true)
+      is Staged.Ready -> assembleOnly(staged.manifest, staged.chunks, duplicate = false)
     }
   }
 
@@ -106,44 +117,41 @@ class TransferManager(
     val wrapExpiresAt = wrap.tags.single { it.firstOrNull() == "expiration" }[1].toLong()
     val nowSecs = System.currentTimeMillis() / 1000
     val ledgerExpiresAt = minOf(wrapExpiresAt, nowSecs + ReaderCore.SYNC_WINDOW_DAYS * 86400L)
-    return db.withTransaction {
-      if (db.processedEvents().byId(wrap.id) != null) return@withTransaction null
-      if (db.processedEvents().count() >= limits.processedEvents) throw StagingCapacityException()
-      if (payload["type"]?.jsonPrimitive?.contentOrNull == DisconnectProtocol.TYPE) {
-        if (!DisconnectProtocol.validate(payload, nowSecs)) return@withTransaction null
+    if (db.processedEvents().byId(wrap.id) != null) return null
+    if (db.processedEvents().count() >= limits.processedEvents) throw StagingCapacityException()
+    val type = payload["type"]?.jsonPrimitive?.contentOrNull
+    if (type == DisconnectProtocol.TYPE) {
+      if (!DisconnectProtocol.validate(payload, nowSecs)) return null
+      return db.withTransaction {
         val inserted = db.processedEvents().insert(
-          ProcessedEventEntity(
-            eventId = wrap.id,
-            channelId = channelId,
-            transferId = DisconnectProtocol.TYPE,
-            processedAt = System.currentTimeMillis(),
-            expiresAt = ledgerExpiresAt,
-          ),
+          ProcessedEventEntity(wrap.id, channelId, DisconnectProtocol.TYPE, System.currentTimeMillis(), ledgerExpiresAt),
         )
-        return@withTransaction if (inserted != -1L) Intake.DISCONNECT else null
+        if (inserted != -1L) Intake.DISCONNECT else null
       }
-      val intake = when (payload["type"]?.jsonPrimitive?.contentOrNull) {
-        "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
-        "chunk" -> handleChunk(payload)
-        else -> return@withTransaction null
+    }
+    val transferId = payload["transferId"]!!.jsonPrimitive.content
+    val staged = when (type) {
+      "manifest" -> handleManifest(payload, envelope.senderPubkey, receiverPubkey)
+      "chunk" -> handleChunk(payload)
+      else -> return null
+    }
+    return when (staged) {
+      Staged.Pending -> {
+        // A staged fragment is recorded now; otherwise the same retained
+        // wrapper would be parsed and staged on every rolling-window catch-up.
+        db.withTransaction {
+          db.processedEvents().insert(
+            ProcessedEventEntity(wrap.id, channelId, transferId, System.currentTimeMillis(), ledgerExpiresAt),
+          )
+          null
+        }
       }
-      // A null intake means the authenticated fragment was durably staged but
-      // did not complete a transfer. Record it too: otherwise the same retained
-      // wrapper would be parsed and staged on every rolling-window catch-up.
-      val transferId = payload["transferId"]!!.jsonPrimitive.content
-      val inserted = db.processedEvents().insert(
-        ProcessedEventEntity(
-          eventId = wrap.id,
-          channelId = channelId,
-          transferId = transferId,
-          processedAt = System.currentTimeMillis(),
-          expiresAt = ledgerExpiresAt,
-        ),
+      is Staged.Ready -> commitAssembly(
+        staged.manifest, staged.chunks, wrap.id, channelId, trustedSender, nowSecs, ledgerExpiresAt,
       )
-      if (inserted != -1L && intake != null && intake !== Intake.DISCONNECT) {
-        queueAckIntent(channelId, trustedSender, intake, nowSecs)
-      }
-      intake
+      is Staged.Duplicate -> commitDuplicate(
+        staged.manifest, wrap.id, channelId, trustedSender, nowSecs, ledgerExpiresAt,
+      )
     }
   }
 
@@ -236,7 +244,7 @@ class TransferManager(
     payload: JsonObject,
     verifiedSenderPubkey: String,
     receiverPubkey: String,
-  ): Intake? {
+  ): Staged {
     val required = setOf(
       "protocol", "type", "transferId", "manifestId", "documentId", "title", "sourceType",
       "capturedAt", "mime", "compression", "wordCount", "uncompressedBytes", "compressedBytes",
@@ -306,18 +314,12 @@ class TransferManager(
     } else {
       require(db.manifests().insert(manifest) != -1L) { "manifest insert conflict" }
     }
-    if (db.documents().exists(documentId)) {
-      db.withTransaction {
-        db.chunks().clearTransfer(transferId)
-        db.manifests().clearTransfer(transferId)
-      }
-      return Intake(transferId, documentId, manifestId, "duplicate", expiresAt)
-    }
+    if (db.documents().exists(documentId)) return Staged.Duplicate(manifest)
     val chunks = db.chunks().forTransfer(transferId)
-    return if (chunks.size == chunkCount) assemble(manifest, chunks.sortedBy { it.index }) else null
+    return if (chunks.size == chunkCount) Staged.Ready(manifest, chunks.sortedBy { it.index }) else Staged.Pending
   }
 
-  private suspend fun handleChunk(payload: JsonObject): Intake? {
+  private suspend fun handleChunk(payload: JsonObject): Staged {
     val required = setOf(
       "protocol", "type", "transferId", "manifestId", "documentId", "compressedSha256",
       "index", "count", "dataBase64", "expiresAt",
@@ -353,7 +355,7 @@ class TransferManager(
     )
     db.chunks().byIndex(transferId, index)?.let { existing ->
       require(existing == chunk.copy(receivedAt = existing.receivedAt)) { "conflicting duplicate chunk" }
-      return null
+      return Staged.Pending
     }
     db.chunks().first(transferId)?.let { first ->
       require(
@@ -363,11 +365,15 @@ class TransferManager(
     }
     requireStagingCapacity(transferId, decoded.size)
     db.chunks().insert(chunk)
-    val manifest = db.manifests().byTransfer(transferId) ?: return null
-    return if (db.chunks().count(transferId) == manifest.chunkCount) assemble(manifest, db.chunks().forTransfer(transferId)) else null
+    val manifest = db.manifests().byTransfer(transferId) ?: return Staged.Pending
+    return if (db.chunks().count(transferId) == manifest.chunkCount) {
+      Staged.Ready(manifest, db.chunks().forTransfer(transferId).sortedBy { it.index })
+    } else {
+      Staged.Pending
+    }
   }
 
-  private suspend fun assemble(manifest: ManifestEntity, chunks: List<ChunkEntity>): Intake {
+  private fun validateChunks(manifest: ManifestEntity, chunks: List<ChunkEntity>) {
     require(chunks.size == manifest.chunkCount) { "incomplete chunk set" }
     require(chunks.map { it.index } == (0 until manifest.chunkCount).toList()) { "chunk index gap" }
     require(chunks.all {
@@ -375,13 +381,15 @@ class TransferManager(
         it.documentId == manifest.documentId && it.compressedSha256 == manifest.compressedSha256 &&
         it.count == manifest.chunkCount && it.expiresAt == manifest.expiresAt * 1000
     }) { "chunk manifest binding mismatch" }
-    if (db.documents().exists(manifest.documentId)) {
-      db.withTransaction {
-        db.chunks().clearTransfer(manifest.transferId)
-        db.manifests().clearTransfer(manifest.transferId)
-      }
-      return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "duplicate", manifest.expiresAt)
-    }
+  }
+
+  /**
+   * Authentication, gzip inflation, UTF-8 decode, hashing, and full parsing run
+   * outside any Room transaction. A 20 MiB article must not hold the database
+   * open while it is decoded.
+   */
+  private fun prepareDocument(manifest: ManifestEntity, chunks: List<ChunkEntity>): DocumentEntity {
+    validateChunks(manifest, chunks)
     val compressed = ByteArrayOutputStream()
     var compressedTotal = 0
     for (chunk in chunks) {
@@ -405,7 +413,7 @@ class TransferManager(
     require(ReaderCore.wordCount(canonical) == manifest.wordCount) { "word count mismatch" }
     val blocks = ArticleParser.parse(canonical)
     val nowMillis = System.currentTimeMillis()
-    val document = DocumentEntity(
+    return DocumentEntity(
       documentId = manifest.documentId,
       title = manifest.title,
       sourceType = manifest.sourceType,
@@ -426,13 +434,81 @@ class TransferManager(
       createdAt = nowMillis,
       updatedAt = nowMillis,
     )
+  }
+
+  /** Short transaction: document + staging cleanup + replay ledger + ACK intent. */
+  private suspend fun commitAssembly(
+    manifest: ManifestEntity,
+    chunks: List<ChunkEntity>,
+    wrapId: String,
+    channelId: String,
+    trustedSender: String,
+    nowSecs: Long,
+    ledgerExpiresAt: Long,
+  ): Intake? {
+    if (db.documents().exists(manifest.documentId)) {
+      return commitDuplicate(manifest, wrapId, channelId, trustedSender, nowSecs, ledgerExpiresAt)
+    }
+    val document = prepareDocument(manifest, chunks)
+    return db.withTransaction {
+      val duplicate = db.documents().exists(manifest.documentId)
+      if (!duplicate) {
+        val inserted = db.documents().insert(document)
+        require(inserted != -1L || db.documents().exists(manifest.documentId)) { "document commit failed" }
+      }
+      db.chunks().clearTransfer(manifest.transferId)
+      db.manifests().clearTransfer(manifest.transferId)
+      val intake = Intake(
+        manifest.transferId, manifest.documentId, manifest.manifestId,
+        if (duplicate) "duplicate" else "stored", manifest.expiresAt,
+      )
+      val eventInserted = db.processedEvents().insert(
+        ProcessedEventEntity(wrapId, channelId, manifest.transferId, System.currentTimeMillis(), ledgerExpiresAt),
+      )
+      if (eventInserted != -1L) queueAckIntent(channelId, trustedSender, intake, nowSecs)
+      if (eventInserted != -1L) intake else null
+    }
+  }
+
+  private suspend fun commitDuplicate(
+    manifest: ManifestEntity,
+    wrapId: String,
+    channelId: String,
+    trustedSender: String,
+    nowSecs: Long,
+    ledgerExpiresAt: Long,
+  ): Intake? = db.withTransaction {
+    db.chunks().clearTransfer(manifest.transferId)
+    db.manifests().clearTransfer(manifest.transferId)
+    val intake = Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "duplicate", manifest.expiresAt)
+    val eventInserted = db.processedEvents().insert(
+      ProcessedEventEntity(wrapId, channelId, manifest.transferId, System.currentTimeMillis(), ledgerExpiresAt),
+    )
+    if (eventInserted != -1L) queueAckIntent(channelId, trustedSender, intake, nowSecs)
+    if (eventInserted != -1L) intake else null
+  }
+
+  /** Test/foreground path without replay-ledger or ACK side effects. */
+  private suspend fun assembleOnly(manifest: ManifestEntity, chunks: List<ChunkEntity>, duplicate: Boolean): Intake {
+    val intake = Intake(
+      manifest.transferId, manifest.documentId, manifest.manifestId,
+      if (duplicate) "duplicate" else "stored", manifest.expiresAt,
+    )
+    if (duplicate || db.documents().exists(manifest.documentId)) {
+      db.withTransaction {
+        db.chunks().clearTransfer(manifest.transferId)
+        db.manifests().clearTransfer(manifest.transferId)
+      }
+      return intake.copy(status = "duplicate")
+    }
+    val document = prepareDocument(manifest, chunks)
     db.withTransaction {
       val inserted = db.documents().insert(document)
       require(inserted != -1L || db.documents().exists(manifest.documentId)) { "document commit failed" }
       db.chunks().clearTransfer(manifest.transferId)
       db.manifests().clearTransfer(manifest.transferId)
     }
-    return Intake(manifest.transferId, manifest.documentId, manifest.manifestId, "stored", manifest.expiresAt)
+    return intake
   }
 
   /** Encrypted endpoint-bound ACK, emitted only after durable document presence. */
