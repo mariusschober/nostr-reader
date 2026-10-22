@@ -24,6 +24,15 @@ class RenderedProjectionTest {
     }
   }
 
+  @Test fun readerDropsOnlyAMatchingLeadingTitleHeading() {
+    val projection = RenderedText.project(ArticleParser.parse("# Same Title\n\nBody text.\n"))
+    val visible = projection.withoutLeadingTitle("Same Title")
+    assertFalse(visible.text.contains("Same Title"))
+    assertTrue(visible.text.startsWith("Body text."))
+    assertEquals(1, visible.blocks.size)
+    assertEquals(projection.text, projection.withoutLeadingTitle("Different Title").text)
+  }
+
   @Test fun articleProjectionCanBeSelectedAndSpeedRead() {
     val projection = RenderedText.project(ArticleParser.parseWithSources("# Heading\n\nRead **these** words 🌱.\n\nAnother paragraph.\n"))
     val start = projection.text.indexOf("Read")

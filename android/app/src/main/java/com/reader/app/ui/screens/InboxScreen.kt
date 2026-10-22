@@ -41,6 +41,7 @@ import com.reader.app.core.ReaderCore
 import com.reader.app.data.DocumentSummary
 import com.reader.app.prefs.ReaderSettings
 import com.reader.app.ui.Onboarding
+import com.reader.app.ui.SourceLabels
 import com.reader.app.ui.Triage
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.appColors
@@ -523,7 +524,7 @@ fun ArticleRow(
     }
     Spacer(Modifier.height(2.dp))
     val mins = ReaderCore.readingMinutes(d.wordCount)
-    Text("${d.sourceType} · ${mins} min", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
+    Text("${SourceLabels.label(d.sourceType)} · $mins min", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary, maxLines = 1)
     if (d.progressFraction > 0.01f && d.progressFraction < 0.999f) {
       Spacer(Modifier.height(6.dp))
       LinearProgressIndicator(

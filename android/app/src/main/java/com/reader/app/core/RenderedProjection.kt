@@ -50,6 +50,30 @@ data class RenderedProjection(
     val b = graphemes.ceil(maxOf(start, end).coerceIn(0, text.length))
     return if (a < b && text.substring(a, b).isNotBlank()) a until b else null
   }
+
+  /**
+   * The document title is rendered once by the reader chrome. Generic
+   * extraction also prepends it as an H1, so drop that duplicate leading
+   * heading and shift every rendered offset consistently.
+   */
+  fun withoutLeadingTitle(documentTitle: String): RenderedProjection {
+    val first = blocks.firstOrNull() ?: return this
+    if (first.kind != TextKind.HEADING) return this
+    val heading = text.substring(first.bodyStart, first.bodyEnd).trim()
+    if (documentTitle.isBlank() || !heading.equals(documentTitle.trim(), ignoreCase = true)) return this
+    val cut = first.end
+    if (cut <= 0 || cut >= text.length) return this
+    return RenderedProjection(
+      text = text.substring(cut),
+      blocks = blocks.drop(1).map {
+        it.copy(start = it.start - cut, end = it.end - cut, bodyStart = it.bodyStart - cut, bodyEnd = it.bodyEnd - cut)
+      },
+      styles = styles.mapNotNull {
+        if (it.end <= cut) null else it.copy(start = (it.start - cut).coerceAtLeast(0), end = it.end - cut)
+      },
+      sourceRanges = sourceRanges,
+    )
+  }
 }
 
 object RenderedText {

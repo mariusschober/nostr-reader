@@ -33,6 +33,7 @@ import com.reader.app.core.ReaderCore
 import com.reader.app.cursor.SemanticCursor
 import com.reader.app.data.DocumentEntity
 import com.reader.app.prefs.*
+import com.reader.app.ui.SourceLabels
 import com.reader.app.ui.theme.ReaderFonts
 import com.reader.app.ui.theme.readerColors
 import com.reader.app.ui.theme.fontFor
@@ -144,7 +145,7 @@ fun ReaderScreen(
               Text(doc.title, fontFamily = font, fontSize = (settings.fontSizeSp + 7).sp, color = c.text)
               Spacer(Modifier.height(4.dp))
               val mins = ReaderCore.readingMinutes(doc.wordCount)
-              Text("${doc.sourceType} · ${mins} min", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary)
+              Text("${SourceLabels.label(doc.sourceType)} · $mins min", fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary)
               Spacer(Modifier.height(16.dp))
             }
           }

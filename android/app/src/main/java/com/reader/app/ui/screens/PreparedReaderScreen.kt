@@ -101,10 +101,11 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     catch (e: CancellationException) { throw e }
     catch (e: Exception) { failure = e.message ?: "Couldn’t load article" }
   }
-  LaunchedEffect(prepared, colors.link) {
+  LaunchedEffect(prepared, doc?.title, colors.link) {
     val value = prepared ?: return@LaunchedEffect
+    val visible = value.projection.withoutLeadingTitle(doc?.title.orEmpty())
     content = withContext(Dispatchers.Default) {
-      nativeArticleText(value.projection, colors.link.toArgb()) { url ->
+      nativeArticleText(visible, colors.link.toArgb()) { url ->
         if (Uri.parse(url).scheme in listOf("http", "https")) {
           runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         }
@@ -218,22 +219,23 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)
       else if (ready == null || text == null) CircularProgressIndicator(Modifier.padding(24.dp))
       else {
+        val visible = remember(ready, doc?.title) { ready.projection.withoutLeadingTitle(doc?.title.orEmpty()) }
         if (ready.index.sections.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
           TextButton(enabled = part > 0, onClick = { view?.reportCursor(); initial = SemanticCursor.start(id); part-- }) { Text("Previous part") }
           Text("${part + 1} / ${ready.index.sections.size}", modifier = Modifier.padding(12.dp))
           TextButton(enabled = part < ready.index.sections.lastIndex, onClick = { view?.reportCursor(); initial = SemanticCursor.start(id); part++ }) { Text("Next part") }
         }
-        val nativeMarks = remember(marks, ready, dark) {
-          val blocks = ready.projection.blocks.mapTo(hashSetOf()) { it.id }
+        val nativeMarks = remember(marks, visible, dark) {
+          val blocks = visible.blocks.mapTo(hashSetOf()) { it.id }
           marks.filter { it.projectionVersion == RENDERED_PROJECTION_VERSION && it.startBlockId in blocks && it.endBlockId in blocks }.map {
-            NativeMark(it.id, ready.projection.offset(it.startBlockId, it.startOffset), ready.projection.offset(it.endBlockId, it.endOffset),
+            NativeMark(it.id, visible.offset(it.startBlockId, it.startOffset), visible.offset(it.endBlockId, it.endOffset),
               it.createdAt, HighlightColor.parse(it.color).background(dark).toArgb(), HighlightColor.text(dark).toArgb())
           }
         }
-        val styleKey = listOf(ready, text, settings.font, settings.fontSizeSp, settings.margin, colors)
+        val styleKey = listOf(ready, visible, text, settings.font, settings.fontSizeSp, settings.margin, colors)
         AndroidView(factory = { NativeArticleView(it).also { view = it } }, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(), update = { native ->
           if (native.tag != styleKey) {
-            native.display(id, ready.projection, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, false), initial)
+            native.display(id, visible, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, false), initial)
             native.tag = styleKey
           }
           native.deleteTint = colors.error.toArgb()

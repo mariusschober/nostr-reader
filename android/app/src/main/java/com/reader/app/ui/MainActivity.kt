@@ -518,9 +518,9 @@ class MainActivity : ComponentActivity() {
           },
           onSettingsChange = { launchUiAction("Couldn’t save settings. Try again.") { prefs.save(it) } },
           signerLabel = "Private device key (Recommended). " + AmberSigner(this).status(),
-          relaySummary = (channels.firstOrNull()?.relaysJson
-            ?: "${READER_DEFAULT_RELAYS.size} default public relays (${READER_RELAY_WRITE_QUORUM} required per payload).") +
-            "\n\nAdd up to 2 custom relays in Chrome Settings, then re-pair so both devices authenticate the same relay set.",
+          relaySummary = com.reader.app.ui.RelaySummary.format(
+            channels.firstOrNull()?.relaysJson, READER_DEFAULT_RELAYS, READER_RELAY_WRITE_QUORUM,
+          ),
           onBack = { backToInbox(); launchUiAction("Couldn’t refresh library.") { refresh() } },
           onRevokeChannel = { id ->
             launchUiAction("Couldn’t revoke the device. Try again.") {
