@@ -133,6 +133,14 @@ class MainActivity : ComponentActivity() {
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = windowColors.text == com.reader.app.ui.theme.Flexoki.Black
       }
 
+      fun launchUiAction(message: String, block: suspend () -> Unit) {
+        lifecycleScope.launch {
+          try { block() }
+          catch (e: kotlinx.coroutines.CancellationException) { throw e }
+          catch (_: Exception) { Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show() }
+        }
+      }
+
       suspend fun refresh() {
         val loaded = withContext(Dispatchers.IO) {
           db.documents().observeSummaries().first().groupBy { it.list }
@@ -189,7 +197,7 @@ class MainActivity : ComponentActivity() {
       }
 
       fun openTts(docId: String, projection: com.reader.app.core.RenderedProjection, from: SemanticCursor) {
-        lifecycleScope.launch {
+        launchUiAction("Couldn’t start listening. Try again.") {
           val audioRepo = (application as com.reader.app.ReaderApp).articles
           val audioIndex = audioRepo.index(docId)
           val audioSection = audioRepo.section(docId, audioIndex.sectionFor(from.blockId))
@@ -261,8 +269,8 @@ class MainActivity : ComponentActivity() {
             catch (e: Exception) { Toast.makeText(this@MainActivity, "Couldn’t open review: ${e.message?.take(100)}", Toast.LENGTH_LONG).show() }
           } } },
           onOpen = { go(Route.Reader(it)) },
-          onMove = { id, target -> lifecycleScope.launch { moveToListDb(id, target); refresh() } },
-          onUndoMove = { id, previous -> lifecycleScope.launch { moveToListDb(id, previous); refresh() } },
+          onMove = { id, target -> launchUiAction("Couldn’t move article. Try again.") { moveToListDb(id, target); refresh() } },
+          onUndoMove = { id, previous -> launchUiAction("Couldn’t undo the move. Try again.") { moveToListDb(id, previous); refresh() } },
           onUnarchive = ::unarchive,
           onDelete = ::deleteArticle,
           deletedUndo = deletedUndo,
@@ -328,10 +336,10 @@ class MainActivity : ComponentActivity() {
             },
             onImportant = {
               val id = quote?.id
-              if (!busy && id != null) lifecycleScope.launch { quote = review.toggleImportant(id) }
+              if (!busy && id != null) launchUiAction("Couldn’t update importance. Try again.") { quote = review.toggleImportant(id) }
             },
             onSource = {
-              quote?.let { selected -> lifecycleScope.launch {
+              quote?.let { selected -> launchUiAction("Couldn’t open the source article. Try again.") {
                 if (db.documents().exists(selected.documentId)) {
                   review.openedSource(selected.id)
                   go(Route.Reader(selected.documentId, selected.id))
@@ -351,7 +359,7 @@ class MainActivity : ComponentActivity() {
         }
         is Route.Reader -> PreparedReaderScreen(
           id = r.id, highlightId = r.highlightId, settings = settings,
-          onSettingsChange = { lifecycleScope.launch { prefs.save(it) } },
+          onSettingsChange = { launchUiAction("Couldn’t save settings. Try again.") { prefs.save(it) } },
           onBack = {
             ttsController?.pause(); ttsState = null; ttsDocId = null
             stack.pop(); tick++
@@ -370,7 +378,7 @@ class MainActivity : ComponentActivity() {
                 onNext = { ttsController?.next() },
                 onSpeed = { speed ->
                   ttsController?.setSpeed(speed)
-                  lifecycleScope.launch { prefs.save(prefs.load().copy(ttsSpeed = speed)) }
+                  launchUiAction("Couldn’t save speech speed.") { prefs.save(prefs.load().copy(ttsSpeed = speed)) }
                 },
                 onClose = { ttsController?.pause(); ttsState = null; ttsDocId = null },
               )
@@ -407,8 +415,8 @@ class MainActivity : ComponentActivity() {
             val candidates = ready.indices.filter { ready[it].blockId == r.from.blockId }
             val start = candidates.lastOrNull { ready[it].start <= r.from.charOffset } ?: candidates.firstOrNull() ?: 0
             RsvpScreen(tokens = ready, settings = settings, startIndex = start,
-              onWpm = { w -> lifecycleScope.launch { prefs.save(prefs.load().copy(rsvpWpm = w)) } },
-              onExit = { cursor -> lifecycleScope.launch {
+              onWpm = { w -> launchUiAction("Couldn’t save reading speed.") { prefs.save(prefs.load().copy(rsvpWpm = w)) } },
+              onExit = { cursor -> launchUiAction("Couldn’t save your place. Try again.") {
                 val actual = cursor.copy(documentId = r.id)
                 val prepared = section
                 val writer = (application as com.reader.app.ReaderApp).progress
@@ -454,7 +462,7 @@ class MainActivity : ComponentActivity() {
             status = pairingStatus,
             onCancel = {
               val channelId = pairingChannelId
-              if (channelId != null) lifecycleScope.launch { PairingCoordinator(this@MainActivity).cancel(channelId) }
+              if (channelId != null) launchUiAction("Couldn’t cancel pairing. Try again.") { PairingCoordinator(this@MainActivity).cancel(channelId) }
               pairingChannelId = null
               pairingStatus = null
               pairingError = null
@@ -490,19 +498,22 @@ class MainActivity : ComponentActivity() {
         is Route.Settings -> SettingsScreen(
           settings = settings, channels = channels,
           syncHealth = syncHealth, syncing = syncing, onSync = {
-            if (!syncing) { syncing = true; lifecycleScope.launch {
-              try { withContext(Dispatchers.IO) { ReaderSyncSession(applicationContext).runOnce() } }
-              finally { syncing = false }
-            } }
+            if (!syncing) {
+              syncing = true
+              launchUiAction("Sync could not finish. Reader will retry.") {
+                try { withContext(Dispatchers.IO) { ReaderSyncSession(applicationContext).runOnce() } }
+                finally { syncing = false }
+              }
+            }
           },
-          onSettingsChange = { lifecycleScope.launch { prefs.save(it) } },
+          onSettingsChange = { launchUiAction("Couldn’t save settings. Try again.") { prefs.save(it) } },
           signerLabel = "Private device key (Recommended). " + AmberSigner(this).status(),
           relaySummary = (channels.firstOrNull()?.relaysJson
             ?: "${READER_DEFAULT_RELAYS.size} default public relays (${READER_RELAY_WRITE_QUORUM} required per payload).") +
             "\n\nAdd up to 2 custom relays in Chrome Settings, then re-pair so both devices authenticate the same relay set.",
-          onBack = { backToInbox(); lifecycleScope.launch { refresh() } },
+          onBack = { backToInbox(); launchUiAction("Couldn’t refresh library.") { refresh() } },
           onRevokeChannel = { id ->
-            lifecycleScope.launch {
+            launchUiAction("Couldn’t revoke the device. Try again.") {
               try {
                 val channel = withContext(Dispatchers.IO) { db.channels().byId(id) }
                 val channelKey = runCatching { keys.openChannelKey(id) }.getOrNull()
@@ -512,16 +523,17 @@ class MainActivity : ComponentActivity() {
                       .publish(channel, channelKey)
                   }
                 }
-              } finally {
-                withContext(Dispatchers.IO) { db.channels().revoke(id, System.currentTimeMillis()) }
-                keys.deleteChannelKey(id)
-                refresh()
-                Toast.makeText(
-                  this@MainActivity,
-                  "Revoked on this phone. If Chrome was offline, also choose Disconnect in Chrome.",
-                  Toast.LENGTH_LONG,
-                ).show()
+              } catch (_: Exception) {
+                Toast.makeText(this@MainActivity, "Couldn’t notify Chrome; revoking locally.", Toast.LENGTH_LONG).show()
               }
+              withContext(Dispatchers.IO) { db.channels().revoke(id, System.currentTimeMillis()) }
+              keys.deleteChannelKey(id)
+              refresh()
+              Toast.makeText(
+                this@MainActivity,
+                "Revoked on this phone. If Chrome was offline, also choose Disconnect in Chrome.",
+                Toast.LENGTH_LONG,
+              ).show()
             }
           },
           exporting = exporting,
@@ -614,7 +626,9 @@ class MainActivity : ComponentActivity() {
 
   override fun onStop() {
     ttsController?.pause()
-    runCatching { kotlinx.coroutines.runBlocking(Dispatchers.IO) { (application as com.reader.app.ReaderApp).progress.flush() } }
+    // Never block the main thread on rotation/backgrounding; the app scope owns
+    // the write and retries coalesced progress on the next checkpoint.
+    (application as com.reader.app.ReaderApp).flushProgressAsync()
     super.onStop()
   }
 
