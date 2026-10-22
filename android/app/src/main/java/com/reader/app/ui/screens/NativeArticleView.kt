@@ -5,6 +5,8 @@ import android.graphics.Typeface
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
 import android.text.style.*
 import android.view.ActionMode
 import android.view.Menu
@@ -45,7 +47,6 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onSelection: (String, Long, IntRange) -> Unit = { _, _, _ -> }
   var onCursor: (SemanticCursor, Float) -> Unit = { _, _ -> }
   var onMark: (List<String>) -> Unit = {}
-  var onLink: (String) -> Unit = {}
   var onTap: () -> Unit = {}
 
   var onArticleSwipe: (ArticleAction) -> Unit = {}
@@ -131,7 +132,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     addView(swipeLabel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     body.setTextIsSelectable(true)
     body.isVerticalScrollBarEnabled = true
-    body.linksClickable = false
+    // ClickableSpan + LinkMovementMethod exposes links to TalkBack; the span
+    // itself validates http(s) before launching an external viewer.
+    body.linksClickable = true
+    body.movementMethod = LinkMovementMethod.getInstance()
     body.setLineSpacing(0f, 1.35f)
     // Scaffold already places the reading dock outside this viewport. Keep
     // only a small text inset; dock-sized padding clips usable reading space.
@@ -172,10 +176,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           kotlin.math.abs(event.x - downX) < dp(8) && kotlin.math.abs(event.y - downY) < dp(8)) {
           val at = body.getOffsetForPosition(event.x, event.y)
           val hits = markRanges.filter { at >= it.start && at < it.end }.sortedByDescending { it.createdAt }
-          val link = projection?.styles?.lastOrNull { it.style == TextStyle.LINK && at >= it.start && at < it.end }?.value
           when {
             hits.isNotEmpty() -> onMark(hits.map { it.id })
-            !pen && link != null -> onLink(link)
             !pen -> onTap()
           }
         }
@@ -322,8 +324,26 @@ data class NativeMark(val id: String, val start: Int, val end: Int, val createdA
 private class SavedBackground(color: Int) : BackgroundColorSpan(color)
 private class SavedForeground(color: Int) : ForegroundColorSpan(color)
 
+/** Accessible, validated link span; never hands a non-http(s) URL to the system. */
+private class ReaderLinkSpan(
+  private val url: String,
+  private val linkColor: Int,
+  private val open: (String) -> Unit,
+) : ClickableSpan() {
+  override fun onClick(widget: android.view.View) = open(url)
+
+  override fun updateDrawState(ds: TextPaint) {
+    ds.color = linkColor
+    ds.isUnderlineText = true
+  }
+}
+
 /** Build on Dispatchers.Default before assigning to the native surface. */
-fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableString {
+fun nativeArticleText(
+  value: RenderedProjection,
+  linkColor: Int,
+  openLink: (String) -> Unit = {},
+): SpannableString {
   val out = SpannableString(value.text)
   fun span(style: Any, start: Int, end: Int) {
     if (end > start) out.setSpan(style, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -334,7 +354,7 @@ fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableStrin
       TextStyle.ITALIC -> span(StyleSpan(Typeface.ITALIC), it.start, it.end)
       TextStyle.STRIKE -> span(StrikethroughSpan(), it.start, it.end)
       TextStyle.CODE -> span(TypefaceSpan("monospace"), it.start, it.end)
-      TextStyle.LINK -> { span(ForegroundColorSpan(linkColor), it.start, it.end); span(UnderlineSpan(), it.start, it.end) }
+      TextStyle.LINK -> it.value?.let { url -> span(ReaderLinkSpan(url, linkColor, openLink), it.start, it.end) }
     }
   }
   value.blocks.forEach {

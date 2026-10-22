@@ -2,6 +2,7 @@ package com.reader.app.ui.screens
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -28,6 +29,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -163,6 +166,7 @@ fun InboxScreen(
               SwipeRow(
                 doc = d, list = tab, colors = c,
                 onOpen = { onOpen(d.documentId) },
+                onMenu = { menuFor = d.documentId },
                 onSwiped = { target ->
                   val previous = tab
                   onMove(d.documentId, target)
@@ -222,20 +226,33 @@ fun InboxScreen(
       },
     )
   }
-  menuFor?.let { id ->
+  val menuDoc = menuFor?.let { id -> lists.values.flatten().firstOrNull { it.documentId == id } }
+  if (menuDoc != null) {
     AlertDialog(
       onDismissRequest = { menuFor = null },
       containerColor = c.background,
       title = { Text("Article", fontFamily = ReaderFonts.Ui, color = c.text) },
-      text = { Text("Unarchive returns it to the inbox. Delete moves it to the local trash and can be undone right away.", fontFamily = ReaderFonts.Ui, color = c.text) },
-      confirmButton = {
-        TextButton(onClick = { menuFor = null; onUnarchive(id) }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
-          Text("Unarchive", fontFamily = ReaderFonts.Ui)
+      text = {
+        Column {
+          Text("Move this article without swiping.", fontFamily = ReaderFonts.Ui, color = c.text)
+          Spacer(Modifier.height(8.dp))
+          for (action in ArticleAction.forMenu(menuDoc.list)) {
+            val current = action.target == menuDoc.list
+            TextButton(
+              enabled = !current,
+              onClick = {
+                menuFor = null
+                if (action == ArticleAction.Delete) onDelete(menuDoc.documentId)
+                else action.target?.let { onMove(menuDoc.documentId, it) }
+              },
+              colors = ButtonDefaults.textButtonColors(contentColor = if (action == ArticleAction.Delete) c.error else c.text),
+            ) { Text(if (current) "${action.label} (current)" else action.label, fontFamily = ReaderFonts.Ui) }
+          }
         }
       },
-      dismissButton = {
-        TextButton(onClick = { menuFor = null; onDelete(id) }, colors = ButtonDefaults.textButtonColors(contentColor = c.error)) {
-          Text("Delete", fontFamily = ReaderFonts.Ui)
+      confirmButton = {
+        TextButton(onClick = { menuFor = null }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+          Text("Cancel", fontFamily = ReaderFonts.Ui)
         }
       },
     )
@@ -264,7 +281,11 @@ private fun TabText(
   badge: Boolean = false,
   onClick: () -> Unit,
 ) {
-  Column(Modifier.clickable(onClick = onClick)) {
+  Column(
+    Modifier
+      .heightIn(min = 48.dp)
+      .selectable(selected = selected, role = Role.Tab, onClick = onClick),
+  ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Text(
         text, fontFamily = ReaderFonts.Ui, fontSize = 17.sp,
@@ -318,6 +339,7 @@ private fun SwipeRow(
   list: String,
   colors: com.reader.app.ui.theme.ReaderColors,
   onOpen: () -> Unit,
+  onMenu: () -> Unit,
   onSwiped: (target: String) -> Unit,
 ) {
   // Tap-vs-swipe arbitration, textbook pattern: stock clickable owns
@@ -397,7 +419,7 @@ private fun SwipeRow(
           )
         },
     ) {
-      ArticleRow(doc, colors, onOpen = onOpen, onMenu = null)
+      ArticleRow(doc, colors, onOpen = onOpen, onMenu = onMenu)
     }
   }
 }
@@ -411,10 +433,12 @@ fun ArticleRow(
 ) {
   val complete = d.progressFraction >= 0.999f
   Column(
-    Modifier.fillMaxWidth().clickable(
-      indication = null,
-      interactionSource = remember { MutableInteractionSource() },
-    ) { onOpen() }.padding(vertical = 12.dp),
+    Modifier.fillMaxWidth()
+      .semantics(mergeDescendants = true) {}
+      .clickable(
+        indication = null,
+        interactionSource = remember { MutableInteractionSource() },
+      ) { onOpen() }.padding(vertical = 12.dp),
   ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Text(

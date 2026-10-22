@@ -103,7 +103,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   }
   LaunchedEffect(prepared, colors.link) {
     val value = prepared ?: return@LaunchedEffect
-    content = withContext(Dispatchers.Default) { nativeArticleText(value.projection, colors.link.toArgb()) }
+    content = withContext(Dispatchers.Default) {
+      nativeArticleText(value.projection, colors.link.toArgb()) { url ->
+        if (Uri.parse(url).scheme in listOf("http", "https")) {
+          runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        }
+      }
+    }
   }
   LaunchedEffect(actions) { activeQuote = actions.firstOrNull()?.let { db.highlights().byId(it) } }
 
@@ -237,11 +243,6 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           native.setMarks(nativeMarks)
           native.onCursor = { cursor, _ -> app.progress.offer(cursor, ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))) }
           native.onMark = { actions = it }
-          native.onLink = { url ->
-            if (Uri.parse(url).scheme in listOf("http", "https")) {
-              runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            }
-          }
           native.onSelection = { session, sequence, range ->
             val source = doc
             if (source != null) scope.launch {
