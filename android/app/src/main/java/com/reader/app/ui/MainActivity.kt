@@ -795,9 +795,9 @@ class MainActivity : ComponentActivity() {
   }
 
   override fun onStop() {
-    ttsController?.pause()
-    // Never block the main thread on rotation/backgrounding; the app scope owns
-    // the write and retries coalesced progress on the next checkpoint.
+    // Keep narration alive when the activity is not visible (screen lock/app
+    // switch). Explicit Back/Close still pauses; Android may reclaim the
+    // process if the OS needs memory until the MediaSession service is wired.
     (application as com.reader.app.ReaderApp).flushProgressAsync()
     super.onStop()
   }
