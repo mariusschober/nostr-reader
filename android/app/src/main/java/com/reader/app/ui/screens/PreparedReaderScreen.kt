@@ -1,5 +1,7 @@
 package com.reader.app.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -28,6 +30,7 @@ import com.reader.app.core.RENDERED_PROJECTION_VERSION
 import com.reader.app.cursor.SemanticCursor
 import com.reader.app.data.*
 import com.reader.app.prefs.ReaderSettings
+import com.reader.app.ui.SourceMetadata
 import com.reader.app.ui.theme.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -155,6 +158,18 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                 },
                 onClick = { menu = false; view?.flushSelection(); scope.launch { selections.withLock { }; onArticleAction(action) } })
             }
+            SourceMetadata.safeHttpUrl(doc?.sourceUrl)?.let { sourceUrl ->
+              DropdownMenuItem(text = { Text("Open original") }, onClick = {
+                menu = false
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(sourceUrl))) }
+              })
+              DropdownMenuItem(text = { Text("Copy link") }, onClick = {
+                menu = false
+                val clipboard = context.getSystemService(ClipboardManager::class.java)
+                clipboard?.setPrimaryClip(ClipData.newPlainText("Article link", sourceUrl))
+                scope.launch { snackbar.showSnackbar("Link copied") }
+              })
+            }
             if (undo != null) DropdownMenuItem(text = { Text("Undo highlight change") }, onClick = {
               menu = false
               view?.flushSelection()
@@ -213,7 +228,12 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           }
         }
       }
-      Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 4.dp))
+      Column(Modifier.padding(16.dp, 4.dp)) {
+        Text(doc?.title.orEmpty(), color = colors.text, style = MaterialTheme.typography.titleMedium)
+        SourceMetadata.line(doc?.author, doc?.sourceName, doc?.publishedAt)?.let { meta ->
+          Text(meta, color = colors.secondary, style = MaterialTheme.typography.bodySmall)
+        }
+      }
       val ready = prepared
       val text = content
       if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)
