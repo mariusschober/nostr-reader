@@ -58,8 +58,8 @@ Actual screenshots from the current Android build on a TCL T807D, captured on 8 
 - Organize articles into **Inbox**, **Priority**, and **Later**, with estimated reading time and saved progress. **Archive** has its own destination beside the Add button.
 - Native text rendering, links, selection handles, and normal Android Copy / Share actions. Images are represented by descriptions; remote article images are not fetched.
 - Five bundled typefaces: Newsreader, Crimson Pro, Asul, Atkinson Hyperlegible, and ABeeZee. Adjust size, margins, and **Follow system / Paper / Soft / Ink / Black** backgrounds.
-- **Listen** uses Google’s Android speech engine and its configured voice. **Speed** offers word-by-word RSVP reading with adjustable pace. Reading modes share semantic positions within the current article part.
-- Import text through Android sharing, paste, or supported local files as well as the Chrome transport.
+- **Listen** uses the system Android speech engine and the voice configured in system settings. **Speed** offers word-by-word RSVP reading with adjustable pace. Reading modes share semantic positions within the current article part.
+- Share a link to fetch and save the readable article, or share/paste text and supported local files alongside the Chrome transport.
 
 ### Highlight and remember
 

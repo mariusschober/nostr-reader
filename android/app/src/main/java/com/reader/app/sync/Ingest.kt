@@ -90,6 +90,33 @@ object Ingest {
     commit(ctx, md.toString(), sourceType, null)
   }
 
+  suspend fun importWebArticle(
+    ctx: Context,
+    sourceUrl: String,
+    title: String,
+    markdown: String,
+    author: String?,
+  ): String = withContext(Dispatchers.Default) {
+    BoundedText.requireSize(markdown)
+    val canonical = ReaderCore.canonicalize(markdown)
+    val id = ReaderCore.documentId(canonical)
+    val db = ReaderDb.get(ctx)
+    if (db.documents().exists(id)) return@withContext id
+    val now = System.currentTimeMillis()
+    db.documents().insert(
+      DocumentEntity(
+        documentId = id, title = title.take(500).ifBlank { "Untitled" }, sourceType = "web",
+        sourceName = runCatching { java.net.URI(sourceUrl).host }.getOrNull()?.take(200),
+        sourceUrl = sourceUrl.take(2000), author = author?.take(300), publishedAt = null,
+        capturedAt = now, language = null, canonicalMarkdown = canonical,
+        wordCount = ReaderCore.wordCount(canonical), parserVersion = 2, state = "unread",
+        list = "inbox", progressBlockId = "b0", progressCharOffset = 0, progressFraction = 0f,
+        lastOpenedAt = 0L, createdAt = now, updatedAt = now,
+      ),
+    )
+    id
+  }
+
   /** Restores one archive document, preserving validated metadata and list state. */
   suspend fun importBackupDocument(ctx: Context, doc: BackupDocument): String = withContext(Dispatchers.Default) {
     BoundedText.requireSize(doc.markdown)

@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
   private var lastForegroundSync = 0L
   private val pendingShare = androidx.compose.runtime.mutableStateOf<Ingest.SharedContent?>(null)
   private val pendingImport = androidx.compose.runtime.mutableStateOf<com.reader.app.data.BackupBundle?>(null)
+  private val articleFetcher by lazy { com.reader.app.sync.WebArticleFetcher() }
   private val shareTimes = ArrayDeque<Long>()
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -633,7 +634,13 @@ class MainActivity : ComponentActivity() {
           title = { Text("Add shared content?") },
           text = {
             Column {
-              Text("Another app sent this to Reader. It will be stored locally until you delete it.")
+              Text(
+                if (com.reader.app.sync.UrlCapture.singleHttpUrl(shared.text) != null) {
+                  "Reader will fetch and save the readable article from this link, not just the URL."
+                } else {
+                  "Another app sent this to Reader. It will be stored locally until you delete it."
+                },
+              )
               Spacer(Modifier.height(8.dp))
               Text(
                 shared.text.replace(Regex("\\s+"), " ").take(280) + if (shared.text.length > 280) "…" else "",
@@ -699,13 +706,31 @@ class MainActivity : ComponentActivity() {
   private fun importShared(shared: Ingest.SharedContent, sourceType: String) {
     lifecycleScope.launch {
       try {
-        val id = if (shared.isHtml) {
-          Ingest.importHtml(this@MainActivity, shared.text, sourceType)
+        val url = if (shared.isHtml) null else com.reader.app.sync.UrlCapture.singleHttpUrl(shared.text)
+        if (url != null) {
+          Toast.makeText(this@MainActivity, "Fetching article…", Toast.LENGTH_SHORT).show()
+          val id = try {
+            val article = articleFetcher.fetch(url)
+            Ingest.importWebArticle(this@MainActivity, url, article.title, article.markdown, article.author)
+          } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+          } catch (_: Exception) {
+            // Keep the useful URL rather than losing the share when extraction
+            // or the network fails; the user can retry from the source later.
+            Toast.makeText(this@MainActivity, "Couldn’t read the article; saved the link instead.", Toast.LENGTH_LONG).show()
+            Ingest.importPlainText(this@MainActivity, shared.text, sourceType, shared.subject)
+          }
+          Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
+          refreshTick.value++
         } else {
-          Ingest.importPlainText(this@MainActivity, shared.text, sourceType, shared.subject)
+          val id = if (shared.isHtml) {
+            Ingest.importHtml(this@MainActivity, shared.text, sourceType)
+          } else {
+            Ingest.importPlainText(this@MainActivity, shared.text, sourceType, shared.subject)
+          }
+          Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
+          refreshTick.value++
         }
-        Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
-        refreshTick.value++
       } catch (e: Exception) {
         Toast.makeText(this@MainActivity, "Import failed: ${e.message?.take(120) ?: "unknown"}", Toast.LENGTH_LONG).show()
       }
