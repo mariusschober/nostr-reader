@@ -15,8 +15,7 @@ import android.speech.tts.UtteranceProgressListener
 import androidx.core.content.ContextCompat
 
 /** Android callbacks are keyed to the exact utterance and delivered on the main thread. */
-class AndroidTtsEngine(ctx: Context) : TtsEngine {
-  companion object { const val GOOGLE_ENGINE = "com.google.android.tts" }
+class AndroidTtsEngine(ctx: Context, private val enginePackage: String? = null) : TtsEngine {
   private val context = ctx.applicationContext
   private val handler = Handler(Looper.getMainLooper())
   private val audio = context.getSystemService(AudioManager::class.java)
@@ -42,15 +41,24 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
 
   init {
     ContextCompat.registerReceiver(context, noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
-    val googleAvailable = context.packageManager.queryIntentServices(
-      Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE).setPackage(GOOGLE_ENGINE), 0).isNotEmpty()
-    if (!googleAvailable) failed = true
-    else tts = TextToSpeech(context, { status ->
-      handler.post {
-        ready = status == TextToSpeech.SUCCESS; failed = !ready
-        active?.let { if (ready) submit(it) else { active = null; it.error("Google speech is unavailable. Open speech settings to enable it.") } }
+    val anyEngine = context.packageManager.queryIntentServices(
+      Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0).isNotEmpty()
+    if (!anyEngine) failed = true
+    else {
+      val listener = TextToSpeech.OnInitListener { status ->
+        handler.post {
+          ready = status == TextToSpeech.SUCCESS; failed = !ready
+          active?.let {
+            if (ready) submit(it)
+            else { active = null; it.error("Speech is unavailable. Open speech settings to choose an engine.") }
+          }
+        }
       }
-    }, GOOGLE_ENGINE)
+      // Null selects the user's system TTS engine; a package is only used if a
+      // future picker passes one explicitly.
+      tts = if (enginePackage == null) TextToSpeech(context, listener)
+      else TextToSpeech(context, listener, enginePackage)
+    }
     tts?.setAudioAttributes(attributes)
     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
       override fun onStart(id: String?) = current(id) { it.start() }
@@ -69,7 +77,7 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
   override fun speak(utteranceId: String, text: String, speed: Float, onStart: () -> Unit, onDone: () -> Unit, onRange: (Int, Int) -> Unit, onError: (String) -> Unit) {
     val request = Request(utteranceId, text, speed, onStart, onDone, onRange, onError)
     active = request
-    if (failed) { active = null; onError("Google speech is unavailable. Open speech settings to enable it.") }
+    if (failed) { active = null; onError("Speech is unavailable. Open speech settings to choose an engine.") }
     else if (ready) submit(request)
   }
 
@@ -82,7 +90,7 @@ class AndroidTtsEngine(ctx: Context) : TtsEngine {
     // Keep the system engine's configured voice/language; the UI locale is not a speech preference.
     engine.setSpeechRate(request.speed.coerceIn(.75f, 2.5f))
     if (engine.speak(request.text, TextToSpeech.QUEUE_FLUSH, Bundle(), request.id) != TextToSpeech.SUCCESS) {
-      active = null; audio.abandonAudioFocusRequest(focus); request.error("Google speech is unavailable. Open speech settings to enable it.")
+      active = null; audio.abandonAudioFocusRequest(focus); request.error("Speech is unavailable. Open speech settings to choose an engine.")
     }
   }
 

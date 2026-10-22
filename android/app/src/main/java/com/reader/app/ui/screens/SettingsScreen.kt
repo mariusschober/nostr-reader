@@ -28,6 +28,7 @@ fun SettingsScreen(
   exporting: Boolean = false,
   onExport: () -> Unit,
   onSignerInfo: () -> Unit,
+  onSpeechSettings: () -> Unit = {},
   onSettingsChange: (ReaderSettings) -> Unit,
   syncHealth: com.reader.app.data.SyncHealthEntity?,
   syncing: Boolean,
@@ -58,6 +59,10 @@ fun SettingsScreen(
             label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) }, modifier = Modifier.padding(end = 8.dp))
         }
       }
+      Spacer(Modifier.height(16.dp))
+      Text("Reading aloud", color = c.secondary)
+      Text("Reader uses the system speech engine and the voice you choose in Android settings.", color = c.text)
+      TextButton(onClick = onSpeechSettings) { Text("Speech settings", fontFamily = ReaderFonts.Ui, color = c.text) }
       Spacer(Modifier.height(16.dp))
       Text("Sync", color = c.secondary)
       Text(syncHealth?.checkedAt?.let { "Last checked: " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it)) } ?: "Not checked yet", color = c.text)

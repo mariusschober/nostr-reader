@@ -15,13 +15,11 @@ import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class SystemTtsInstrumentedTest {
-  @Test fun usesGoogleSpeech() {
+  @Test fun usesTheSystemSpeechEngine() {
     val runner = InstrumentationRegistry.getInstrumentation()
     val context = runner.targetContext
-    val selected = AndroidTtsEngine.GOOGLE_ENGINE
-    assertFalse("A system speech engine must be selected", selected.isNullOrBlank())
     val visible = context.packageManager.queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0)
-    assertTrue("Google speech must be visible to Reader: $selected", visible.any { it.serviceInfo.packageName == selected })
+    assertTrue("At least one system speech engine must be visible", visible.isNotEmpty())
     val done = CountDownLatch(1)
     val failure = AtomicReference<String?>(null)
     var engine: AndroidTtsEngine? = null
@@ -29,7 +27,7 @@ class SystemTtsInstrumentedTest {
     try {
       runner.runOnMainSync {
         engine = AndroidTtsEngine(context)
-        engine!!.speak("system-default-check", "Reader uses Google speech.", 1f,
+        engine!!.speak("system-default-check", "Reader uses the system speech engine.", 1f,
           onStart = {}, onDone = { done.countDown() }, onRange = { _, _ -> },
           onError = { failure.set(it); done.countDown() })
       }

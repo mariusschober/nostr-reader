@@ -47,6 +47,7 @@ import com.reader.app.sync.TransferManager
 import com.reader.app.tts.AndroidTtsEngine
 import com.reader.app.tts.Narration
 import com.reader.app.tts.TtsController
+import com.reader.app.tts.TtsSettings
 import com.reader.app.ui.Route
 import com.reader.app.ui.RouteStack
 import com.reader.app.ui.Triage
@@ -551,6 +552,7 @@ class MainActivity : ComponentActivity() {
           onSignerInfo = {
             Toast.makeText(this, "Random local keys by default. External signers only add provenance, never transport.", Toast.LENGTH_LONG).show()
           },
+          onSpeechSettings = { TtsSettings.open(this@MainActivity) },
         )
       }
       pendingShare.value?.let { shared ->

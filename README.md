@@ -157,7 +157,7 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The app declares Android 8.0/API 26+; the current focused acceptance device is a TCL T807D running Android 16. This build is debug-signed. Google speech must be installed and enabled for Listen. Preserve an existing Reader installation’s data and keys when updating; do not uninstall just to bypass a signing mismatch.
+The app declares Android 8.0/API 26+; the current focused acceptance device is a TCL T807D running Android 16. This build is debug-signed. Listen uses the system text-to-speech engine and voice selected in Android settings. Preserve an existing Reader installation’s data and keys when updating; do not uninstall just to bypass a signing mismatch.
 
 Open the extension’s pairing screen and use Android’s Add menu to scan or paste the pairing request. Confirm the connection, save an article from Chrome, and wait for the phone’s receipt. See the [installation and trial guide](docs/beta/INSTALL_AND_TRIAL.md) for the full workflow.
 
