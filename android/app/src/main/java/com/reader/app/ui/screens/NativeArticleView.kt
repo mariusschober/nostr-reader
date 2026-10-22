@@ -92,7 +92,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           if (armed && !swipeArmed) performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
           swipeArmed = armed
           swipeLabel.layoutParams = LayoutParams(kotlin.math.abs(offset).toInt().coerceAtLeast(1), LayoutParams.WRAP_CONTENT,
-            android.view.Gravity.CENTER_VERTICAL or (if (offset > 0) android.view.Gravity.LEFT else android.view.Gravity.RIGHT))
+            android.view.Gravity.CENTER_VERTICAL or (if (offset > 0) android.view.Gravity.START else android.view.Gravity.END))
           swipeLabel.gravity = android.view.Gravity.CENTER
           val icon = context.getDrawable(when (action) {
             ArticleAction.Delete -> R.drawable.ic_swipe_delete

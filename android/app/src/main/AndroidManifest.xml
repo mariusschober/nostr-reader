@@ -17,6 +17,7 @@
     android:label="Reader"
     android:icon="@mipmap/ic_launcher"
     android:theme="@style/Theme.Reader"
+    android:supportsRtl="true"
     android:allowBackup="false"
     android:fullBackupOnly="false"
     android:fullBackupContent="@xml/backup_rules_legacy"
