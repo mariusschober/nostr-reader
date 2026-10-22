@@ -172,7 +172,7 @@ Open the extension’s pairing screen and use Android’s Add menu to scan or pa
 | [`mac/`](mac/) | Reference Swift package; not a finished Mac product |
 | [`PROTOCOL.md`](PROTOCOL.md) | Authoritative v2 wire contract |
 | [`ARCHIVE_REFRESH.md`](ARCHIVE_REFRESH.md) | Latest archive/highlighting behavior and focused verification |
-| [`UI_REFRESH.md`](UI_REFRESH.md) | Branding, reader dock, Google speech and preceding UI checks |
+| [`UI_REFRESH.md`](UI_REFRESH.md) | Branding, reader dock, system speech and preceding UI checks |
 | [`BETA_TEST_REPORT.md`](BETA_TEST_REPORT.md) | Earlier beta evidence checkpoint |
 | [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) | Outstanding acceptance and implementation limits |
 
