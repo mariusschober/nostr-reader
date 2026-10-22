@@ -114,8 +114,11 @@ fun InboxScreen(
     topBar = {
       Row(Modifier.fillMaxWidth().padding(20.dp, 16.dp, 20.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (archiveMode) IconButton(onClick = onArchiveBack) { Icon(Icons.Default.ArrowBack, "Back") }
-        Text(if (archiveMode) "Archive" else "Reader", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = c.text)
-        Spacer(Modifier.weight(1f))
+        Text(
+          if (archiveMode) "Archive" else "Reader",
+          fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = c.text,
+          modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
         IconButton(onClick = { showAdd = true }) {
           Icon(Icons.Default.Add, contentDescription = "Import, paste, or pair", tint = c.text)
         }
@@ -208,7 +211,7 @@ fun InboxScreen(
         OutlinedTextField(
           value = text, onValueChange = { text = it },
           placeholder = { Text("Paste text or markdown…", fontFamily = ReaderFonts.Ui) },
-          modifier = Modifier.fillMaxWidth().height(220.dp),
+          modifier = Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 360.dp),
           keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         )
       },

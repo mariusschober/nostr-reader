@@ -19,6 +19,8 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -211,6 +213,7 @@ private fun PairingReview(
   val busy = status != null
   val c = appColors()
   Column(modifier.padding(top = 20.dp)) {
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
     Text("Review connection", fontFamily = ReaderFonts.Ui, fontSize = 18.sp)
     Spacer(Modifier.height(8.dp))
     Text(
@@ -252,7 +255,7 @@ private fun PairingReview(
       Spacer(Modifier.height(12.dp))
       Text(it, fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.error)
     }
-    Spacer(Modifier.weight(1f))
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
       TextButton(onClick = onReset, enabled = !busy) { Text("Scan another", fontFamily = ReaderFonts.Ui) }
       Spacer(Modifier.width(8.dp))

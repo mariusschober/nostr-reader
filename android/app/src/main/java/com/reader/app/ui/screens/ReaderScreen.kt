@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -213,7 +214,7 @@ fun AppearanceSheet(settings: ReaderSettings, onChange: (ReaderSettings) -> Unit
     containerColor = c.background,
     title = { Text("Appearance", fontFamily = ReaderFonts.Ui, color = c.text) },
     text = {
-      Column {
+      Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
         Text("Font", fontFamily = ReaderFonts.Ui, color = c.secondary)
         ArticleFont.entries.forEach { f ->
           val label = when (f) {
