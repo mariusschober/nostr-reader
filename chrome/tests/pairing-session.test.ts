@@ -7,6 +7,7 @@ import {
   PAIR_ACK_RETRY_SECS,
   PAIRED_CHANNEL_STORAGE_KEYS,
   stripPairingSecret,
+  supersedeOldestActive,
 } from "../src/protocol/pairing-session.js";
 
 describe("pairing session lifecycle hygiene", () => {
@@ -35,6 +36,27 @@ describe("pairing session lifecycle hygiene", () => {
     expect(cancelled.map((session) => session.state)).toEqual(["cancelled", "cancelled", "complete"]);
     expect(cancelled.slice(0, 2).every((session) => !Object.hasOwn(session, "pairingSeckey"))).toBe(true);
     expect(cancelled[2]).toBe(sessions[2]);
+  });
+
+  it("supersedes the oldest active session without retaining its secret", () => {
+    const sessions = [
+      { state: "waiting_response" as const, pairingSeckey: "one", id: 1 },
+      { state: "waiting_completion" as const, pairingSeckey: "two", id: 2 },
+      { state: "complete" as const, id: 3 },
+    ];
+    const result = supersedeOldestActive(sessions, "Superseded by a newer pairing code.");
+    expect(result.superseded).toBe(true);
+    expect(result.sessions.map((session) => session.state)).toEqual(["superseded", "waiting_completion", "complete"]);
+    expect(Object.hasOwn(result.sessions[0]!, "pairingSeckey")).toBe(false);
+    expect(result.sessions[0]!.lastError).toContain("newer pairing code");
+    expect(result.sessions[1]).toBe(sessions[1]);
+  });
+
+  it("does not invent a session when every session is terminal", () => {
+    const sessions = [{ state: "complete" as const, id: 1 }, { state: "cancelled" as const, id: 2 }];
+    const result = supersedeOldestActive(sessions, "none");
+    expect(result.superseded).toBe(false);
+    expect(result.sessions).toEqual(sessions);
   });
 
   it("disconnect removes only channel binding—not identity, preferences, or outbox", () => {

@@ -45,6 +45,7 @@ import {
 import {
   cancelActivePairingSessions,
   isActivePairingState,
+  supersedeOldestActive,
   pairingAckAttemptTransition,
   pairingAckRetryDue,
   PAIRED_CHANNEL_STORAGE_KEYS,
@@ -1096,8 +1097,13 @@ async function recoverPairingSessions(): Promise<void> {
 
 async function startPairingInternal(): Promise<{ qr: PairingRequestV2; sessionId: string; sas: string }> {
   let sessions = await loadPairingSessions();
-  const active = sessions.filter((session) => isActivePairingState(session.state));
-  if (active.length >= MAX_PAIRING_SESSIONS) throw new Error("Two pairing codes are already active. Cancel or let one expire.");
+  // A closed or abandoned pairing tab must not lock the user out. New codes
+  // supersede the oldest active session instead of rejecting creation.
+  while (sessions.filter((session) => isActivePairingState(session.state)).length >= MAX_PAIRING_SESSIONS) {
+    const result = supersedeOldestActive(sessions, "Superseded by a newer pairing code.");
+    sessions = result.sessions;
+    if (!result.superseded) break;
+  }
 
   const { pubkey } = await getDeviceKey();
   const pairingSeckey = randomSeckey();

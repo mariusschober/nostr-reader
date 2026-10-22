@@ -35,9 +35,16 @@ async function begin() {
   document.getElementById("sas-words").textContent = "";
   state.className = "";
   state.textContent = "Checking the pairing relays…";
-  const r = await chrome.runtime.sendMessage({kind:"reader-start-pairing"});
-  if (!r.ok) {
-    state.textContent = "Could not create a pairing code: " + r.error;
+  let r;
+  try {
+    r = await chrome.runtime.sendMessage({kind:"reader-start-pairing"});
+  } catch (error) {
+    state.textContent = "Could not reach the Reader worker: " + String(error).slice(0, 160);
+    restart.hidden = false;
+    return;
+  }
+  if (!r?.ok) {
+    state.textContent = "Could not create a pairing code: " + (r?.error ?? "unknown error");
     restart.hidden = false;
     return;
   }
@@ -56,9 +63,19 @@ async function begin() {
 
 async function poll() {
   if (stopped || !sessionId) return;
-  const r = await chrome.runtime.sendMessage({kind:"reader-pairing-status", sessionId});
-  if (!r.ok) {
-    state.textContent = "Pairing status could not be checked: " + r.error;
+  let r;
+  try {
+    r = await chrome.runtime.sendMessage({kind:"reader-pairing-status", sessionId});
+  } catch (error) {
+    stopped = true;
+    state.textContent = "Pairing status could not be checked: " + String(error).slice(0, 160);
+    cancel.hidden = true;
+    restart.hidden = false;
+    return;
+  }
+  if (!r?.ok) {
+    state.textContent = "Pairing status could not be checked: " + (r?.error ?? "unknown error");
+    restart.hidden = false;
   } else {
     state.textContent = r.message;
     if (r.state === "complete") {
@@ -87,7 +104,10 @@ async function poll() {
 
 cancel.addEventListener("click", async () => {
   stopped = true;
-  if (sessionId) await chrome.runtime.sendMessage({kind:"reader-cancel-pairing", sessionId});
+  if (sessionId) {
+    try { await chrome.runtime.sendMessage({kind:"reader-cancel-pairing", sessionId}); }
+    catch { /* the local cancellation still clears this tab */ }
+  }
   document.getElementById("qr").replaceChildren();
   document.getElementById("manual").hidden = true;
   document.getElementById("manual-code").value = "";

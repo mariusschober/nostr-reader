@@ -8,11 +8,41 @@ button{background:#100F0F;color:#FFFCF0;border:0;border-radius:6px;padding:8px 1
 <p><button id="open">Setup / Pairing</button></p>
 <p><button id="retry">Retry pending</button></p>
 <script type="module">
-const s = await chrome.runtime.sendMessage({kind:"reader-status"});
-document.getElementById("status").innerHTML = s.paired
-  ? `<span class="ok">Connected</span> · ${s.relays.length} relays · ${s.pending} pending · ${s.delivery.delivered} delivered recently · ${s.delivery.failed} failed`
-  : `<span class="warn">Not paired</span> — scan with Reader on Android`;
+const status = document.getElementById("status");
+function render(s) {
+  status.replaceChildren();
+  const state = document.createElement("span");
+  state.className = s.paired ? "ok" : "warn";
+  state.textContent = s.paired ? "Connected" : "Not paired";
+  status.append(state);
+  if (s.paired) {
+    const relays = Number(s.relays?.length ?? 0);
+    const pending = Number(s.pending ?? 0);
+    const delivered = Number(s.delivery?.delivered ?? 0);
+    const failed = Number(s.delivery?.failed ?? 0);
+    status.append(` · ${relays} relays · ${pending} pending · ${delivered} delivered recently · ${failed} failed`);
+  } else {
+    status.append(" — scan with Reader on Android");
+  }
+}
+try {
+  const s = await chrome.runtime.sendMessage({kind:"reader-status"});
+  if (!s?.ok) throw new Error(s?.error ?? "unknown error");
+  render(s);
+} catch (error) {
+  status.className = "err";
+  status.textContent = "Could not read Reader status. Reopen the popup. " + String(error).slice(0, 100);
+}
 document.getElementById("open").onclick = () => chrome.tabs.create({url: chrome.runtime.getURL("src/ui/pairing.html")});
-document.getElementById("retry").onclick = async () => { await chrome.runtime.sendMessage({kind:"reader-retry"}); location.reload(); };
+document.getElementById("retry").onclick = async () => {
+  try {
+    const r = await chrome.runtime.sendMessage({kind:"reader-retry"});
+    if (!r?.ok) throw new Error(r?.error ?? "unknown error");
+    location.reload();
+  } catch (error) {
+    status.className = "err";
+    status.textContent = "Retry failed. " + String(error).slice(0, 100);
+  }
+};
 </script>  <script type="module" src="./theme.ts"></script>
 </body></html>

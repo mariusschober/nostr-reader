@@ -58,6 +58,21 @@ export function stripPairingSecret<T extends { pairingSeckey?: string }>(session
   return safe;
 }
 
+/** A closed pairing tab cannot cancel, so a new code supersedes the oldest active one. */
+export function supersedeOldestActive<T extends SecretBearingPairingSession>(
+  sessions: readonly T[],
+  lastError: string,
+): { sessions: T[]; superseded: boolean } {
+  const index = sessions.findIndex((session) => isActivePairingState(session.state));
+  if (index < 0) return { sessions: [...sessions], superseded: false };
+  return {
+    sessions: sessions.map((session, at) => at === index
+      ? { ...stripPairingSecret(session), state: "superseded", lastError } as T
+      : session),
+    superseded: true,
+  };
+}
+
 export function cancelActivePairingSessions<T extends SecretBearingPairingSession>(
   sessions: readonly T[],
   lastError: string,
