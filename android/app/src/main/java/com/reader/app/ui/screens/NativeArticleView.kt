@@ -32,6 +32,11 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       super.onSelectionChanged(start, end)
       changed?.invoke(start, end)
     }
+
+    override fun performClick(): Boolean {
+      super.performClick()
+      return true
+    }
   }
   private val body = SelectionText(context)
   private val swipeLabel = TextView(context)
@@ -174,6 +179,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         MotionEvent.ACTION_DOWN -> { downX = event.x; downY = event.y }
         MotionEvent.ACTION_UP -> if (actionMode == null && body.selectionStart == body.selectionEnd &&
           kotlin.math.abs(event.x - downX) < dp(8) && kotlin.math.abs(event.y - downY) < dp(8)) {
+          body.performClick()
           val at = body.getOffsetForPosition(event.x, event.y)
           val hits = markRanges.filter { at >= it.start && at < it.end }.sortedByDescending { it.createdAt }
           when {
