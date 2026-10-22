@@ -74,9 +74,9 @@ fun InboxScreen(
   val c = appColors()
   val tab = if (archiveMode) Triage.ARCHIVED else selectedTab
   BackHandler(enabled = archiveMode, onBack = onArchiveBack)
-  LaunchedEffect(loaded, lists[Triage.INBOX]?.size, tab) {
-    if (!archiveMode && selectedTab == Triage.ARCHIVED) onSelectTab(Triage.PRIORITY)
-    if (loaded && lists[Triage.INBOX].isNullOrEmpty() && tab == Triage.INBOX) onSelectTab(Triage.PRIORITY)
+  LaunchedEffect(loaded, tab) {
+    // Never auto-switch away from an empty Inbox: its CTA is the onboarding path.
+    if (!archiveMode && selectedTab == Triage.ARCHIVED) onSelectTab(Triage.INBOX)
   }
   var menuFor by remember { mutableStateOf<String?>(null) }
   var showAdd by remember { mutableStateOf(false) }
@@ -130,9 +130,13 @@ fun InboxScreen(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.Bottom,
       ) {
-        (listOf(Triage.INBOX, Triage.PRIORITY, Triage.LATER, "highlights").filter { it != Triage.INBOX || !loaded || !lists[Triage.INBOX].isNullOrEmpty() }).forEachIndexed { i, key ->
+        Triage.visibleTabs().forEachIndexed { i, key ->
           if (i > 0) Spacer(Modifier.width(20.dp))
-          TabText(Triage.tabLabel(key), selected = tab == key, color = c, onClick = { onSelectTab(key) })
+          TabText(
+            Triage.tabLabel(key), selected = tab == key, color = c,
+            badge = key == Triage.INBOX && tab != Triage.INBOX && lists[Triage.INBOX].orEmpty().isNotEmpty(),
+            onClick = { onSelectTab(key) },
+          )
         }
         Spacer(Modifier.weight(1f))
         Text(
@@ -144,7 +148,8 @@ fun InboxScreen(
       if (!loaded) CircularProgressIndicator(Modifier.padding(24.dp))
       else if (tab == "highlights") highlights()
       else if (list.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (tab == Triage.INBOX) EmptyInbox(c, onPair = onPair, onImportFile = onImportFile, onPaste = { showPaste = true })
+        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
           Text(emptyHint(tab), fontFamily = ReaderFonts.Ui, color = c.secondary, fontSize = 15.sp)
         }
       } else {
@@ -252,15 +257,58 @@ private fun AddOption(label: String, c: com.reader.app.ui.theme.ReaderColors, on
 }
 
 @Composable
-private fun TabText(text: String, selected: Boolean, color: com.reader.app.ui.theme.ReaderColors, onClick: () -> Unit) {
+private fun TabText(
+  text: String,
+  selected: Boolean,
+  color: com.reader.app.ui.theme.ReaderColors,
+  badge: Boolean = false,
+  onClick: () -> Unit,
+) {
   Column(Modifier.clickable(onClick = onClick)) {
-    Text(
-      text, fontFamily = ReaderFonts.Ui, fontSize = 17.sp,
-      fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-      color = if (selected) color.text else color.secondary,
-    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text(
+        text, fontFamily = ReaderFonts.Ui, fontSize = 17.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        color = if (selected) color.text else color.secondary,
+      )
+      if (badge) {
+        Spacer(Modifier.width(6.dp))
+        Box(Modifier.size(7.dp).background(color.focal, androidx.compose.foundation.shape.CircleShape))
+      }
+    }
     Spacer(Modifier.height(2.dp))
     if (selected) Divider(color = color.focal, thickness = 2.dp, modifier = Modifier.width(28.dp))
+  }
+}
+
+@Composable
+private fun EmptyInbox(
+  c: com.reader.app.ui.theme.ReaderColors,
+  onPair: () -> Unit,
+  onImportFile: () -> Unit,
+  onPaste: () -> Unit,
+) {
+  Column(
+    Modifier.fillMaxSize().padding(horizontal = 32.dp),
+    verticalArrangement = Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Text("Your inbox is empty", fontFamily = ReaderFonts.Ui, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = c.text)
+    Spacer(Modifier.height(8.dp))
+    Text(
+      "Send an article from the Chrome extension, import a file, or paste text. Pairing Chrome takes one QR scan.",
+      fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary,
+      textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
+    Spacer(Modifier.height(20.dp))
+    Button(onClick = onPair) { Text("Pair Chrome", fontFamily = ReaderFonts.Ui) }
+    Spacer(Modifier.height(4.dp))
+    TextButton(onClick = onImportFile, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+      Text("Import a file", fontFamily = ReaderFonts.Ui)
+    }
+    TextButton(onClick = onPaste, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
+      Text("Paste text", fontFamily = ReaderFonts.Ui)
+    }
   }
 }
 

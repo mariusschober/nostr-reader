@@ -78,4 +78,12 @@ class TriageMovesTest {
   fun tabsCoverAllLists() {
     assertEquals(setOf("inbox", "priority", "later", "archived"), Triage.TABS.toSet())
   }
+
+  @Test
+  fun inboxTabIsAlwaysVisibleForTheEmptyCta() {
+    assertEquals(Triage.INBOX, Triage.visibleTabs().first())
+    assertTrue(Triage.visibleTabs().contains(Triage.PRIORITY))
+    assertTrue(Triage.visibleTabs().contains(Triage.LATER))
+    assertTrue(Triage.visibleTabs().contains("highlights"))
+  }
 }

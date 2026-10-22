@@ -8,6 +8,10 @@ object Triage {
   const val ARCHIVED = "archived"
 
   val TABS = listOf(INBOX, PRIORITY, LATER, ARCHIVED)
+  val VISIBLE_TABS = listOf(INBOX, PRIORITY, LATER, "highlights")
+
+  /** Inbox is always visible, including on a fresh install, so its CTA stays reachable. */
+  fun visibleTabs(): List<String> = VISIBLE_TABS
 
   fun tabLabel(list: String): String = when (list) {
     INBOX -> "Inbox"
