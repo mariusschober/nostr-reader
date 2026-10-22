@@ -12,7 +12,7 @@ by a later scoped result; older checks are historical.
 - **NOT MEASURED:** full process-death, tablet/foldable, large-font, TalkBack, wide-table and review accessibility matrix. Activity recreation, exact native sharing, source deletion, handles/autoscroll and review swipes have scoped physical passes.
 - TTS pauses on background and audio-focus loss. Native callbacks/speed/pause were tested; acoustic quality, real calls/headsets and a background media service are not claimed.
 - Android background delivery uses OS-scheduled catch-up. Timing depends on the OS/network; a user force-stop requires reopen.
-- Export is one-way Markdown/JSONL, not a restorable backup. Pairing keys are excluded. Export import/review-queue restore is not implemented.
+- Archive export/import restores documents, metadata, list/progress state, and highlights. Pairing keys, channels, app settings, and the review queue are deliberately excluded. The ZIP is plaintext and has no user-passphrase encryption.
 - Current candidate acceptance is TCL T807D, Android 16/API 36. Historical API-26/other-device checks do not certify these final bytes. Current 16-KiB runtime/store-signing acceptance remains **NOT MEASURED**. Target/compile SDK remains 34.
 - Chrome npm audit reports zero vulnerabilities at the recorded date. No equivalent complete Android CVE scan was performed. Public relay policies and retention can change.
 - NIP-44 has no forward secrecy. Relays can observe routing keys, IP, timing and sizes. Compromised endpoints can access local plaintext and keys. The current native reader renders image descriptions as text without remote image fetches.

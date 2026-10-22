@@ -25,7 +25,9 @@ fun SettingsScreen(
   onBack: () -> Unit,
   onRevokeChannel: (String) -> Unit,
   exporting: Boolean = false,
+  importing: Boolean = false,
   onExport: () -> Unit,
+  onImportArchive: () -> Unit = {},
   onSpeechSettings: () -> Unit = {},
   onSettingsChange: (ReaderSettings) -> Unit,
   syncHealth: com.reader.app.data.SyncHealthEntity?,
@@ -116,8 +118,12 @@ fun SettingsScreen(
           Text(if (exporting) "Exporting…" else "Export archive (ZIP)", fontFamily = ReaderFonts.Ui, color = c.text)
         }
         if (exporting) LinearProgressIndicator(Modifier.fillMaxWidth())
+        TextButton(enabled = !importing, onClick = onImportArchive) {
+          Text(if (importing) "Importing…" else "Import archive (ZIP)", fontFamily = ReaderFonts.Ui, color = c.text)
+        }
+        if (importing) LinearProgressIndicator(Modifier.fillMaxWidth())
         Text(
-          "Choose a destination such as Downloads. The ZIP is a one-way plaintext copy and is not restorable yet.",
+          "Export a ZIP to a destination such as Downloads; import it on this or a fresh install. The ZIP is plaintext, never contains keys, and keeps existing articles on conflict.",
           fontFamily = ReaderFonts.Ui, fontSize = 13.sp, color = c.secondary,
         )
       }

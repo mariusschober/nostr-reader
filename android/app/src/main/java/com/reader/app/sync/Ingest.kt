@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.reader.app.core.BoundedText
 import com.reader.app.core.ReaderCore
+import com.reader.app.data.BackupDocument
 import com.reader.app.data.DocumentEntity
 import com.reader.app.data.ReaderDb
 import org.jsoup.Jsoup
@@ -87,6 +88,28 @@ object Ingest {
       }
     }
     commit(ctx, md.toString(), sourceType, null)
+  }
+
+  /** Restores one archive document, preserving validated metadata and list state. */
+  suspend fun importBackupDocument(ctx: Context, doc: BackupDocument): String = withContext(Dispatchers.Default) {
+    BoundedText.requireSize(doc.markdown)
+    val canonical = ReaderCore.canonicalize(doc.markdown)
+    require(ReaderCore.documentId(canonical) == doc.documentId) { "Archive document hash mismatch" }
+    val db = ReaderDb.get(ctx)
+    if (db.documents().exists(doc.documentId)) return@withContext doc.documentId
+    val now = System.currentTimeMillis()
+    db.documents().insert(
+      DocumentEntity(
+        documentId = doc.documentId, title = doc.title, sourceType = doc.sourceType,
+        sourceName = doc.sourceName, sourceUrl = doc.sourceUrl, author = doc.author,
+        publishedAt = doc.publishedAt, capturedAt = doc.capturedAt.takeIf { it > 0 } ?: now,
+        language = doc.language, canonicalMarkdown = canonical, wordCount = ReaderCore.wordCount(canonical),
+        parserVersion = 2, state = doc.state, list = doc.list, progressBlockId = "b0",
+        progressCharOffset = 0, progressFraction = doc.progressFraction,
+        lastOpenedAt = 0L, createdAt = now, updatedAt = now,
+      ),
+    )
+    doc.documentId
   }
 
   suspend fun importFile(ctx: Context, uri: Uri, name: String): String = withContext(Dispatchers.IO) {

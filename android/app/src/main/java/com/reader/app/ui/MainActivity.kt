@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
   private var refreshTick = androidx.compose.runtime.mutableStateOf(0)
   private var lastForegroundSync = 0L
   private val pendingShare = androidx.compose.runtime.mutableStateOf<Ingest.SharedContent?>(null)
+  private val pendingImport = androidx.compose.runtime.mutableStateOf<com.reader.app.data.BackupBundle?>(null)
   private val shareTimes = ArrayDeque<Long>()
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -174,6 +175,23 @@ class MainActivity : ComponentActivity() {
       }
 
       var exporting by remember { mutableStateOf(false) }
+      var importing by remember { mutableStateOf(false) }
+      val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        lifecycleScope.launch {
+          importing = true
+          try {
+            pendingImport.value = withContext(Dispatchers.IO) {
+              contentResolver.openInputStream(uri)?.use { com.reader.app.data.BackupArchive.read(it) }
+                ?: throw IllegalStateException("Could not open the selected archive")
+            }
+          } catch (e: Exception) {
+            Toast.makeText(this@MainActivity, "Import failed: ${e.message?.take(140)}", Toast.LENGTH_LONG).show()
+          } finally {
+            importing = false
+          }
+        }
+      }
       val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         lifecycleScope.launch {
@@ -545,8 +563,67 @@ class MainActivity : ComponentActivity() {
             }
           },
           exporting = exporting,
+          importing = importing,
           onExport = { if (!exporting) exportPicker.launch(com.reader.app.data.ArchiveExport.filename(System.currentTimeMillis())) },
+          onImportArchive = { if (!importing) importPicker.launch(arrayOf("application/zip", "application/octet-stream")) },
           onSpeechSettings = { TtsSettings.open(this@MainActivity) },
+        )
+      }
+      pendingImport.value?.let { bundle ->
+        AlertDialog(
+          onDismissRequest = { pendingImport.value = null },
+          containerColor = com.reader.app.ui.theme.appColors().background,
+          title = { Text("Import archive?") },
+          text = {
+            Column {
+              Text(
+                "${bundle.documents.size} article${if (bundle.documents.size == 1) "" else "s"} and " +
+                  "${bundle.highlights.size} highlight${if (bundle.highlights.size == 1) "" else "s"} found.",
+              )
+              Spacer(Modifier.height(6.dp))
+              Text("Existing articles and highlights with the same identity are kept. Keys and channels are never imported.")
+              if (bundle.warnings.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(bundle.warnings.take(3).joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+              }
+            }
+          },
+          confirmButton = {
+            TextButton(onClick = {
+              pendingImport.value?.let { archive ->
+                pendingImport.value = null
+                importing = true
+                launchUiAction("Archive import failed. Nothing already in Reader was removed.") {
+                  try {
+                    var restored = 0
+                    withContext(Dispatchers.IO) {
+                      val importDb = ReaderDb.get(this@MainActivity)
+                      for (document in archive.documents) {
+                        Ingest.importBackupDocument(this@MainActivity, document)
+                        restored++
+                      }
+                      for (highlight in archive.highlights) {
+                        if (importDb.documents().exists(highlight.documentId)) {
+                          importDb.highlights().insertIgnore(highlight)
+                        }
+                      }
+                    }
+                    refresh()
+                    Toast.makeText(
+                      this@MainActivity,
+                      "Imported $restored articles and ${archive.highlights.size} highlights.",
+                      Toast.LENGTH_LONG,
+                    ).show()
+                  } finally {
+                    importing = false
+                  }
+                }
+              }
+            }) { Text("Import") }
+          },
+          dismissButton = {
+            TextButton(onClick = { pendingImport.value = null }) { Text("Cancel") }
+          },
         )
       }
       pendingShare.value?.let { shared ->
@@ -645,6 +722,13 @@ class MainActivity : ComponentActivity() {
     withContext(Dispatchers.IO) {
       out.use { stream ->
         ZipOutputStream(stream).use { zip ->
+          zip.putNextEntry(ZipEntry("reader-backup.json"))
+          zip.write(buildJsonObject {
+            put("format", com.reader.app.data.BackupArchive.FORMAT)
+            put("exportedAt", System.currentTimeMillis())
+            put("documents", list.size)
+          }.toString().toByteArray())
+          zip.closeEntry()
           for (summary in list) {
             val d = db.documents().observeMetadata(summary.documentId).first() ?: continue
             zip.putNextEntry(ZipEntry("${d.documentId}.md"))
@@ -658,6 +742,12 @@ class MainActivity : ComponentActivity() {
               put("documentId", d.documentId); put("title", d.title)
               put("sourceType", d.sourceType); put("wordCount", d.wordCount)
               put("capturedAt", d.capturedAt); put("state", d.state); put("list", d.list)
+              put("progressFraction", d.progressFraction)
+              d.sourceName?.let { put("sourceName", it) }
+              d.sourceUrl?.let { put("sourceUrl", it) }
+              d.author?.let { put("author", it) }
+              d.publishedAt?.let { put("publishedAt", it) }
+              d.language?.let { put("language", it) }
             }.toString()
             zip.write(meta.toByteArray())
             zip.closeEntry()
