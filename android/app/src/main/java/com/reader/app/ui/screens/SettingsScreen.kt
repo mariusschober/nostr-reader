@@ -21,13 +21,11 @@ import com.reader.app.ui.theme.appColors
 fun SettingsScreen(
   settings: ReaderSettings,
   channels: List<ChannelEntity>,
-  signerLabel: String,
   relaySummary: String,
   onBack: () -> Unit,
   onRevokeChannel: (String) -> Unit,
   exporting: Boolean = false,
   onExport: () -> Unit,
-  onSignerInfo: () -> Unit,
   onSpeechSettings: () -> Unit = {},
   onSettingsChange: (ReaderSettings) -> Unit,
   syncHealth: com.reader.app.data.SyncHealthEntity?,
@@ -91,8 +89,10 @@ fun SettingsScreen(
       }
       Spacer(Modifier.height(16.dp))
       Text("Signing", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
-      Text(signerLabel, fontFamily = ReaderFonts.Ui, color = c.text)
-      TextButton(onClick = onSignerInfo) { Text("About signing", fontFamily = ReaderFonts.Ui, color = c.text) }
+      Text(
+        "Reader uses its own device keys for transport. No external signer (Amber, NIP-07, or NIP-46) is supported, and no article keys are ever handed to one.",
+        fontFamily = ReaderFonts.Ui, color = c.text,
+      )
       Spacer(Modifier.height(16.dp))
       Text("About", fontFamily = ReaderFonts.Ui, fontSize = 15.sp, color = c.secondary)
       Text("Reader $version · Licenses bundled in-app", fontFamily = ReaderFonts.Ui, color = c.text)

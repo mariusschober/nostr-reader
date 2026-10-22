@@ -32,7 +32,6 @@ import com.reader.app.nostr.READER_RELAY_WRITE_QUORUM
 import com.reader.app.prefs.Prefs
 import com.reader.app.rsvp.RsvpModel
 import com.reader.app.security.KeystoreWrap
-import com.reader.app.signer.AmberSigner
 import com.reader.app.sync.Ingest
 import com.reader.app.sync.PairingCoordinator
 import com.reader.app.sync.ReaderSyncSession
@@ -513,7 +512,6 @@ class MainActivity : ComponentActivity() {
             }
           },
           onSettingsChange = { launchUiAction("Couldn’t save settings. Try again.") { prefs.save(it) } },
-          signerLabel = "Private device key (Recommended). " + AmberSigner(this).status(),
           relaySummary = com.reader.app.ui.RelaySummary.format(
             channels.firstOrNull()?.relaysJson, READER_DEFAULT_RELAYS, READER_RELAY_WRITE_QUORUM,
           ),
@@ -544,9 +542,6 @@ class MainActivity : ComponentActivity() {
           },
           exporting = exporting,
           onExport = { if (!exporting) exportPicker.launch(com.reader.app.data.ArchiveExport.filename(System.currentTimeMillis())) },
-          onSignerInfo = {
-            Toast.makeText(this, "Random local keys by default. External signers only add provenance, never transport.", Toast.LENGTH_LONG).show()
-          },
           onSpeechSettings = { TtsSettings.open(this@MainActivity) },
         )
       }
