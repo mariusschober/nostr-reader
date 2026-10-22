@@ -48,7 +48,7 @@ describe("pairing session lifecycle hygiene", () => {
     expect(result.superseded).toBe(true);
     expect(result.sessions.map((session) => session.state)).toEqual(["superseded", "waiting_completion", "complete"]);
     expect(Object.hasOwn(result.sessions[0]!, "pairingSeckey")).toBe(false);
-    expect(result.sessions[0]!.lastError).toContain("newer pairing code");
+    expect(result.sessions[0]).toMatchObject({ lastError: expect.stringContaining("newer pairing code") });
     expect(result.sessions[1]).toBe(sessions[1]);
   });
 
