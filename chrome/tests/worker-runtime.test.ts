@@ -46,6 +46,19 @@ async function records(name: string): Promise<any[]> {
     open.onerror = () => reject(open.error);
   });
 }
+async function putRecord(name: string, value: any): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open("reader-outbox", 2);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction(name, "readwrite");
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+      tx.objectStore(name).put(value);
+    };
+    open.onerror = () => reject(open.error);
+  });
+}
 async function message(value: object, from = sender): Promise<any> {
   return new Promise(resolve => listeners.message(value, from, resolve));
 }
@@ -61,7 +74,10 @@ describe("production worker persistence and request boundaries", () => {
     await boot();
     const reply = await message({ kind: "reader-capture", doc, captureId });
     expect(reply).toMatchObject({ ok: true, queued: true });
-    expect(await records("captures")).toMatchObject([{ captureId, transferId: reply.transferId, markdown: doc.markdown }]);
+    const [capture] = await records("captures");
+    expect(capture).toMatchObject({ captureId, transferId: reply.transferId });
+    expect(capture).not.toHaveProperty("markdown");
+    expect(capture).not.toHaveProperty("title");
     expect(await records("items")).toMatchObject([{ transferId: reply.transferId, attemptCount: 0 }]);
     expect(alarms.has("reader-pairing-recovery")).toBe(false);
   });
@@ -114,6 +130,44 @@ describe("production worker persistence and request boundaries", () => {
     expect(await records("items")).toHaveLength(0);
     expect(storage.deviceSeckey).toBeUndefined();
   });
+  it("migrates an old plaintext capture record to an opaque receipt", async () => {
+    await boot();
+    await putRecord("captures", {
+      captureId: "c".repeat(32), transferId: "d".repeat(32),
+      title: "Secret title", markdown: "Secret body", sourceUrl: "https://secret.example",
+      createdAt: 1, expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    await boot();
+    await vi.waitFor(async () => {
+      const [capture] = await records("captures");
+      expect(capture).not.toHaveProperty("markdown");
+      expect(capture).not.toHaveProperty("title");
+      expect(capture).not.toHaveProperty("sourceUrl");
+    });
+  });
+  it("capture receipts keep the transfer identity but never retain body text", async () => {
+    const worker = await boot();
+    const reply = await worker.queueCapture(doc, captureId);
+    await vi.waitFor(async () => {
+      const [capture] = await records("captures");
+      expect(capture).toMatchObject({ captureId, transferId: reply.transferId });
+      expect(capture).not.toHaveProperty("markdown");
+    });
+    const retried = await worker.queueCapture(doc, captureId);
+    expect(retried.transferId).toBe(reply.transferId);
+    expect(await records("items")).toHaveLength(1);
+  });
+  it("explicit discard removes its capture receipt as well as the failed outbox item", async () => {
+    const worker = await boot();
+    const reply = await worker.queueCapture(doc, captureId);
+    const [item] = await records("items");
+    await putRecord("items", { ...item, status: "failed", lastError: "synthetic" });
+    const trusted = { ...sender, url: `chrome-extension://${sender.id}/src/ui/options.html` };
+    expect(await message({ kind: "reader-discard-failed" }, trusted)).toMatchObject({ ok: true, discarded: 1 });
+    expect(await records("items")).toHaveLength(0);
+    expect(await records("captures")).toHaveLength(0);
+    expect(reply.transferId).toMatch(/^[0-9a-f]{32}$/);
+  });
 });
 
 describe("context-menu capture feedback", () => {
@@ -124,7 +178,9 @@ describe("context-menu capture feedback", () => {
     const messages = vi.mocked(chrome.tabs.sendMessage).mock.calls;
     expect(messages[0]).toEqual([7, expect.objectContaining({ kind: "reader-feedback-begin" }), { documentId: "document-1" }]);
     expect(messages[1]).toEqual([7, expect.objectContaining({ kind: "reader-capture-feedback", state: "unpaired" }), { documentId: "document-1" }]);
-    expect(await records("captures")).toMatchObject([{ markdown: "Constellation\n" }]);
+    const [capture] = await records("captures");
+    expect(capture).toMatchObject({ transferId: expect.any(String) });
+    expect(capture).not.toHaveProperty("markdown");
   });
   it("blocked page injection does not discard selected text or prevent badge feedback", async () => {
     await boot();
