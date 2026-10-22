@@ -64,6 +64,21 @@ internal fun ackRetryDelayMillis(attempt: Int, transferId: String): Long {
 internal fun syncNeedsRetry(pairingPending: Boolean, ackPending: Boolean): Boolean =
   pairingPending || ackPending
 
+/**
+ * Returns the validated relay list, or null when the persisted channel can
+ * never become usable. Such a row is revoked once instead of retried forever.
+ */
+internal fun parsedChannelRelays(rawJson: String): List<String>? {
+  val relays = runCatching {
+    Json.parseToJsonElement(rawJson).jsonArray.map { it.jsonPrimitive.content }
+  }.getOrNull() ?: return null
+  if (relays.size !in 2..8 || relays.distinct().size != relays.size) return null
+  val normalized = relays.all { relay ->
+    runCatching { PairingProtocol.normalizeRelayUrl(relay) == relay }.getOrDefault(false)
+  }
+  return relays.takeIf { normalized }
+}
+
 /** Background poll: rolling 10-day window, dedupe, assemble, ACK. No permanent socket. */
 class ReaderSyncSession(private val applicationContext: Context) {
   companion object { private val syncMutex = Mutex() }
@@ -94,6 +109,7 @@ class ReaderSyncSession(private val applicationContext: Context) {
       val ackDispatcher = AckDispatcher(db, tm, relays)
       var ackRetryNeeded = false
       var receiveFailed = false
+      var repairRequired = false
       for (ch in channels) {
         val seckey = openActiveChannelKeyOrRevoke(db, keys, ch)
         if (seckey == null) {
@@ -101,18 +117,14 @@ class ReaderSyncSession(private val applicationContext: Context) {
           continue
         }
         val receiverPubkey = ch.receiverPubkey
-        val relayList = runCatching {
-          Json.parseToJsonElement(ch.relaysJson).jsonArray.map { it.jsonPrimitive.content }
-        }.getOrDefault(emptyList())
-        if (relayList.isEmpty()) { receiveFailed = true; continue }
-        // Each connection resolves through guarded, bounded DNS. One failed
-        // relay must not veto every healthy relay before any connection opens.
-        if (runCatching {
-          require(relayList.size in 2..8 && relayList.distinct().size == relayList.size)
-          relayList.forEach { require(PairingProtocol.normalizeRelayUrl(it) == it) }
-        }.isFailure) {
-          receiveFailed = true
-          Log.w("NostrReaderSync", "channel=${ch.channelId.take(8)} relayValidation=failed")
+        val relayList = parsedChannelRelays(ch.relaysJson)
+        if (relayList == null) {
+          // A corrupt or impossible relay set can never recover by retrying.
+          // Revoke it transactionally and ask the user to re-pair instead.
+          db.channels().revoke(ch.channelId, System.currentTimeMillis())
+          keys.deleteChannelKey(ch.channelId)
+          repairRequired = true
+          Log.w("NostrReaderSync", "channel=${ch.channelId.take(8)} relayValidation=failed revoke=repair_required")
           continue
         }
         Log.i("NostrReaderSync", "channel=${ch.channelId.take(8)} relays=${relayList.size}")
@@ -180,7 +192,13 @@ class ReaderSyncSession(private val applicationContext: Context) {
           acknowledger.join()
         }
       }
-      recordHealth(if (receiveFailed) "Some relay connections or incoming transfers could not be completed. Reader will retry." else null)
+      recordHealth(
+        when {
+          repairRequired -> "A paired channel had an invalid relay set and was revoked. Re-pair Chrome from Settings."
+          receiveFailed -> "Some relay connections or incoming transfers could not be completed. Reader will retry."
+          else -> null
+        },
+      )
       syncNeedsRetry(pairingRetryNeeded, ackRetryNeeded) || receiveFailed
     } catch (error: CancellationException) {
       throw error

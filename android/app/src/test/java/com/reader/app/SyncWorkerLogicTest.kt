@@ -2,6 +2,7 @@ package com.reader.app
 
 import com.reader.app.sync.acceptedAckRelays
 import com.reader.app.sync.ackRetryDelayMillis
+import com.reader.app.sync.parsedChannelRelays
 import com.reader.app.sync.pairingResponseState
 import com.reader.app.sync.syncNeedsRetry
 import org.junit.Assert.assertEquals
@@ -30,6 +31,20 @@ class SyncWorkerLogicTest {
     assertEquals(first, ackRetryDelayMillis(1, transferId))
     assertTrue(ackRetryDelayMillis(2, transferId) > first)
     assertTrue(ackRetryDelayMillis(500, transferId) <= 6L * 60L * 60L * 1000L)
+  }
+
+  @Test
+  fun impossibleRelaySetsAreRepairableInsteadOfRetriedForever() {
+    assertEquals(
+      listOf("wss://nos.lol", "wss://relay.primal.net"),
+      parsedChannelRelays("[\"wss://nos.lol\",\"wss://relay.primal.net\"]"),
+    )
+    assertEquals(null, parsedChannelRelays("not-json"))
+    assertEquals(null, parsedChannelRelays("[]"))
+    assertEquals(null, parsedChannelRelays("[\"wss://nos.lol\"]"))
+    assertEquals(null, parsedChannelRelays("[\"wss://nos.lol\",\"wss://nos.lol\"]"))
+    assertEquals(null, parsedChannelRelays("[\"ws://nos.lol\",\"wss://relay.primal.net\"]"))
+    assertEquals(null, parsedChannelRelays("[\"wss://nos.lol\",\"https://relay.primal.net\"]"))
   }
 
   @Test
