@@ -116,7 +116,9 @@ let retryRecovery: Promise<void> | null = null;
 
 async function restoreWorkAlarms(): Promise<void> {
   await durableAlarms.reconcile(RETRY_ALARM, async () => {
-    const items = (await outboxAll()).filter(item => item.status !== "failed");
+    // `awaiting_device` already completed relay quorum; only ACK polling can
+    // settle it. Excluding it here prevents an immediate wake/republish loop.
+    const items = (await outboxAll()).filter(item => item.status !== "failed" && item.status !== "awaiting_device");
     if (!items.length || !await loadPairedChannelState()) return undefined;
     return Math.min(...items.map(item => (item.nextAttemptAt ?? item.createdAt) * 1000));
   });
@@ -1373,7 +1375,10 @@ async function resumeDueTransfers(): Promise<void> {
     const { seckey } = await getDeviceKey();
     // Bounded owner; network operations never fan out over the whole library.
     for (const item of await outboxAll()) {
-      if (item.status !== "failed" && (item.nextAttemptAt ?? 0) <= Math.floor(Date.now() / 1000)) {
+      // Once relay quorum is complete, retrying must poll for the authenticated
+      // ACK rather than re-encrypting and re-uploading the whole article.
+      if (item.status === "failed" || item.status === "awaiting_device") continue;
+      if ((item.nextAttemptAt ?? 0) <= Math.floor(Date.now() / 1000)) {
         await publishTransfer(item.transferId, seckey, paired.channelPubkey).catch(() => undefined);
       }
     }

@@ -294,6 +294,20 @@ describe("production publication and ACK interleavings", () => {
     release();
   });
 
+  it("a due retry alarm in awaiting_device performs zero payload publications", async () => {
+    const worker = await boot();
+    await worker.queueCapture(doc, captureId);
+    await vi.waitFor(() => expect(published).toBeGreaterThan(0));
+    release();
+    await vi.waitFor(async () => expect((await records("items"))[0].status).toBe("awaiting_device"));
+    const [item] = await records("items");
+    await putRecord("items", { ...item, nextAttemptAt: 0 });
+    const before = published;
+    await listeners.alarm({ name: "reader-retry" });
+    expect(published).toBe(before);
+    expect(await records("items")).toHaveLength(1);
+  });
+
   it("wrong manifest ACK never clears a capture despite valid phone signature", async () => {
     const worker = await boot();
     await worker.queueCapture(doc, captureId);
