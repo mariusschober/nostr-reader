@@ -3,6 +3,7 @@ package com.reader.app
 import com.reader.app.sync.acceptedAckRelays
 import com.reader.app.sync.ackRetryDelayMillis
 import com.reader.app.sync.parsedChannelRelays
+import com.reader.app.sync.foregroundSyncDelayMillis
 import com.reader.app.sync.pairingResponseState
 import com.reader.app.sync.syncNeedsRetry
 import org.junit.Assert.assertEquals
@@ -45,6 +46,13 @@ class SyncWorkerLogicTest {
     assertEquals(null, parsedChannelRelays("[\"wss://nos.lol\",\"wss://nos.lol\"]"))
     assertEquals(null, parsedChannelRelays("[\"ws://nos.lol\",\"wss://relay.primal.net\"]"))
     assertEquals(null, parsedChannelRelays("[\"wss://nos.lol\",\"https://relay.primal.net\"]"))
+  }
+
+  @Test
+  fun foregroundPollingBacksOffInsteadOfReconnectingEverySecond() {
+    assertTrue(foregroundSyncDelayMillis(retry = false) >= 60_000)
+    assertTrue(foregroundSyncDelayMillis(retry = true) >= 20_000)
+    assertTrue(foregroundSyncDelayMillis(retry = true) < foregroundSyncDelayMillis(retry = false))
   }
 
   @Test

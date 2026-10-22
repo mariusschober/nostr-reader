@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
   private var ttsEngine: AndroidTtsEngine? = null
   private var ttsController: TtsController? = null
   private var refreshTick = androidx.compose.runtime.mutableStateOf(0)
+  private var lastForegroundSync = 0L
   private val pendingShare = androidx.compose.runtime.mutableStateOf<Ingest.SharedContent?>(null)
   private val shareTimes = ArrayDeque<Long>()
 
@@ -77,8 +78,8 @@ class MainActivity : ComponentActivity() {
       repeatOnLifecycle(Lifecycle.State.STARTED) {
         val receiving = ReaderSyncSession(applicationContext)
         while (true) {
-          receiving.runOnce()
-          kotlinx.coroutines.delay(1000)
+          val retry = runCatching { receiving.runOnce() }.getOrDefault(true)
+          kotlinx.coroutines.delay(com.reader.app.sync.foregroundSyncDelayMillis(retry))
         }
       }
     }
@@ -581,7 +582,13 @@ class MainActivity : ComponentActivity() {
 
   override fun onResume() {
     super.onResume()
-    SyncWorker.runNow(this)
+    // WorkManager also owns periodic catch-up; avoid a duplicate immediate
+    // worker on every rotation/resume while the foreground session is warm.
+    val now = android.os.SystemClock.elapsedRealtime()
+    if (now - lastForegroundSync > 30_000) {
+      lastForegroundSync = now
+      SyncWorker.runNow(this)
+    }
     refreshTick.value++
   }
 

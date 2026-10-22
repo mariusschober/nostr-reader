@@ -64,6 +64,9 @@ internal fun ackRetryDelayMillis(attempt: Int, transferId: String): Long {
 internal fun syncNeedsRetry(pairingPending: Boolean, ackPending: Boolean): Boolean =
   pairingPending || ackPending
 
+/** Foreground polling backs off; it must not reconnect relay sockets every second. */
+internal fun foregroundSyncDelayMillis(retry: Boolean): Long = if (retry) 20_000L else 60_000L
+
 /**
  * Returns the validated relay list, or null when the persisted channel can
  * never become usable. Such a row is revoked once instead of retried forever.
