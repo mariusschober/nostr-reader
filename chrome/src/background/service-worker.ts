@@ -297,6 +297,93 @@ async function outboxDelete(transferId: string): Promise<void> {
   } finally { db.close(); }
 }
 
+interface CaptureReceipt {
+  captureId: string;
+  transferId: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+/**
+ * Capture records are dedupe receipts, never a second copy of article text.
+ * Older profiles may still contain markdown/title fields; rewrite them in place.
+ */
+async function scrubCapturePlaintext(): Promise<number> {
+  const db = await idb();
+  try {
+    return await new Promise<number>((resolve, reject) => {
+      const tx = db.transaction("captures", "readwrite");
+      let changed = 0;
+      tx.oncomplete = () => resolve(changed);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+      const request = tx.objectStore("captures").openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const value = cursor.value as Record<string, unknown>;
+        if (typeof value.markdown === "string" || typeof value.title === "string" || typeof value.sourceUrl === "string") {
+          const createdAt = Number.isSafeInteger(value.createdAt) ? Number(value.createdAt) : 0;
+          const receipt: CaptureReceipt = {
+            captureId: String(value.captureId),
+            transferId: String(value.transferId),
+            createdAt,
+            expiresAt: Number.isSafeInteger(value.expiresAt) ? Number(value.expiresAt) : createdAt + 7 * 86400,
+          };
+          cursor.update(receipt);
+          changed++;
+        }
+        cursor.continue();
+      };
+    });
+  } finally { db.close(); }
+}
+
+async function pruneCaptureReceipts(nowSecs: number): Promise<number> {
+  const db = await idb();
+  try {
+    return await new Promise<number>((resolve, reject) => {
+      const tx = db.transaction("captures", "readwrite");
+      let removed = 0;
+      tx.oncomplete = () => resolve(removed);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+      const request = tx.objectStore("captures").openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const value = cursor.value as { expiresAt?: unknown };
+        if (!Number.isSafeInteger(value.expiresAt) || Number(value.expiresAt) <= nowSecs) {
+          cursor.delete();
+          removed++;
+        }
+        cursor.continue();
+      };
+    });
+  } finally { db.close(); }
+}
+
+async function deleteCapturesForTransfers(transferIds: Set<string>): Promise<number> {
+  if (!transferIds.size) return 0;
+  const db = await idb();
+  try {
+    return await new Promise<number>((resolve, reject) => {
+      const tx = db.transaction("captures", "readwrite");
+      let removed = 0;
+      tx.oncomplete = () => resolve(removed);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+      const request = tx.objectStore("captures").openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        if (transferIds.has(String((cursor.value as { transferId?: unknown }).transferId))) {
+          cursor.delete();
+          removed++;
+        }
+        cursor.continue();
+      };
+    });
+  } finally { db.close(); }
+}
+
 interface DeliveryReceipt {
   transferId: string;
   title?: string;
@@ -326,6 +413,8 @@ async function recordDelivered(transferId: string, deliveredAt: number): Promise
 }
 
 async function cleanupDelivered(): Promise<void> {
+  await scrubCapturePlaintext();
+  await pruneCaptureReceipts(Math.floor(Date.now() / 1000));
   const delivered = new Set((await loadDeliveryReceipts()).map(receipt => receipt.transferId));
   if (!delivered.size) return;
   for (const item of await outboxAll()) if (delivered.has(item.transferId)) {
@@ -349,7 +438,24 @@ export async function queueCapture(raw: { title: string; markdown: string; sourc
         const request = db.transaction("captures").objectStore("captures").get(captureId);
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
-      if (existing) return { transferId: existing.transferId, queued: !await loadPairedChannelState() };
+      if (existing) {
+        if (typeof existing.markdown === "string" || typeof existing.title === "string") {
+          const createdAt = Number.isSafeInteger(existing.createdAt) ? Number(existing.createdAt) : 0;
+          const receipt: CaptureReceipt = {
+            captureId,
+            transferId: String(existing.transferId),
+            createdAt,
+            expiresAt: Number.isSafeInteger(existing.expiresAt) ? Number(existing.expiresAt) : createdAt + 7 * 86400,
+          };
+          await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction("captures", "readwrite");
+            tx.oncomplete = () => resolve();
+            tx.onerror = tx.onabort = () => reject(tx.error);
+            tx.objectStore("captures").put(receipt);
+          });
+        }
+        return { transferId: existing.transferId, queued: !await loadPairedChannelState() };
+      }
       return await queueCaptureInternal(raw, captureId, feedbackRoute);
     } finally { db.close(); }
   });
@@ -422,7 +528,9 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
       tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
       try {
         tx.objectStore("items").put(item);
-        tx.objectStore("captures").put({ captureId, transferId, ...raw, createdAt: now });
+        tx.objectStore("captures").put({
+          captureId, transferId, createdAt: now, expiresAt: now + 7 * 86400,
+        } satisfies CaptureReceipt);
       } catch (error) {
         // Synchronous request setup failures do not automatically roll back
         // earlier queued writes. Never leave a send without its retained capture.
@@ -650,7 +758,7 @@ async function pollForAcksInternal(): Promise<void> {
           // from leaking into a different page that later occupies the tab.
           void notifyCapture(item.feedbackRoute, "delivered", item.transferId);
           activePublicationStops.get(item.transferId)?.();
-          await outboxDelete(item.transferId); // Only this strict E2E ACK clears captured content.
+          await outboxDelete(item.transferId); // Only this strict E2E ACK clears the outbox copy; capture receipts never hold text.
         } else {
           item.status = "failed";
           item.lastError = ack.reasonCode ?? "device-rejected";
@@ -1184,13 +1292,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ ok: true });
     } else if (msg?.kind === "reader-discard-failed") {
       const failed = (await outboxAll()).filter((item) => item.status === "failed");
-      const discarded = (await Promise.all(failed.map((item) => transferOperations.run(item.transferId, async () => {
+      const discardedIds = (await Promise.all(failed.map((item) => transferOperations.run(item.transferId, async () => {
         const durable = await outboxGet(item.transferId);
-        if (durable?.status !== "failed") return false;
+        if (durable?.status !== "failed") return null;
         await outboxDelete(item.transferId);
-        return true;
-      })))).filter(Boolean).length;
-      sendResponse({ ok: true, discarded });
+        return item.transferId;
+      })))).filter((id): id is string => id !== null);
+      await deleteCapturesForTransfers(new Set(discardedIds));
+      sendResponse({ ok: true, discarded: discardedIds.length });
     } else if (msg?.kind === "reader-check-acks") {
       // Read-only status refresh: query for authenticated device ACKs without
       // retransmitting article payloads.
@@ -1278,7 +1387,10 @@ chrome.alarms.onAlarm.addListener(async (a) => {
 });
 // Evaluation/reload restores missing alarms from persisted work, without moving
 // existing deadlines. Startup also executes due work even with all UI closed.
-void cleanupDelivered().then(() => restoreWorkAlarms()).catch(() => undefined);
+void scrubCapturePlaintext()
+  .then(() => cleanupDelivered())
+  .then(() => restoreWorkAlarms())
+  .catch(() => undefined);
 
 chrome.runtime.onInstalled.addListener(() => {
   void lockDownKeyStorage()

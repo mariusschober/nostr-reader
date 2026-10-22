@@ -246,7 +246,7 @@
       await refresh();
     });
     discardFailed.addEventListener("click", async () => {
-      if (!confirm("Permanently remove all failed transfers and their local captured text?")) return;
+      if (!confirm("Permanently remove all failed transfers and their local capture receipts?")) return;
       const result = await chrome.runtime.sendMessage({kind:"reader-discard-failed"});
       if (!result.ok) return deliveryMessage(result.error || "Failed transfers could not be removed.", true);
       deliveryMessage(`Removed ${result.discarded} failed transfer${result.discarded === 1 ? "" : "s"}.`);
