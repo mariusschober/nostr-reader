@@ -6,7 +6,7 @@ import java.util.Locale
 
 const val RENDERED_PROJECTION_VERSION = 2
 
-enum class TextKind { PARAGRAPH, HEADING, CODE, TABLE, FOOTNOTE, DIVIDER }
+enum class TextKind { PARAGRAPH, HEADING, CODE, TABLE, FOOTNOTE, DIVIDER, IMAGE }
 enum class TextStyle { BOLD, ITALIC, STRIKE, CODE, LINK }
 data class ProjectedStyle(val start: Int, val end: Int, val style: TextStyle, val value: String? = null)
 data class ProjectedBlock(
@@ -119,7 +119,10 @@ object RenderedText {
                 for (row in block.rows) text.append('\n').append(row.joinToString("  │  "))
                 TextKind.TABLE
               }
-              is ArticleBlock.Image -> { text.append(block.alt.ifBlank { "Image omitted" }); TextKind.PARAGRAPH }
+              is ArticleBlock.Image -> {
+                text.append(if (block.alt.isBlank()) "[Image omitted]" else "[Image: ${block.alt}]")
+                TextKind.IMAGE
+              }
               is ArticleBlock.Footnotes -> { text.append(block.items.mapIndexed { i, value -> "[${i + 1}] $value" }.joinToString("\n")); TextKind.FOOTNOTE }
               is ArticleBlock.Divider -> { text.append('—'); TextKind.DIVIDER }
               else -> error("Container handled above")

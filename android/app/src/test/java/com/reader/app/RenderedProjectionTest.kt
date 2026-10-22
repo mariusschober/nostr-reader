@@ -33,6 +33,14 @@ class RenderedProjectionTest {
     assertEquals(projection.text, projection.withoutLeadingTitle("Different Title").text)
   }
 
+  @Test fun imagesProjectAsMarkedDescriptionsInsteadOfPlainAltText() {
+    val projection = RenderedText.project(listOf(ArticleBlock.Image("i1", "https://example.com/a.png", "A chart")))
+    assertEquals(TextKind.IMAGE, projection.blocks.single().kind)
+    assertTrue(projection.text.contains("[Image: A chart]"))
+    val missingAlt = RenderedText.project(listOf(ArticleBlock.Image("i2", "https://example.com/b.png", "")))
+    assertTrue(missingAlt.text.contains("[Image omitted]"))
+  }
+
   @Test fun articleProjectionCanBeSelectedAndSpeedRead() {
     val projection = RenderedText.project(ArticleParser.parseWithSources("# Heading\n\nRead **these** words 🌱.\n\nAnother paragraph.\n"))
     val start = projection.text.indexOf("Read")

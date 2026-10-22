@@ -240,6 +240,15 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       else if (ready == null || text == null) CircularProgressIndicator(Modifier.padding(24.dp))
       else {
         val visible = remember(ready, doc?.title) { ready.projection.withoutLeadingTitle(doc?.title.orEmpty()) }
+        if (visible.blocks.any { it.kind == com.reader.app.core.TextKind.IMAGE }) {
+          Surface(color = colors.surface) {
+            Text(
+              "Images are shown as descriptions for privacy. Use Open original to view them.",
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+              style = MaterialTheme.typography.bodySmall, color = colors.secondary,
+            )
+          }
+        }
         if (ready.index.sections.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
           TextButton(enabled = part > 0, onClick = { view?.reportCursor(); initial = SemanticCursor.start(id); part-- }) { Text("Previous part") }
           Text("${part + 1} / ${ready.index.sections.size}", modifier = Modifier.padding(12.dp))
