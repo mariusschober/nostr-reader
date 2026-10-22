@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
       var ttsState by remember { mutableStateOf<TtsController.State?>(null) }
       var readerMove by remember { mutableStateOf<Triple<String, String, String>?>(null) }
       var readerMoving by remember { mutableStateOf(false) }
+      var deletedUndo by remember { mutableStateOf<String?>(null) }
       var ttsDocId by remember { mutableStateOf<String?>(null) }
       // Room invalidation keeps a visible inbox truthful when a background
       // relay sync commits a document after onResume's initial refresh.
@@ -219,6 +220,7 @@ class MainActivity : ComponentActivity() {
           try {
             if (ttsDocId == id) { ttsController?.pause(); ttsState = null; ttsDocId = null }
             (application as com.reader.app.ReaderApp).deleteArticle(id)
+            deletedUndo = id
             if ((stack.current() as? Route.Reader)?.id == id) { stack.pop(); tick++ }
           } catch (_: Exception) { Toast.makeText(this@MainActivity, "Couldn’t delete article. Try again.", Toast.LENGTH_LONG).show() }
           finally { deleting.remove(id) }
@@ -248,6 +250,19 @@ class MainActivity : ComponentActivity() {
           onUndoMove = { id, previous -> lifecycleScope.launch { moveToListDb(id, previous); refresh() } },
           onUnarchive = ::unarchive,
           onDelete = ::deleteArticle,
+          deletedUndo = deletedUndo,
+          onDeletedUndoConsumed = { deletedUndo = null },
+          onRestoreDelete = { id ->
+            lifecycleScope.launch {
+              try {
+                (application as com.reader.app.ReaderApp).restoreArticle(id)
+                Toast.makeText(this@MainActivity, "Article restored", Toast.LENGTH_SHORT).show()
+                refresh()
+              } catch (_: Exception) {
+                Toast.makeText(this@MainActivity, "Couldn’t restore article. It may have expired.", Toast.LENGTH_LONG).show()
+              }
+            }
+          },
           onImportFile = { filePicker.launch(arrayOf("text/plain", "text/markdown", "*/*")) },
           onPasteText = { text ->
             lifecycleScope.launch {

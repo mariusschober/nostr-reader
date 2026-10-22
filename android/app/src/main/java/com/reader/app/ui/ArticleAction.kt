@@ -5,7 +5,7 @@ enum class ArticleAction(val label: String, val releaseLabel: String, val thresh
   Later("Later", "Release to move to Later", .30f, Triage.LATER),
   Archive("Archive", "Release to archive", .30f, Triage.ARCHIVED),
   Unarchive("Unarchive", "Release to unarchive", .30f, Triage.INBOX),
-  Delete("Delete permanently", "Release to delete", .60f, null);
+  Delete("Delete", "Release to delete", .60f, null);
   companion object {
     fun forArticle(list: String?, right: Boolean): ArticleAction? = when {
       list == Triage.ARCHIVED -> if (right) Unarchive else Delete

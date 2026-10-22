@@ -52,6 +52,9 @@ fun InboxScreen(
   onUndoMove: (id: String, previous: String) -> Unit,
   onUnarchive: (String) -> Unit,
   onDelete: (String) -> Unit,
+  deletedUndo: String? = null,
+  onDeletedUndoConsumed: () -> Unit = {},
+  onRestoreDelete: (String) -> Unit = {},
   onImportFile: () -> Unit,
   onPasteText: (String) -> Unit,
   onPair: () -> Unit,
@@ -85,6 +88,15 @@ fun InboxScreen(
     if (snackbar.showSnackbar(Triage.movedLabel(move.third), "Undo", withDismissAction = true,
         duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) onUndoMove(move.first, move.second)
     onReaderMoveConsumed()
+  }
+  LaunchedEffect(deletedUndo) {
+    val id = deletedUndo ?: return@LaunchedEffect
+    val result = snackbar.showSnackbar(
+      "Article moved to trash.", actionLabel = "Undo", withDismissAction = true,
+      duration = SnackbarDuration.Long,
+    )
+    if (result == SnackbarResult.ActionPerformed) onRestoreDelete(id)
+    onDeletedUndoConsumed()
   }
   Scaffold(
     containerColor = c.background,
@@ -210,7 +222,7 @@ fun InboxScreen(
       onDismissRequest = { menuFor = null },
       containerColor = c.background,
       title = { Text("Article", fontFamily = ReaderFonts.Ui, color = c.text) },
-      text = { Text("Unarchive returns it to the inbox.", fontFamily = ReaderFonts.Ui, color = c.text) },
+      text = { Text("Unarchive returns it to the inbox. Delete moves it to the local trash and can be undone right away.", fontFamily = ReaderFonts.Ui, color = c.text) },
       confirmButton = {
         TextButton(onClick = { menuFor = null; onUnarchive(id) }, colors = ButtonDefaults.textButtonColors(contentColor = c.text)) {
           Text("Unarchive", fontFamily = ReaderFonts.Ui)
@@ -218,7 +230,7 @@ fun InboxScreen(
       },
       dismissButton = {
         TextButton(onClick = { menuFor = null; onDelete(id) }, colors = ButtonDefaults.textButtonColors(contentColor = c.error)) {
-          Text("Delete permanently", fontFamily = ReaderFonts.Ui)
+          Text("Delete", fontFamily = ReaderFonts.Ui)
         }
       },
     )

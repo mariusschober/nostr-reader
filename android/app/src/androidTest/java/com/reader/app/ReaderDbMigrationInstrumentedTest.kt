@@ -13,13 +13,16 @@ import com.reader.app.data.MIGRATION_3_4
 import com.reader.app.data.MIGRATION_5_6
 import com.reader.app.data.MIGRATION_6_7
 import com.reader.app.data.MIGRATION_7_8
+import com.reader.app.data.MIGRATION_8_9
 import com.reader.app.data.MIGRATION_4_5
+import com.reader.app.data.DocumentEntity
 import com.reader.app.data.ChannelEntity
 import com.reader.app.data.ProcessedEventEntity
 import com.reader.app.data.ReaderDb
 import com.reader.app.security.KeystoreWrap
 import com.reader.app.sync.PairingCoordinator
 import com.reader.app.sync.openActiveChannelKeyOrRevoke
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -128,7 +131,7 @@ class ReaderDbMigrationInstrumentedTest {
     helper.close()
 
     val migrated = Room.databaseBuilder(context, ReaderDb::class.java, name)
-      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+      .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
       .build()
     try {
       migrated.openHelper.writableDatabase
@@ -167,6 +170,36 @@ class ReaderDbMigrationInstrumentedTest {
     } finally {
       migrated.close()
       context.deleteDatabase(name)
+    }
+  }
+
+  @Test
+  fun archiveDeleteIsRestorableAndOnlyPurgedAfterRetention() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = Room.inMemoryDatabaseBuilder(context, ReaderDb::class.java).build()
+    val id = "trash-test"
+    val document = DocumentEntity(
+      documentId = id, title = "Trash me", sourceType = "web", sourceName = null,
+      sourceUrl = null, author = null, publishedAt = null, capturedAt = 1, language = null,
+      canonicalMarkdown = "# Trash me\n\nBody", wordCount = 3, parserVersion = 1,
+      state = "unread", list = "archived", progressBlockId = null, progressCharOffset = 0,
+      progressFraction = 0f, lastOpenedAt = 0, createdAt = 1, updatedAt = 1,
+    )
+    try {
+      db.documents().insert(document)
+      assertEquals(1, db.documents().deleteArchivedById(id, 100))
+      assertNull(db.documents().byId(id))
+      assertTrue(db.documents().observeSummaries().first().isEmpty())
+      assertEquals(1, db.documents().restoreDeletedById(id, 200))
+      assertEquals("Trash me", db.documents().byId(id)?.title)
+      assertEquals(1, db.documents().observeSummaries().first().size)
+
+      assertEquals(1, db.documents().deleteArchivedById(id, 100))
+      assertEquals(0, db.documents().purgeDeletedBefore(99))
+      assertEquals(1, db.documents().purgeDeletedBefore(100))
+      assertNull(db.documents().metadataById(id))
+    } finally {
+      db.close()
     }
   }
 

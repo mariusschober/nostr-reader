@@ -29,11 +29,30 @@ class ArticleRepository(private val db: ReaderDb) {
   private val indexes = LinkedHashMap<String, ArticleIndex>()
   private val sections = LinkedHashMap<String, PreparedSection>()
 
-  /** Content rows cascade; saved quotations deliberately remain independent. */
+  /**
+   * Archive delete writes a tombstone so the user can undo it. Content rows cascade only
+   * when [purgeDeleted] removes the tombstone; saved quotations deliberately remain independent.
+   */
   suspend fun delete(id: String) = mutex.withLock {
-    withContext(Dispatchers.IO) { check(db.documents().deleteArchivedById(id) == 1) { "Article is no longer in Archive" } }
+    withContext(Dispatchers.IO) {
+      check(db.documents().deleteArchivedById(id, System.currentTimeMillis()) == 1) { "Article is no longer in Archive" }
+    }
     indexes.remove(id)
     sections.entries.removeAll { it.value.index.documentId == id }
+  }
+
+  /** Restores a trashed article, including its reading position and highlights. */
+  suspend fun restore(id: String) = mutex.withLock {
+    withContext(Dispatchers.IO) {
+      check(db.documents().restoreDeletedById(id, System.currentTimeMillis()) == 1) { "Article is no longer in Trash" }
+    }
+    indexes.remove(id)
+    sections.entries.removeAll { it.value.index.documentId == id }
+  }
+
+  /** Removes tombstones older than [TrashPolicy.RETENTION_MS]. */
+  suspend fun purgeDeleted(now: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
+    db.documents().purgeDeletedBefore(TrashPolicy.cutoff(now))
   }
 
   suspend fun index(id: String): ArticleIndex = mutex.withLock {

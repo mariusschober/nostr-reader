@@ -28,6 +28,8 @@ data class DocumentEntity(
   val lastOpenedAt: Long,
   val createdAt: Long,
   val updatedAt: Long,
+  /** Non-null while the article sits in the local trash; hidden from every list and purged later. */
+  val deletedAt: Long? = null,
 )
 
 /** List rows never contain article bodies or parser trees. */
@@ -140,34 +142,41 @@ data class ProcessedEventEntity(
 
 @Dao
 abstract class DocumentDao {
-  @Query("SELECT CAST(COUNT(*) AS TEXT) || ':' || CAST(COALESCE(MAX(updatedAt), 0) AS TEXT) FROM documents")
+  @Query("SELECT CAST(COUNT(*) AS TEXT) || ':' || CAST(COALESCE(MAX(updatedAt), 0) AS TEXT) FROM documents WHERE deletedAt IS NULL")
   abstract fun observeRevision(): Flow<String>
 
-  @Query("SELECT documentId, title, sourceType, sourceName, wordCount, state, list, progressFraction, createdAt, updatedAt FROM documents ORDER BY createdAt DESC, documentId ASC")
+  @Query("SELECT documentId, title, sourceType, sourceName, wordCount, state, list, progressFraction, createdAt, updatedAt FROM documents WHERE deletedAt IS NULL ORDER BY createdAt DESC, documentId ASC")
   abstract fun observeSummaries(): Flow<List<DocumentSummary>>
 
-  @Query("SELECT * FROM documents WHERE documentId = :id LIMIT 1")
+  @Query("SELECT * FROM documents WHERE documentId = :id AND deletedAt IS NULL LIMIT 1")
   abstract fun observeMetadata(id: String): Flow<DocumentEntity?>
 
-  @Query("SELECT * FROM documents WHERE list = 'inbox' ORDER BY createdAt DESC")
+  @Query("SELECT * FROM documents WHERE list = 'inbox' AND deletedAt IS NULL ORDER BY createdAt DESC")
   abstract suspend fun inbox(): List<DocumentEntity>
 
-  @Query("SELECT * FROM documents WHERE list = 'archived' ORDER BY updatedAt DESC")
+  @Query("SELECT * FROM documents WHERE list = 'archived' AND deletedAt IS NULL ORDER BY updatedAt DESC")
   abstract suspend fun archived(): List<DocumentEntity>
 
-  @Query("SELECT * FROM documents WHERE list = :list ORDER BY createdAt DESC")
+  @Query("SELECT * FROM documents WHERE list = :list AND deletedAt IS NULL ORDER BY createdAt DESC")
   abstract suspend fun byList(list: String): List<DocumentEntity>
 
   @Query("UPDATE documents SET list = :list, updatedAt = :now WHERE documentId = :id")
   abstract suspend fun setList(id: String, list: String, now: Long)
 
-  @Query("DELETE FROM documents WHERE documentId = :id AND list = 'archived'")
-  abstract suspend fun deleteArchivedById(id: String): Int
+  /** Archive delete is reversible: move the row to the local trash instead of purging it. */
+  @Query("UPDATE documents SET deletedAt = :now, updatedAt = :now WHERE documentId = :id AND list = 'archived' AND deletedAt IS NULL")
+  abstract suspend fun deleteArchivedById(id: String, now: Long): Int
+
+  @Query("UPDATE documents SET deletedAt = NULL, updatedAt = :now WHERE documentId = :id AND deletedAt IS NOT NULL")
+  abstract suspend fun restoreDeletedById(id: String, now: Long): Int
+
+  @Query("DELETE FROM documents WHERE deletedAt IS NOT NULL AND deletedAt <= :cutoff")
+  abstract suspend fun purgeDeletedBefore(cutoff: Long): Int
 
   @Query("DELETE FROM documents WHERE documentId = :id")
   abstract suspend fun deleteById(id: String)
 
-  @Query("SELECT * FROM documents WHERE documentId = :id LIMIT 1")
+  @Query("SELECT * FROM documents WHERE documentId = :id AND deletedAt IS NULL LIMIT 1")
   abstract suspend fun metadataById(id: String): DocumentEntity?
 
   @Query("SELECT * FROM document_content WHERE documentId = :id ORDER BY part")
@@ -201,7 +210,7 @@ abstract class DocumentDao {
     })
   }
 
-  @Query("SELECT EXISTS(SELECT 1 FROM documents WHERE documentId = :id)")
+  @Query("SELECT EXISTS(SELECT 1 FROM documents WHERE documentId = :id AND deletedAt IS NULL)")
   abstract suspend fun exists(id: String): Boolean
 
   @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -241,10 +250,10 @@ abstract class DocumentDao {
   @Query("UPDATE documents SET state = :state, updatedAt = :now WHERE documentId = :id")
   abstract suspend fun setState(id: String, state: String, now: Long)
 
-  @Query("SELECT COALESCE(SUM(wordCount),0) FROM documents WHERE state IN ('unread','reading')")
+  @Query("SELECT COALESCE(SUM(wordCount),0) FROM documents WHERE deletedAt IS NULL AND state IN ('unread','reading')")
   abstract suspend fun unreadWords(): Long
 
-  @Query("SELECT COALESCE(SUM(wordCount),0) FROM documents WHERE list = :list")
+  @Query("SELECT COALESCE(SUM(wordCount),0) FROM documents WHERE deletedAt IS NULL AND list = :list")
   abstract suspend fun wordsInList(list: String): Long
 }
 
@@ -538,6 +547,13 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
   }
 }
 
+val MIGRATION_8_9 = object : Migration(8, 9) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    // Nullable trash marker: null means visible. Existing rows stay visible.
+    db.execSQL("ALTER TABLE documents ADD COLUMN deletedAt INTEGER")
+  }
+}
+
 val MIGRATION_7_8 = object : Migration(7, 8) {
   override fun migrate(db: SupportSQLiteDatabase) {
     db.execSQL("""CREATE TABLE IF NOT EXISTS highlights (
@@ -572,7 +588,7 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     ReviewStatePartEntity::class,
     SyncHealthEntity::class,
   ],
-  version = 8,
+  version = 9,
   exportSchema = true,
 )
 abstract class ReaderDb : RoomDatabase() {
@@ -591,7 +607,7 @@ abstract class ReaderDb : RoomDatabase() {
     private var instance: ReaderDb? = null
     fun get(ctx: Context): ReaderDb = instance ?: synchronized(this) {
       instance ?: Room.databaseBuilder(ctx.applicationContext, ReaderDb::class.java, "reader.db")
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
         .build()
         .also { instance = it }
     }
