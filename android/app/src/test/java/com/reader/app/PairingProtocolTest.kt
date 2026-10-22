@@ -6,6 +6,7 @@ import com.reader.app.nostr.PairingProtocol
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
+import java.net.Inet6Address
 import java.net.InetAddress
 
 class PairingProtocolTest {
@@ -227,6 +228,47 @@ class PairingProtocolTest {
     assertFails {
       val badDigest = withField(requestJson(), "relaySetDigest", JsonPrimitive("00".repeat(32)))
       PairingProtocol.validateRequest(badDigest.toString(), now + 1)
+    }
+  }
+
+  private fun ipv6(vararg words: Int): InetAddress {
+    val bytes = ByteArray(16)
+    words.forEachIndexed { index, word ->
+      if (index < 8) {
+        bytes[index * 2] = (word shr 8).toByte()
+        bytes[index * 2 + 1] = word.toByte()
+      }
+    }
+    return Inet6Address.getByAddress(null, bytes, -1)
+  }
+
+  @Test
+  fun rejectsMappedCompatibleAndReservedAddressForms() {
+    val relays = request().relays
+    val forbidden = listOf(
+      InetAddress.getByName("0.0.0.1"),
+      InetAddress.getByName("198.18.0.1"),
+      InetAddress.getByName("198.51.100.1"),
+      InetAddress.getByName("203.0.113.1"),
+      InetAddress.getByName("192.0.0.1"),
+      InetAddress.getByName("192.0.2.1"),
+      InetAddress.getByName("240.0.0.1"),
+      InetAddress.getByName("255.255.255.255"),
+      ipv6(0, 0, 0, 0, 0, 0xffff, 0x0a00, 0x0001), // ::ffff:10.0.0.1
+      ipv6(0, 0, 0, 0, 0, 0xffff, 0x7f00, 0x0001), // ::ffff:127.0.0.1
+      ipv6(0, 0, 0, 0, 0, 0, 0x0a00, 0x0001), // ::10.0.0.1
+      ipv6(0x2002, 0x0a00, 0x0001, 0, 0, 0, 0, 0), // 6to4
+      ipv6(0x2001, 0, 0, 0, 0, 0, 0, 1), // Teredo
+      ipv6(0x0064, 0xff9b, 0, 0, 0, 0, 0x0a00, 0x0001), // NAT64
+      ipv6(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1), // documentation
+    )
+    for (address in forbidden) {
+      assertFails {
+        PairingProtocol.validateResolvedRelayAddresses(relays) { arrayOf(address) }
+      }
+    }
+    for (address in listOf(InetAddress.getByName("1.1.1.1"), ipv6(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111))) {
+      PairingProtocol.validateResolvedRelayAddresses(relays) { arrayOf(address) }
     }
   }
 
