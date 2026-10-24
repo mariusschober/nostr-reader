@@ -541,24 +541,24 @@ class MainActivity : ComponentActivity() {
           onBack = { backToInbox(); launchUiAction("Couldn’t refresh library.") { refresh() } },
           onRevokeChannel = { id ->
             launchUiAction("Couldn’t revoke the device. Try again.") {
-              try {
-                val channel = withContext(Dispatchers.IO) { db.channels().byId(id) }
-                val channelKey = runCatching { keys.openChannelKey(id) }.getOrNull()
-                if (channel != null && channelKey != null) {
-                  withContext(Dispatchers.IO) {
-                    com.reader.app.sync.DisconnectDispatcher((application as com.reader.app.ReaderApp).relayClient)
-                      .publish(channel, channelKey)
-                  }
-                }
-              } catch (_: Exception) {
-                Toast.makeText(this@MainActivity, "Couldn’t notify Chrome; revoking locally.", Toast.LENGTH_LONG).show()
-              }
-              withContext(Dispatchers.IO) { db.channels().revoke(id, System.currentTimeMillis()) }
-              keys.deleteChannelKey(id)
+              val result = com.reader.app.sync.ChannelRevoker(
+                loadChannel = { channelId -> db.channels().byId(channelId) },
+                openChannelKey = { channelId -> keys.openChannelKey(channelId) },
+                revokeLocal = { channelId, now -> db.channels().revoke(channelId, now) },
+                deleteChannelKey = { channelId -> keys.deleteChannelKey(channelId) },
+                publishNotice = { channel, channelKey, now ->
+                  com.reader.app.sync.DisconnectDispatcher((application as com.reader.app.ReaderApp).relayClient)
+                    .publish(channel, channelKey, nowSecs = now / 1000) > 0
+                },
+              ).revoke(id)
               refresh()
               Toast.makeText(
                 this@MainActivity,
-                "Revoked on this phone. If Chrome was offline, also choose Disconnect in Chrome.",
+                if (result.notified) {
+                  "Revoked on this phone. If Chrome was offline, also choose Disconnect in Chrome."
+                } else {
+                  "Couldn’t notify Chrome; revoked locally."
+                },
                 Toast.LENGTH_LONG,
               ).show()
             }
