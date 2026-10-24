@@ -1,6 +1,7 @@
 package com.reader.app
 
 import com.reader.app.sync.ProhibitedAddressInterceptor
+import com.reader.app.sync.WebArticleFetcher
 import okhttp3.Address
 import okhttp3.Authenticator
 import okhttp3.Call
@@ -11,11 +12,15 @@ import okhttp3.Dns
 import okhttp3.Handshake
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.Route
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -66,6 +71,93 @@ class WebArticleFetcherTest {
     assertTrue(response.isSuccessful)
     assertSame(chain.request(), response.request)
     response.close()
+  }
+
+  @Test
+  fun defaultClientBypassesDeviceProxy() {
+    assertSame(Proxy.NO_PROXY, WebArticleFetcher.defaultClient().proxy)
+  }
+
+  @Test
+  fun refusesRedirectToDifferentLoopbackPortBeforeSecondRequest() {
+    val fixture = RedirectFixture().start()
+    try {
+      val loopback = InetAddress.getByName("127.0.0.1")
+      val firstHop = InetSocketAddress(loopback, fixture.upstream.port)
+      val client = articleClient(
+        dns = object : Dns {
+          override fun lookup(hostname: String): List<InetAddress> = listOf(loopback)
+        },
+        interceptor = ProhibitedAddressInterceptor { socketAddress -> socketAddress != firstHop },
+      )
+
+      val error = assertThrows(IOException::class.java) {
+        client.newCall(Request.Builder().url(fixture.url).build()).execute().close()
+      }
+
+      assertTrue("unexpected failure: ${error.message}", error.message.orEmpty().contains("prohibited"))
+      assertEquals("redirect target must never receive a request", 0, fixture.target.requestCount)
+      assertEquals("the first hop should be reached exactly once", 1, fixture.upstream.requestCount)
+    } finally {
+      fixture.shutdown()
+    }
+  }
+
+  @Test
+  fun followsLoopbackRedirectWhenGuardAllowsLoopback() {
+    val fixture = RedirectFixture().start()
+    try {
+      val loopback = InetAddress.getByName("127.0.0.1")
+      val client = articleClient(
+        dns = object : Dns {
+          override fun lookup(hostname: String): List<InetAddress> = listOf(loopback)
+        },
+        interceptor = ProhibitedAddressInterceptor { socketAddress ->
+          socketAddress.address?.let { !it.isLoopbackAddress } ?: true
+        },
+      )
+
+      val body = client.newCall(Request.Builder().url(fixture.url).build()).execute().use { response ->
+        assertEquals(200, response.code)
+        response.body!!.string()
+      }
+
+      assertEquals("redirected", body)
+      assertEquals(1, fixture.target.requestCount)
+      assertEquals("/secret", fixture.target.takeRequest().path)
+    } finally {
+      fixture.shutdown()
+    }
+  }
+
+  private fun articleClient(
+    dns: Dns,
+    interceptor: ProhibitedAddressInterceptor,
+  ): OkHttpClient = WebArticleFetcher.clientBuilder(dns = dns, interceptor = interceptor).build()
+
+  private class RedirectFixture {
+    val upstream = MockWebServer()
+    val target = MockWebServer()
+
+    val url: String
+      get() = "http://article.test:${upstream.port}/article"
+
+    fun start(): RedirectFixture {
+      target.enqueue(MockResponse().setBody("redirected"))
+      target.start()
+      upstream.enqueue(
+        MockResponse()
+          .setResponseCode(302)
+          .setHeader("Location", "http://127.0.0.1:${target.port}/secret"),
+      )
+      upstream.start()
+      return this
+    }
+
+    fun shutdown() {
+      upstream.shutdown()
+      target.shutdown()
+    }
   }
 
   private fun connectionFor(address: InetAddress): Connection = object : Connection {
