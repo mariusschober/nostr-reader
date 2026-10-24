@@ -74,8 +74,30 @@ class WebArticleFetcherTest {
   }
 
   @Test
-  fun defaultClientBypassesDeviceProxy() {
-    assertSame(Proxy.NO_PROXY, WebArticleFetcher.defaultClient().proxy)
+  fun defaultClientBypassesDeviceProxyAndFollowsRedirects() {
+    val client = WebArticleFetcher.defaultClient()
+    assertSame(Proxy.NO_PROXY, client.proxy)
+    assertTrue(client.followRedirects)
+  }
+
+  @Test
+  fun defaultClientInstallsOnlyProductionAddressGuard() {
+    val client = WebArticleFetcher.defaultClient()
+    val guards = client.networkInterceptors.filterIsInstance<ProhibitedAddressInterceptor>()
+    assertEquals(1, guards.size)
+    val guard = guards.single()
+
+    for (address in listOf("127.0.0.1", "169.254.169.254", "::ffff:10.0.0.1")) {
+      val chain = FakeChain(connectionFor(InetAddress.getByName(address)))
+      assertThrows(IOException::class.java) { guard.intercept(chain) }
+      assertFalse("$address must never reach the network", chain.proceeded)
+    }
+
+    val publicChain = FakeChain(connectionFor(InetAddress.getByName("93.184.216.34")))
+    val response = guard.intercept(publicChain)
+    assertTrue("public address should proceed", publicChain.proceeded)
+    assertTrue(response.isSuccessful)
+    response.close()
   }
 
   @Test
