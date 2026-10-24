@@ -1,6 +1,8 @@
 package com.reader.app.sync
 
 import com.reader.app.core.ReaderCore
+import com.reader.app.nostr.PairingProtocol
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -18,9 +20,12 @@ object UrlCapture {
   fun normalize(raw: String): String? {
     val value = raw.trim()
     if (value.isEmpty() || value.length > 2048) return null
-    val uri = runCatching { URI(value) }.getOrNull() ?: return null
-    if (uri.scheme?.lowercase() !in listOf("http", "https")) return null
-    if (uri.host.isNullOrBlank() || uri.userInfo != null) return null
+    // HttpUrl is the parser OkHttp will use for the request, so validate the
+    // same canonical host it will connect to rather than java.net.URI's view.
+    val httpUrl = value.toHttpUrlOrNull() ?: return null
+    if (httpUrl.scheme !in listOf("http", "https")) return null
+    if (httpUrl.host.isBlank() || httpUrl.username.isNotEmpty() || httpUrl.password.isNotEmpty()) return null
+    if (PairingProtocol.isProhibitedHost(httpUrl.host)) return null
     return value
   }
 }

@@ -37,6 +37,51 @@ class WebArticleTest {
   }
 
   @Test
+  fun rejectsRawIpAndLegacyNumericHosts() {
+    val prohibited = listOf(
+      "https://127.0.0.1/",
+      "http://10.0.0.1/path",
+      "https://192.168.1.1/",
+      "https://169.254.169.254/latest/meta-data",
+      "https://100.64.0.1/",
+      "https://0.0.0.0/",
+      "https://224.0.0.1/",
+      "https://255.255.255.255/",
+      "https://2130706433/",
+      "https://0177.0.0.1/",
+      "https://0x7f.0.0.1/",
+      "https://0x7f000001/",
+      "https://127.1/",
+      "https://127.0.0.1./",
+      "https://127.0.0.1../",
+      "https://0127.0.0.1/",
+    )
+    prohibited.forEach { assertNull(it, UrlCapture.normalize(it)) }
+  }
+
+  @Test
+  fun rejectsIpv6LoopbackMappedAndLocalHosts() {
+    val prohibited = listOf(
+      "https://[::1]/",
+      "https://[::ffff:127.0.0.1]/",
+      "https://[::ffff:10.0.0.1]/",
+      "https://[fc00::1]/",
+      "https://[fe80::1]/",
+      "https://[::]/",
+      "https://[ff02::1]/",
+    )
+    prohibited.forEach { assertNull(it, UrlCapture.normalize(it)) }
+  }
+
+  @Test
+  fun acceptsPublicHostnamesAndAddresses() {
+    assertEquals("https://example.com/article", UrlCapture.normalize("https://example.com/article"))
+    assertEquals("http://example.com/a?q=1", UrlCapture.normalize("http://example.com/a?q=1"))
+    assertEquals("https://8.8.8.8/", UrlCapture.normalize("https://8.8.8.8/"))
+    assertEquals("https://[2606:4700:4700::1111]/", UrlCapture.normalize("https://[2606:4700:4700::1111]/"))
+  }
+
+  @Test
   fun extractsReadableMarkdownAndDropsPageNoise() {
     val article = WebArticleExtractor.extract(html, "https://example.com/article")!!
     assertEquals("The Real Article", article.title)

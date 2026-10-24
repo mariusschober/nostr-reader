@@ -100,6 +100,73 @@ object PairingProtocol {
     return "${uri.scheme.lowercase()}://$host$port$path"
   }
 
+  /**
+   * True when [host] is an IP literal in a prohibited range. Legacy numeric
+   * IPv4 spellings (single decimal, octal, hex, and short dotted forms) are
+   * parsed both the browser way and the [InetAddress] decimal way because
+   * different URL stacks interpret them differently.
+   */
+  internal fun isProhibitedHost(host: String): Boolean {
+    val value = host.trim().trimEnd('.').lowercase()
+    if (value.isEmpty()) return true
+    if (value.contains(':')) {
+      val address = runCatching { InetAddress.getByName(value) }.getOrNull() ?: return true
+      return isProhibitedAddress(address)
+    }
+    return listOfNotNull(
+      parseIpv4(value, octalLeadingZero = true),
+      parseIpv4(value, octalLeadingZero = false),
+    ).any(::isProhibitedAddress)
+  }
+
+  private fun parseIpv4(host: String, octalLeadingZero: Boolean): InetAddress? {
+    val parts = host.split('.')
+    if (parts.size !in 1..4) return null
+    val numbers = LongArray(parts.size)
+    for ((index, part) in parts.withIndex()) {
+      if (part.isEmpty()) return null
+      val number = parseIpv4Number(part, octalLeadingZero) ?: return null
+      if (index < parts.lastIndex && number > 255) return null
+      numbers[index] = number
+    }
+    val lastLimit = 1L shl (8 * (5 - parts.size))
+    if (numbers.last() >= lastLimit) return null
+    var value = numbers.last()
+    for (index in 0 until parts.lastIndex) {
+      value += numbers[index] shl (8 * (3 - index))
+    }
+    return InetAddress.getByAddress(
+      byteArrayOf(
+        (value ushr 24).toByte(),
+        (value ushr 16).toByte(),
+        (value ushr 8).toByte(),
+        value.toByte(),
+      ),
+    )
+  }
+
+  private fun parseIpv4Number(part: String, octalLeadingZero: Boolean): Long? {
+    val radix: Int
+    val digits: String
+    when {
+      part.startsWith("0x", ignoreCase = true) -> {
+        radix = 16
+        digits = part.substring(2)
+      }
+      octalLeadingZero && part.length > 1 && part[0] == '0' -> {
+        radix = 8
+        digits = part.substring(1)
+      }
+      else -> {
+        radix = 10
+        digits = part
+      }
+    }
+    if (digits.isEmpty()) return 0L
+    if (digits.any { Character.digit(it, radix) < 0 }) return null
+    return digits.toLongOrNull(radix)?.takeIf { it in 0..0xffffffffL }
+  }
+
   internal fun isProhibitedAddress(address: InetAddress): Boolean {
     if (
       address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress ||

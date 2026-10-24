@@ -296,6 +296,53 @@ class PairingProtocolTest {
     }
   }
 
+
+  @Test
+  fun classifiesIpv4AndIpv6SpecialRanges() {
+    val prohibited = listOf(
+      "0.0.0.0",
+      "127.0.0.1",
+      "10.0.0.1",
+      "172.16.0.1",
+      "192.168.0.1",
+      "169.254.169.254",
+      "100.64.0.1",
+      "100.127.255.254",
+      "224.0.0.1",
+      "240.0.0.1",
+      "255.255.255.255",
+      "::",
+      "::1",
+      "fe80::1",
+      "fc00::1",
+      "ff02::1",
+    )
+    prohibited.forEach {
+      assertTrue(it, PairingProtocol.isProhibitedAddress(InetAddress.getByName(it)))
+    }
+    listOf("1.1.1.1", "8.8.8.8", "2606:4700:4700::1111").forEach {
+      assertFalse(it, PairingProtocol.isProhibitedAddress(InetAddress.getByName(it)))
+    }
+  }
+
+  @Test
+  fun classifiesLegacyNumericIpv4HostSpellings() {
+    listOf(
+      "127.0.0.1",
+      "2130706433",
+      "0177.0.0.1",
+      "0x7f.0.0.1",
+      "0x7f000001",
+      "127.1",
+      "127.0.0.1.",
+    ).forEach {
+      assertTrue(it, PairingProtocol.isProhibitedHost(it))
+    }
+    listOf("example.com", "8.8.8.8", "0x08080808", "2606:4700:4700::1111").forEach {
+      assertFalse(it, PairingProtocol.isProhibitedHost(it))
+    }
+  }
+
   @Test
   fun rejectsPrivateCarrierGradeNatAndUniqueLocalDnsAnswers() {
     val relays = request().relays
