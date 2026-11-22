@@ -44,12 +44,11 @@ no keys in backups/exports.
   inflate with exact boundary/CRC32/ISIZE/end-of-input, sanitize HTML, http(s)
   images only, no javascript:/embeds). Pending pairing work retains a one-time
   retry owner until completion or expiry.
-- Mac: same contract via Keychain (see MAC.md).
+- Mac: Keychain is a future requirement; the Swift reference package is not a finished secure transport client (see [platform boundaries](docs/PLATFORMS.md)).
 
 ## Abuse limits (all platforms)
 
 5 MiB compressed / 20 MiB expanded / exactly one gzip member / 512 chunks / bounded titles, URLs,
 authors, Base64 bodies / capped concurrent incomplete transfers + transfer age.
 Failures are bounded, deterministic, and tested (see chrome/tests,
-android tests). Remote images are loaded directly and therefore reveal the
-reader IP to the image host — stated in UI-adjacent docs, no proxy in v2.
+android tests). The native reader renders image descriptions without fetching remote images. Opening an external link leaves Reader and reveals network activity to that external destination.

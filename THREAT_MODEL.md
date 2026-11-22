@@ -1,11 +1,13 @@
 # Threat model
 
+Controls describe source contracts; evidence entries record earlier coverage, not checks rerun during cleanup. Consult [status](docs/STATUS.md) for current verification limits.
+
 ## Scope and assets
 
 Protected assets are article plaintext, Chrome device secret, one-time pairing
 secret, Android channel secret, pairing transcript, and the integrity of local
 documents/delivery state. Relays, networks, QR inputs, captured web content,
-Nostr frames, and remote images are untrusted.
+Nostr frames and captured image descriptions are untrusted.
 
 An endpoint with arbitrary local code execution is outside the cryptographic
 boundary. Reader reduces key exposure but cannot protect plaintext from a
@@ -23,12 +25,12 @@ fully compromised browser, Android OS, or unlocked user session.
 | overlapping Chrome handlers | stale publisher rewrites an outbox item after authenticated ACK deletion | keyed per-transfer serial execution, durable reload inside the critical section, ACK-first retry, receipt-before-delete ordering | deterministic scheduler tests + source/state assertions | browser crash between durable operations is recovered by the retained item or ACK replay |
 | corrupt Chrome durable state | false connected state after device-key loss/replacement, wrong-identity sends, zero-relay quorum, implicit fallback, custom-relay completion blind spot, or unintended network target | exact device-secret/public-binding check; x-only point validation; canonical six-default-plus-custom validation before network/quorum; request digest recheck; fixed-only bootstrap then full authenticated completion query | device-binding, relay-contract, and worker recovery regressions | deliberate compromise of the trusted service worker/storage boundary remains out of scope |
 | pairing interruption or retry amplification | zero-confirmation response forces a rescan, handshake strands after an ACK stored without returned `OK`, secret retained longer than needed, or UI polling creates repeated publication | keep zero-confirmation Android response non-active/retryable; persist Chrome response authentication without the bootstrap secret; enter completion-reading after every ACK send attempt; throttle retries to 30 s; keep Android one-time work retryable while pending | Chrome transition/timing/source tests + Android JVM/instrumentation ownership tests | required physical in-flight kill/restart quota remains NOT MEASURED |
-| hostile article input | memory/CPU exhaustion, ambiguous concatenated gzip, trailing-data polyglot, or script/embed injection | byte/chunk/title/URL caps; streaming one-member gzip with exact consumed boundary, CRC32/ISIZE, and end-of-input; strict UTF-8/canonicalization; sanitized native Markdown; no webview execution | four-runtime codec boundary tests + physical Android rejection case + XSS tests | remote image requests reveal reader IP to image host |
+| hostile article input | memory/CPU exhaustion, ambiguous concatenated gzip, trailing-data polyglot, or script/embed injection | byte/chunk/title/URL caps; streaming one-member gzip with exact consumed boundary, CRC32/ISIZE, and end-of-input; strict UTF-8/canonicalization; sanitized native Markdown; no webview execution | four-runtime codec boundary tests + physical Android rejection case + XSS tests | native image descriptions do not fetch remote content; explicit external links expose destination network activity |
 | compromised content script | steal Chrome keys from extension storage | `storage.local` access level `TRUSTED_CONTEXTS`; no page-world signing bridge | real Chrome isolated-world negative test | a compromised trusted extension page/service worker remains in boundary |
 | browser-signer manipulation | swap proof fields/key or expose identity | optional provenance only; exact returned event/pubkey/content verification; proof stays encrypted | NIP-07 mutation tests | live third-party signer compatibility not measured |
 | Android backup/migration | export channel key/database | key wrapped by Keystore; cloud/device-transfer backup exclusions for legacy and API 31+ | manifest/XML review, emulator build/lint | OEM backup behavior not physically inspected |
 | lost Keystore entry | false “connected” channel | active row with missing wrapped key is revoked and requires repair | TCL/emulator instrumentation | uninstall intentionally destroys pairing |
-| supply-chain vulnerability | XSS/crypto/build compromise | lockfiles, exact direct versions, package verifier, audit, SBOM/dependency inventory, vector gates | `npm audit` 0; Gradle inventory; source scans | Android transitive CVE database scan unavailable locally |
+| supply-chain vulnerability | XSS/crypto/build compromise | lockfiles, exact direct versions, package verifier, audit, SBOM/dependency inventory, vector gates | historical dependency audits and source scans | current audit results are not established by cleanup |
 
 ## Security invariants
 

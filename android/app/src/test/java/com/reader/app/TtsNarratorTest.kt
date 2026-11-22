@@ -151,4 +151,158 @@ class TtsNarratorTest {
     assertTrue(engine.spoken.any { it.contains("Closing sentence") })
     assertTrue("the retry clears the error", last!!.error == null)
   }
+  @Test
+  fun pauseDuringInitialLoadPreventsSpeechUntilPlay() = runTest {
+    val engine = FakeEngine()
+    val gate = CompletableDeferred<Unit>()
+    val first = section("doc", 0, 1, "Initial sentence.")
+    var loads = 0
+    val narrator = TtsNarrator(engine, this) { _, _, _ -> loads++; gate.await(); first }
+    var last: TtsPlaybackState? = null
+    narrator.onState = { last = it }
+    narrator.start("doc", SemanticCursor.start("doc"), 1f, "Title", null)
+    advanceUntilIdle()
+    narrator.pause() // The service routes audio-focus loss through this same call.
+    gate.complete(Unit)
+    advanceUntilIdle()
+    assertTrue("Pause must survive a completed initial load", engine.spoken.isEmpty())
+    assertFalse(last!!.playing)
+    narrator.play()
+    advanceUntilIdle()
+    assertEquals(1, loads)
+    assertEquals(1, engine.spoken.size)
+  }
+
+  @Test
+  fun pauseDuringNextSectionLoadPreventsSpeechUntilPlay() = runTest {
+    val engine = FakeEngine()
+    val gate = CompletableDeferred<Unit>()
+    val first = section("doc", 0, 2, "First sentence.")
+    val next = section("doc", 1, 2, "Next sentence.")
+    val requested = mutableListOf<Int>()
+    val narrator = TtsNarrator(engine, this) { _, _, hint ->
+      requested.add(hint)
+      if (hint == 0) first else { gate.await(); next }
+    }
+    narrator.start("doc", SemanticCursor.start("doc"), 1f, "Title", null)
+    advanceUntilIdle()
+    engine.finish()
+    advanceUntilIdle()
+    narrator.pause()
+    gate.complete(Unit)
+    advanceUntilIdle()
+    assertEquals("Pause must survive a completed next-part load", 1, engine.spoken.size)
+    narrator.play()
+    advanceUntilIdle()
+    assertEquals(listOf(0, 1), requested)
+    assertEquals(2, engine.spoken.size)
+  }
+
+  @Test
+  fun playWhileNextSectionLoadsRestoresIntentWithoutDuplicateLoads() = runTest {
+    val engine = FakeEngine()
+    val gate = CompletableDeferred<Unit>()
+    val first = section("doc", 0, 2, "First sentence.")
+    val next = section("doc", 1, 2, "Next sentence.")
+    val requested = mutableListOf<Int>()
+    val narrator = TtsNarrator(engine, this) { _, _, hint ->
+      requested.add(hint)
+      if (hint == 0) first else { gate.await(); next }
+    }
+    narrator.start("doc", SemanticCursor.start("doc"), 1f, "Title", null)
+    advanceUntilIdle()
+    engine.finish()
+    advanceUntilIdle()
+    narrator.pause()
+    narrator.play()
+    narrator.play()
+    advanceUntilIdle()
+    assertEquals("Only one load may own the next part", listOf(0, 1), requested)
+    gate.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(2, engine.spoken.size)
+  }
+
+  @Test
+  fun stopDuringLoadIgnoresItsCompletion() = runTest {
+    val engine = FakeEngine()
+    val gate = CompletableDeferred<Unit>()
+    val first = section("doc", 0, 1, "Stopped sentence.")
+    val narrator = TtsNarrator(engine, this) { _, _, _ -> gate.await(); first }
+    var last: TtsPlaybackState? = null
+    narrator.onState = { last = it }
+    narrator.start("doc", SemanticCursor.start("doc"), 1f, "Title", null)
+    advanceUntilIdle()
+    narrator.stop()
+    gate.complete(Unit)
+    advanceUntilIdle()
+    assertTrue(engine.spoken.isEmpty())
+    assertFalse(last!!.active)
+  }
+
+  @Test
+  fun replacingSpeakingArticleStopsItsOldCallbacksBeforeNewLoadCompletes() = runTest {
+    val engine = FakeEngine()
+    val gate = CompletableDeferred<Unit>()
+    val alpha = section("alpha", 0, 2, "Alpha sentence.")
+    val beta = section("beta", 0, 1, "Beta sentence.")
+    val requested = mutableListOf<Pair<String, Int>>()
+    val narrator = TtsNarrator(engine, this) { id, _, hint ->
+      requested.add(id to hint)
+      if (id == "beta") { gate.await(); beta } else alpha
+    }
+    narrator.start("alpha", SemanticCursor.start("alpha"), 1f, "Alpha", null)
+    advanceUntilIdle()
+    narrator.start("beta", SemanticCursor.start("beta"), 1f, "Beta", null)
+    advanceUntilIdle()
+    engine.finish() // Delayed onDone from the replaced article.
+    advanceUntilIdle()
+    assertEquals(listOf("alpha" to 0, "beta" to 0), requested)
+    narrator.pause()
+    gate.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(1, engine.spoken.size)
+  }
+
+  @Test
+  fun playDuringInitialLoadRestoresIntentAndStopInvalidatesOldDone() = runTest {
+    val engine = FakeEngine()
+    val gate = CompletableDeferred<Unit>()
+    val first = section("doc", 0, 2, "Initial sentence.")
+    var loads = 0
+    val narrator = TtsNarrator(engine, this) { _, _, _ -> loads++; gate.await(); first }
+    var last: TtsPlaybackState? = null
+    narrator.onState = { last = it }
+    narrator.start("doc", SemanticCursor.start("doc"), 1f, "Title", null)
+    advanceUntilIdle()
+    assertTrue(last!!.playWhenReady)
+    assertFalse(last!!.playing)
+    narrator.pause()
+    assertFalse(last!!.playWhenReady)
+    narrator.play(); narrator.play()
+    assertTrue(last!!.playWhenReady)
+    gate.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(1, engine.spoken.size)
+    narrator.stop()
+    engine.finish()
+    advanceUntilIdle()
+    assertEquals(1, loads)
+    assertFalse(last!!.active)
+    assertFalse(last!!.playWhenReady)
+  }
+
+  @Test
+  fun aPausedMetadataStartNeverSpeaksEvenWithAnImmediateLoader() = runTest {
+    val engine = FakeEngine()
+    val first = section("doc", 0, 1, "Initial sentence.")
+    val narrator = TtsNarrator(engine, this) { _, _, _ -> first }
+    narrator.start("doc", SemanticCursor.start("doc"), 1f, "Title", null, playWhenReady = false)
+    advanceUntilIdle()
+    assertTrue(engine.spoken.isEmpty())
+    narrator.play()
+    advanceUntilIdle()
+    assertEquals(1, engine.spoken.size)
+  }
+
 }

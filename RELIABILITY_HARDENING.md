@@ -1,11 +1,6 @@
-# Reliability and data integrity hardening
+# Storage and data integrity contracts
 
-Work starts from `1e55b7d4021637520402cb1773ac4e1ffd3b43cf` on
-`codex/reliability-data-integrity`, continued on `codex/reliability-finalize`.
-This document describes the implemented candidate.
-Exact artifact results and remaining acceptance gaps are in HARDENING_TEST_REPORT.md
-for the prior candidate; finalization results below supersede its code claims
-where noted. Historical beta reports are not certification of any candidate.
+These describe source ownership. Verification results are candidate-specific; see [status](docs/STATUS.md).
 
 ## Chrome capture ownership
 
@@ -36,12 +31,6 @@ Quota failures on either leg roll back both. Capture IDs require strict
 hex-or-UUID; `reader-status` degrades retained-list failures to empty.
 Resend creates a new capture first and only then discards the old transport;
 a crash between leaves safe duplicates settled by documentId.
-
-Verification: Chrome typecheck and all 140 Chrome tests PASS,
-including migration/export/delete, malformed-row skip, duplicate capture ID,
-settled-status truthfulness, quota on both legs, strict-ID rejection,
-canonical-hash binding, untrusted retained/transfer rejection and
-receipt cleanup with late publication.
 
 ## Android logical transfer and trust ownership
 
@@ -81,22 +70,21 @@ failures subdivide without claiming coverage. Saturated single-second buckets re
 explicitly incomplete rather than being claimed covered. Incomplete coverage is
 health info resumed on the next periodic run, not a transport-failure retry loop.
 
-Android host/lint/build gates PASS (120 unit tests). Device qualification for the
-prior candidate is historical; finalization adds conflicting-payload rejection,
-v9→v10 migration, poison-quarantine and review-serialization regressions.
-
 ## Reader, speech and export ownership
 
 Selection offsets, projection version, source metadata and color are frozen before
 leaving the native view. An application-owned ordered queue journals drafts in private
 atomic files independently of Room latency, replays unfinished drafts on startup,
-quarantines corrupt entries to `.bad` without blocking later selections, and removes
-each only after commit. Enqueue is thread-safe from any thread; cancellation is
+quarantines malformed/oversized entries to `.bad` without deleting that evidence, and removes
+each only after commit. Valid save or cleanup failures remain replayable `.json`; later
+commands for that identity wait while unrelated selections proceed. Existing quarantine
+shows an explicit recovery issue; Retry is offered only for retryable work. Enqueue is thread-safe from any thread; cancellation is
 never recorded as storage failure; identical retry is idempotent (no revision bump
 or duplicate Undo). Failed writes stay queued and surface a Retry control.
 Back, swipe, menu, mode and part changes go through one transition owner that flushes
-selection then progress (progress always flushed via finally), pauses audio first,
-disables UI while saving (survives rotation via Saveable guard, shows “Saving…” on
+selection then progress (progress always flushed via finally). Back and ordinary
+navigation preserve service-owned speech; Listen replacement, Speed and Finish & archive
+explicitly pause. The transition disables UI while saving (shows “Saving…” on
 double-tap instead of dropping silently), and routes Undo through the same owner.
 Background and disposal finalize under the same stable persistence owner and persist
 the Saveable cursor without per-scroll parcel churn. Part and semantic cursor are
@@ -106,9 +94,14 @@ generation always clears its restoring flag. There is still an unavoidable
 process-kill window before a newly frozen draft reaches the filesystem; this is not
 a synchronous disk-write guarantee on the UI thread.
 
-Speed pauses speech before route change (openTts also pauses defensively).
-Background pauses speech without blocking the main thread on Room. Natural
-completion and errors release focus; transient ducking does not pause. Google
+Speed pauses speech before route change; Listen pauses the previous session before replacement.
+The Activity persists reading state on background without pausing playback; `TtsPlaybackService` owns the engine, player/session and playback scope. The Activity observes a playback bus and sends MediaController commands; the now-playing row and system controls expose playback. Natural
+completion and errors release focus; transient ducking does not pause. Playback intent
+is independent of active speech and remains controllable while article metadata or a
+section loads. Pause/focus loss prevents load completion from starting speech; Play
+resumes without a duplicate load. Stop/replacement invalidate older metadata and engine
+callbacks. Visible reader positions do not overwrite the spoken cursor while playback
+intent owns progress. Google
 speech retains its configured voice/language, refreshes the network-required
 capability when engine init completes late, and the UI uses that capability.
 Review Important/Next/Source/Restart share one mutex; delayed Next/Important
@@ -126,8 +119,4 @@ MediaStore). No pairing keys are included (filenames and bodies asserted).
 Export is not a restore implementation. A coherent large export holds a database
 transaction and can delay writes (accepted, single-flight).
 
-Final-artifact results and exact acceptance gaps for the prior candidate are
-recorded in [HARDENING_TEST_REPORT.md](HARDENING_TEST_REPORT.md); historical beta
-reports are not certification of this candidate. Finalization host gates (Chrome
-140, Android 120, Swift 7; Rust unchanged and toolchain-absent here) PASS above.
-Device validation of the new packages remains to be run on demand.
+These contracts have unit/instrumented coverage in the repository; their presence is not a current passing result. The [latest recorded checkpoint](docs/STATUS.md) distinguishes host checks, physical observations and remaining gaps.

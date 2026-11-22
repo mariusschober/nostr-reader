@@ -50,7 +50,7 @@ class TtsMediaPlayer(looper: Looper) : SimpleBasePlayer(looper) {
     url = state.sourceUrl
     source = displaySource(state.sourceUrl)
     speed = state.speed
-    playWhenReady = state.playing
+    playWhenReady = state.playWhenReady
     playbackState = when {
       state.documentId == null -> Player.STATE_IDLE
       // Ended releases the notification/foreground resource: the session has

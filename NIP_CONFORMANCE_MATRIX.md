@@ -1,12 +1,11 @@
 # NIP and BIP conformance matrix
 
-Status describes the implemented Reader v2 paths, not every feature in the
-referenced specification.
+Status records historical coverage of implemented Reader v2 paths, not every feature in the referenced specification or a fresh test of current edits. No conformance checks were rerun during September 30 cleanup.
 
 | Standard | Reader use | Enforcement/evidence | Status |
 |---|---|---|---|
 | NIP-01 | canonical event ID, signatures, `#p`, `OK`, REQ/EVENT/EOSE | complete JSON escaping, lowercase fixed-length wire hex, exact event ID/signature validation; baseline regressions and current TS/Kotlin tests | PASS |
-| NIP-11 | relay information document | dated NIP-11 fetches for all six defaults and the tested custom relay; limits/operator metadata retained in `LIVE_RELAY_REPORT.md` | PASS |
+| NIP-11 | relay information document | dated NIP-11 fetches for all six defaults and the tested custom relay; historical limits/operator observations; current relay metadata not re-fetched | PASS |
 | NIP-40 | wrapper expiration | exactly one integer `expiration` tag; receivers reject missing, duplicate, malformed, and expired wrappers before payload use; inner pairing/transfer expiry also enforced | PASS |
 | NIP-42 | relay authentication | independently validate exact kind-22242 fields, current timestamp, empty content, one exact relay tag, and one exact bounded challenge before the anonymous transport key signs; one challenge/signature attempt per operation; redact challenge echoes from reasons, notices, traces, and logs; publish/subscription retry once after AUTH | PASS in local harness; no tested public relay required AUTH |
 | NIP-44 v2 | endpoint encryption | exact conversation key, padding boundaries including extended lengths, MAC-before-plaintext, strict Base64/UTF-8/caps; pinned official positive/negative corpus in TS and Kotlin | PASS |

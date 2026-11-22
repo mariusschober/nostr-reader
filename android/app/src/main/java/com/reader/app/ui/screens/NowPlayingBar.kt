@@ -59,8 +59,8 @@ fun NowPlayingBar(
       }
       IconButton(onClick = onToggle) {
         Icon(
-          if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-          contentDescription = if (state.playing) "Pause" else "Play",
+          if (state.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
+          contentDescription = if (state.playWhenReady) "Pause" else "Play",
           tint = colors.text,
         )
       }

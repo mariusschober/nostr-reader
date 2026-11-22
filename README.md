@@ -15,7 +15,7 @@ Encrypted delivery over Nostr. No Reader account. No Reader-operated backend.</p
   <a href="LICENSE">MIT license</a>
 </p>
 
-**Current status: 0.9.0-beta.1.** Chrome → Android is implemented and has focused physical-device verification. This is a source-build beta, not a store release. macOS is a reference package; iOS is not implemented. See [known limitations](KNOWN_LIMITATIONS.md) before relying on it. The September 9 completion is installed and verified on TCL: see [current status](CONTINUE.md), [UI completion evidence](UI_UX_COMPLETION_REPORT.md), and the [documentation index](docs/README.md).
+**Current status: 0.9.0-beta.1 source-build beta.** Chrome → Android is implemented. The latest recorded Android device checkpoint is September 14 at `0ca22ac`; this does not certify current pending Chrome edits or installed devices. The pen-settlement source repair awaits current TCL acceptance; final Android packaging is pending. macOS is a reference package and iOS is not implemented. See [status and limits](docs/STATUS.md) and the [documentation index](docs/README.md).
 
 ## Why Reader?
 
@@ -29,20 +29,6 @@ What makes it special is the combination:
 - **Reading becomes something you can revisit.** Native selection, colored highlights, quote review, speech, and word-by-word reading live alongside a simple Inbox / Priority / Later workflow.
 - **The protocol is open.** Schemas, cryptographic test vectors, wire rules, and both working clients are in this repository. The project is MIT-licensed.
 
-## Screenshots
-
-Actual screenshots from the final September 9 Android QA build on a TCL T807D, using synthetic demonstration text. The QA package contains the same application source as the installed normal build. These are app screens, not mockups.
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/reader-light.png" width="250" alt="Reader in a light appearance with Listen, Highlight and Speed controls"><br><strong>Read without the browser</strong></td>
-    <td align="center"><img src="docs/screenshots/highlight-mode.png" width="250" alt="Highlight mode with yellow, green, cyan and purple choices"><br><strong>Keep the passages that matter</strong></td>
-    <td align="center"><img src="docs/screenshots/reader-dark.png" width="250" alt="Reader with its Black background"><br><strong>Make reading comfortable</strong></td>
-  </tr>
-</table>
-
-[View the appearance controls](docs/screenshots/appearance.png) · [Screenshot provenance](docs/screenshots/README.md)
-
 ## Features
 
 ### Capture in Chrome
@@ -50,25 +36,25 @@ Actual screenshots from the final September 9 Android QA build on a TCL T807D, u
 - Save selected text or extract an article from the current page using the toolbar, context menu, or **Alt+Shift+R**.
 - Preserve structured text as Markdown. Uncertain article extraction asks for preview confirmation.
 - Capture is stored locally before transmission. Pending items can retry or export their text. Older retained plaintext copies have their own recovery library in Settings; export or delete them independently of delivery.
-- Optional site integrations support response capture on ChatGPT, Claude, Gemini, and Perplexity. Other adapters are previews; current authenticated provider interfaces have **not** all been verified. See the [source support matrix](docs/beta/SOURCE_SUPPORT_MATRIX.md).
+- Optional site integrations support response capture on ChatGPT, Claude, Gemini, and Perplexity. Other adapters are previews; current authenticated provider interfaces have **not** all been verified. See the [source support matrix](docs/SOURCE_SUPPORT.md).
 - Pair by QR code or a manual pairing payload. Settings expose connection and delivery details when needed.
 
 ### Read on Android
 
-- Organize articles into **Inbox**, **Priority**, and **Later**, with estimated reading time and saved progress. **Archive** has its own destination beside the Add button.
+- Organize articles into **Inbox**, **Priority**, and **Later**, with estimated reading time and saved progress. **Archive** is a peer library tab.
 - Native text rendering, links, selection handles, and normal Android Copy / Share actions. Images are represented by descriptions; remote article images are not fetched.
-- Five bundled typefaces: Newsreader, Crimson Pro, Asul, Atkinson Hyperlegible, and ABeeZee. Adjust size, margins, and **Follow system / Paper / Soft / Ink / Black** backgrounds.
-- **Listen** uses the system-default Android speech engine and its configured voice. **Speed** offers word-by-word RSVP reading with adjustable pace. Reading modes share semantic positions within the current article part.
+- Six bundled reading typefaces: Newsreader, Crimson Pro, Asul, Atkinson Hyperlegible, ABeeZee, and Inter. Adjust size, margins, and **Follow system / Paper / Soft / Ink / Black** backgrounds.
+- **Listen** uses Google Text-to-Speech and its configured voice. **Speed** offers word-by-word RSVP reading with adjustable pace. Reading modes share semantic positions within the current article part.
 - Import text through Android sharing, paste, or supported local files as well as the Chrome transport. Markdown and semantic HTML retain formatting and ordinary tables; wide tables open in a sideways-scrollable reading view. Already-flattened imports need reimport to recover formatting.
-- Share or paste an article link with no pairing and no account: Reader fetches the page itself over a bounded HTTPS path, extracts the article text on-device, and keeps an honest link fallback (with Open original and Retry) when a page is a login wall, needs JavaScript, or has no confident article text. See [URL-capture acceptance](CAPTURE_URL_ACCEPTANCE.md).
+- Share or paste an article link with no pairing and no account: Reader fetches the page itself over a bounded HTTP(S) path, extracts the article text on-device, and keeps an honest link fallback (with Open original and Retry) when a page is a login wall, needs JavaScript, or has no confident article text. See [capture limits](docs/STATUS.md#limits-that-still-matter).
 - Native scrolling continues after a fling while retaining Android selection handles; library and quote positions survive navigation and activity recreation.
 
 ### Highlight and remember
 
-- Turn on **Highlight**, select text, and adjust the native handles. Choose yellow, green, cyan, or purple; saving is automatic and silent.
-- Highlight mode uses one compact row: pen off, four color targets and **Reading tools**. Listen and Speed remain available through Reading tools; **Undo highlight change** remains in the article’s top overflow menu. The floating Android action menu stays hidden while native handles remain available.
-- Saved quotations use Asul in Highlights and Review. **Shuffle** changes the order on each request; review cards follow a swipe and animate offscreen before advancing. Mark important passages and share exact quote text.
-- In Highlights, swipe right to mark a passage important (yellow star, top right) or left past the mark to remove the quote. Long-press selects several quotes to remove at once. Removed quotes have no Undo; their articles stay in your library.
+- Turn on **Highlight**, hold a word, drag and release to save. Choose yellow, green, cyan, or purple; saving is automatic.
+- Highlight mode uses a compact dock with current color, focus toggle and Done. Hold-drag-release settles automatically. The October 1 source repair addresses lingering selection after acknowledgement; actual TCL handle clearing remains unverified. See the [acceptance boundary](docs/STATUS.md#open-defect-and-focused-next-acceptance). Ordinary native Copy/Share remains available outside highlighting.
+- Highlights presents complete saved quotations with source context. **Shuffle** changes the order; global Review resumes an unfinished round, and article-scoped Review preserves its separate source order. Mark important passages and share exact quote text.
+- Quote actions include Important, Copy, Share, recolor and Remove. Single removal offers Undo; multiple removal is confirmed. Removing a quote keeps its article.
 - Long-press articles to select several and archive or unarchive them together, with Undo. Permanent deletion remains an explicit single-article action inside Archive.
 - Saved highlights and review history survive permanent deletion of the source article. The retained quote shows its source title and identifies when the local source is gone.
 
@@ -135,7 +121,7 @@ Read the [threat model](THREAT_MODEL.md), [security and privacy notes](SECURITY_
 
 ## Try Reader
 
-You currently build the beta from source. Generated APKs and extension ZIPs are excluded from Git; [ARTIFACTS.json](ARTIFACTS.json) records local candidate provenance, not public download links.
+Build the beta from source. Generated APKs and extension ZIPs are excluded from Git. The [dated candidate record](artifacts/trial-fixes-20260914/EVIDENCE.md) records the retained September 14 normal APK; it is not a public download or certification of current edits.
 
 ### Chrome extension
 
@@ -161,11 +147,11 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The app declares Android 8.0/API 26+; the current focused acceptance device is a TCL T807D running Android 16. This build is debug-signed. A functioning Android text-to-speech engine must be installed and selected as the system default for Listen. Preserve an existing Reader installation’s data and keys when updating; do not uninstall just to bypass a signing mismatch.
+The app declares Android 8.0/API 26+; the latest recorded focused device checks used a TCL T807D running Android 16. This build is debug-signed. Google Text-to-Speech must be installed and working for Listen; Reader explicitly selects that engine. A configured voice may require a network connection. Preserve an existing Reader installation’s data and keys when updating; do not uninstall just to bypass a signing mismatch.
 
-Open the extension’s pairing screen and use Android’s Add menu to scan or paste the pairing request. Confirm the connection, save an article from Chrome, and wait for the phone’s receipt. See the [installation and trial guide](docs/beta/INSTALL_AND_TRIAL.md) for the full workflow.
+Open the extension’s pairing screen and use Android’s Add menu to scan or paste the pairing request. Confirm the connection, save an article from Chrome, and wait for the phone’s receipt. See the [installation and trial guide](docs/INSTALL.md) for the full workflow.
 
-Current reliability-cycle implementation and evidence: [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md).
+Storage and integrity contracts: [RELIABILITY_HARDENING.md](RELIABILITY_HARDENING.md).
 
 ## Development and documentation
 
@@ -177,14 +163,11 @@ Current reliability-cycle implementation and evidence: [RELIABILITY_HARDENING.md
 | [`rust-core/`](rust-core/) | Shared algorithm/reference implementation |
 | [`mac/`](mac/) | Reference Swift package; not a finished Mac product |
 | [`PROTOCOL.md`](PROTOCOL.md) | Authoritative v2 wire contract |
-| [`UI_UX_COMPLETION_REPORT.md`](UI_UX_COMPLETION_REPORT.md) | Current installed UI, imports, accessibility and device evidence |
-| [`docs/README.md`](docs/README.md) | Current documentation and historical evidence index |
+| [`docs/STATUS.md`](docs/STATUS.md) | Current source boundaries, open work and dated device evidence |
+| [`docs/README.md`](docs/README.md) | Documentation index |
 | [`RELIABILITY_HARDENING.md`](RELIABILITY_HARDENING.md) | Current storage, capture and transport ownership |
-| [`CAPTURE_URL_ACCEPTANCE.md`](CAPTURE_URL_ACCEPTANCE.md) | Unpaired Android URL capture and extraction quality |
-| [`BETA_TEST_REPORT.md`](BETA_TEST_REPORT.md) | Earlier beta evidence checkpoint |
-| [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) | Outstanding acceptance and implementation limits |
 
-Android checks can be run with `cd android && ./gradlew test lint assembleDebugAndroidTest`. Device instrumentation needs an attached Android target; it is distinct from host unit tests. Protocol vectors live in `shared/test-vectors/`. Historical test reports describe their recorded builds, not an automatic certification of every later commit.
+Android checks can be run with `cd android && ./gradlew test lint assembleDebugAndroidTest`. Device instrumentation needs an attached Android target; it is distinct from host unit tests. Protocol vectors live in `shared/test-vectors/`. Dated verification describes its recorded build, not automatic certification of later commits.
 
 Contributions should identify the affected client, preserve the v2 wire contract, and include verification appropriate to the change. Report bugs with the app/build version, platform, reproduction steps, and sanitized diagnostics; never include private keys or private article content.
 

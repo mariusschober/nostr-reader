@@ -692,12 +692,13 @@ class MainActivity : ComponentActivity() {
           onPauseAudio = { ttsClient?.pause() },
           onResumeAudio = { ttsClient?.play() },
           speechPlaying = ttsPlayback.documentId == r.id && ttsPlayback.playing,
+          speechPlayWhenReady = ttsPlayback.documentId == r.id && ttsPlayback.playWhenReady,
           playerVisible = ttsPlayback.documentId == r.id && !ttsPlayback.ended,
           player = {
             if (ttsPlayback.documentId == r.id && !ttsPlayback.ended) {
               TtsBar(ttsPlayback, com.reader.app.ui.theme.readerColors(settings.background),
                 onPrev = { ttsClient?.prev() },
-                onToggle = { if (ttsPlayback.playing) ttsClient?.pause() else ttsClient?.play() },
+                onToggle = { if (ttsPlayback.playWhenReady) ttsClient?.pause() else ttsClient?.play() },
                 onNext = { ttsClient?.next() },
                 onSpeed = { speed ->
                   ttsClient?.setSpeed(speed)
@@ -882,7 +883,7 @@ class MainActivity : ComponentActivity() {
           onOpen = { ttsPlayback.documentId?.let { target ->
             go(Route.Reader(target, at = ttsPlayback.cursor?.takeIf { it.documentId == target }))
           } },
-          onToggle = { if (ttsPlayback.playing) ttsClient?.pause() else ttsClient?.play() },
+          onToggle = { if (ttsPlayback.playWhenReady) ttsClient?.pause() else ttsClient?.play() },
           onStop = { ttsClient?.stop() },
         )
       }

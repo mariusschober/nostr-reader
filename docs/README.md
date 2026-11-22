@@ -1,26 +1,22 @@
-# Documentation index
+# Documentation
 
-## Current
+Start with the [README](../README.md) for the product and build steps, [status](STATUS.md) for current source boundaries and dated evidence, and [installation guide](INSTALL.md) for the ordinary workflow.
 
-| Document | Purpose |
+| Document | Owns |
 |---|---|
-| [README](../README.md) | Features, screenshots, source-build setup |
-| [Current handover](../CONTINUE.md) | Source, installed build, verification and preservation boundaries |
-| [UI completion report](../UI_UX_COMPLETION_REPORT.md) | September 9 UI/import/accessibility acceptance |
-| [Artifact manifest](../ARTIFACTS.json) | Exact packages; read `latestUiCompletion` first |
-| [Install and trial](beta/INSTALL_AND_TRIAL.md) | Build, update, pairing and reading workflow |
-| [Known limitations](../KNOWN_LIMITATIONS.md) | Outstanding product and acceptance limits |
-| [Protocol](../PROTOCOL.md) | Authoritative wire contract |
-| [Architecture](../ARCHITECTURE_AND_PROTOCOL.md) / [state machines](../RELIABILITY_STATE_MACHINES.md) | Client ownership and lifecycle |
-| [Reliability hardening](../RELIABILITY_HARDENING.md) | Current persistence, capture and deletion contracts |
-| [Migration](../MIGRATION_AND_COMPATIBILITY.md) / [rollback](../ROLLBACK.md) | Upgrade preservation and safe source comparison |
-| [Security notes](../SECURITY_AND_PRIVACY_NOTES.md) / [threat model](../THREAT_MODEL.md) | Trust and privacy boundaries |
-| [Source support](beta/SOURCE_SUPPORT_MATRIX.md) | Capture providers and qualification limits |
+| [October 1 audit](AUDIT_20261001.md) | Current repository reconciliation, findings and priorities |
+| [October 1 execution plan](PLAN_20261001.md) | Ordered implementation phases and bounded acceptance criteria |
+| [October 1 handover and start prompt](../artifacts/candidate-20261001/EVIDENCE.md) | Completed repairs, verified Chrome package and remaining Android and direct checks |
+| [Status](STATUS.md) | Open defect, verification limits, owner-data boundaries |
+| [Source support](SOURCE_SUPPORT.md) | Provider adapter qualification |
+| [Copy and interaction contract](COPY_DECK.md) | Implemented UI wording and behavior |
+| [Protocol](../PROTOCOL.md) | Normative v2 wire contract |
+| [Architecture](../ARCHITECTURE_AND_PROTOCOL.md) | Client components and trust/ownership map |
+| [Reliability state machines](../RELIABILITY_STATE_MACHINES.md) | Pairing, transport, recovery and receipt transitions |
+| [Storage and integrity](../RELIABILITY_HARDENING.md) | Capture ownership, durable outcomes, selection journal and exports |
+| [Migration](../MIGRATION_AND_COMPATIBILITY.md) / [recovery](../ROLLBACK.md) | Schema/trust compatibility and safe forward repair |
+| [Security](../SECURITY.md), [privacy](../SECURITY_AND_PRIVACY_NOTES.md), [threat model](../THREAT_MODEL.md) | Security assumptions, metadata and endpoint boundaries |
+| [NIP conformance](../NIP_CONFORMANCE_MATRIX.md) | Implemented protocol scope and pinned references |
+| [Platforms](PLATFORMS.md) | Rust/Swift reference and future Mac/iOS limits |
 
-## Historical evidence
-
-Dated beta, hardening, relay, device and UI-refresh reports remain as evidence of their own commits. They do not certify current bytes or override the current handover. Original briefs/audits remain historical requirements and findings. Raw owner state and generated binaries are not in Git.
-
-## September 9 cleanup
-
-Removed four superseded operational documents: `AI_CONTINUATION_CONTEXT.md`, `CONTINUE_READER_PROMPT.md`, `HANDOVER_RECOVERY_TRIAL.md`, and `UI_UX_COMPLETION_REVIEW.md`. Their old instructions pointed to stale branches, pauses or pre-implementation work. Current guidance is consolidated in `CONTINUE.md`; completed scope is in the UI report. All four remain recoverable from commit `4755fad` and earlier Git history. Stable screenshot filenames now contain final-build synthetic captures. Historical test evidence, protocol specifications, source, fixtures and owner data were retained.
+[Dated September 14 evidence](../artifacts/trial-fixes-20260914/EVIDENCE.md) records that frozen Android candidate. `evidence/` contains older immutable captures; it does not certify current source or installed devices. Obsolete plans, reports and agent prompts were removed during September 30 cleanup after consolidating unresolved requirements. Tracked predecessors remain in Git history. Rebuild generated outputs rather than expecting obsolete artifact paths to exist.

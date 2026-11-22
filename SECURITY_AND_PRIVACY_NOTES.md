@@ -1,5 +1,7 @@
 # Security and privacy notes
 
+Implementation contracts below must be distinguished from dated executed checks. September 30 cleanup did not rerun security scans, external-provider or relay checks. Current limits are in [status](docs/STATUS.md).
+
 ## User-facing summary
 
 Reader has no account and no Reader-operated server. Articles are encrypted on
@@ -20,7 +22,7 @@ not used in repair testing.
   non-curve key state cannot remain visibly paired; Reader removes only the
   unusable channel binding and retains local captures for re-pairing.
 - `chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'})` is
-  reasserted on every worker evaluation. In the exact current Chrome build,
+  reasserted on every worker evaluation. In the recorded Chrome check,
   Reader's isolated content-script world could see the API namespace but its
   storage read was denied; no device secret or pairing state was visible.
 - Secrets are not stored in sync storage, page localStorage, the DOM, reports,
@@ -30,8 +32,9 @@ not used in repair testing.
 - The removed page-world bridge means arbitrary page JavaScript cannot invoke a
   NIP-07 signing surface through Reader.
 - Manifest permissions are limited to `activeTab`, `scripting`, `storage`,
-  `alarms`, and `contextMenus`, plus the static supported-site content-script
-  matches. There are no optional all-sites or remote-code permissions.
+  `alarms`, and `contextMenus`, with optional host access for the explicitly
+  listed supported sites. There is no static content-script grant, all-sites
+  access or remote-code permission.
 - CSP allows scripts only from the extension and forbids objects. The package
   verifier rejects module syntax/noncharacters in the standalone content
   script and checks required manifest/icon assets.
@@ -102,21 +105,18 @@ filename-pattern scans found no committed credential-like material. The only
 64-hex source match outside tests/vectors was a deterministic Rust unit-test
 golden hash inside `#[cfg(test)]`.
 
-Secret exposure: **NOT DETECTED** within the executed source, artifact-name,
+Historical secret-exposure result: **NOT DETECTED** within the executed source, artifact-name,
 Chrome storage-boundary, and retained-log checks. This is not a guarantee
 against arbitrary endpoint compromise.
 
 ## Testing identities and publication boundary
 
-All live relay operations used generated disposable keys and synthetic public
-test text. No release, store upload, deployment, merge, push, production
-signing key, or real user identity was used. The APK is debug-signed and the
+The recorded relay checks used generated disposable keys and synthetic public test text. They did not release/store-upload/deploy/merge or use a production signing key or real user identity. A later owner-authorized branch push is recorded in [status](docs/STATUS.md); no current remote check is implied. The APK is debug-signed and the
 Chrome ZIP is an unpacked/developer artifact only.
 
 ## Beta candidate evidence boundary — 8 September 2026
 
-The current artifacts and source-site acceptance are indexed in `ARTIFACTS.json`
-and `docs/beta/SOURCE_SUPPORT_MATRIX.md`. The active native reader renders image descriptions as text without fetching
+Historical source-site qualification is summarized in [source support](docs/SOURCE_SUPPORT.md); current source boundaries are in [status](docs/STATUS.md). The active native reader renders image descriptions as text without fetching
 remote image URLs. No image opt-in control is claimed. Synthetic relay fixtures use
 isolated QA identities and local TLS routing; their certificates, profiles and
 control tokens are excluded from Git. Committed evidence contains hashes and
@@ -124,7 +124,7 @@ non-secret synthetic transport summaries. Owner storage fingerprints and raw
 screenshots/traces remain local. The final in-place upgrade retained byte-identical
 database/WAL, key preference and DataStore files before first startup.
 
-Current npm audit found zero vulnerabilities including development dependencies.
+The recorded September 8 npm audit found zero vulnerabilities including development dependencies.
 This does not certify Android dependencies, live signers or provider DOMs. Quote
 sharing emits only the quote as text/plain, without subject, URL or stream; exact
 local receiver checks cover Unicode and line breaks. Exports exclude channel keys
@@ -146,7 +146,7 @@ conflicting same-ID payloads are rejected; explicit new transfers remain
 possible. Revocation cancels local channel work and rechecks commit ownership but
 cannot remove ciphertext retained by relays. Export is single-flight to a
 user-selected SAF URI, with checksums and readback verification, excludes keys
-(filenames and bodies), and remains a plaintext one-way export. The system-default speech engine retains
+(filenames and bodies), and remains a plaintext one-way export. The explicitly selected Google speech engine retains
 its configured voice/language; Reader inspects whether that voice requires a network
 connection (refreshed after engine init) rather than labeling all voices offline;
 transient ducking does not pause.

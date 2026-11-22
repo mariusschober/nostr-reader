@@ -1,4 +1,6 @@
-# Trial-fix pass evidence - 14 September 2026
+# Historical trial-fix evidence — 14 September 2026
+
+This is a dated candidate record, not current installed-device acceptance. September 30 cleanup retained the normal APK and screenshots, removed QA/older binaries, and did not operate devices or repeat this dated acceptance campaign. Current source boundaries are in [status](../../docs/STATUS.md).
 
 Source frozen at `0ca22ac` on `codex/reliability-finalize` (documentation
 baseline `e91fdf4`). Implementation packages A-E were authored earlier in this
@@ -12,11 +14,8 @@ appearance checks and the device verification of the repair.
 | Artifact | SHA-256 | Notes |
 |---|---|---|
 | `reader-debug-0ca22ac.apk` | `003b4863a61aec09d7d4fbc2b4fad82cece9d224ebc89b180834cd77b7d2b0de` | Normal `com.reader.app`; installed in place on TCL `ZXKRS4VKGQ8PWGEQ`. |
-| `reader-qa-0ca22ac.apk` | `506d77d06e8f4f4046105857e703616290c11ed5f48afc6d7456b2b27eacda9f` | QA `com.reader.app.qa`; installed on the TCL for the NXTPAPER check. |
 
-Both APKs were rebuilt from `0ca22ac` after the freeze and are byte-identical to
-the archived files, so the archive is the frozen source. APK binaries are not
-tracked in Git.
+Both packages were rebuilt from `0ca22ac` and matched their archives in the September 14 check. Only the normal archive is retained after cleanup. Historical QA digest: `506d77d06e8f4f4046105857e703616290c11ed5f48afc6d7456b2b27eacda9f`; its binary was removed. APK binaries are not tracked in Git.
 
 Signing certificate (both packages):
 `3af50cab6e0515f478413e79786958671913b2cae67037defe537bb1e7465069`.
@@ -127,14 +126,13 @@ quiet "Undo highlight".
   observations rather than device-verified properties.
 - Physical e-ink refresh quality cannot be established from a screenshot.
 
-## Left state
+## Device state recorded on September 14
 
 - TCL owner package: normal `com.reader.app` from `0ca22ac` installed in place,
   launched once, owner data intact. QA package `com.reader.app.qa` is also
   installed (isolated, holding the built-in sample article plus two test
   highlights) with its display restored to E-ink & NXTPAPER and App theme
-  Dark. Remove it with
-  `adb -s ZXKRS4VKGQ8PWGEQ uninstall com.reader.app.qa` if unwanted.
+  Dark. This was not rechecked during cleanup; no device removal follows from this record.
 - The four pre-existing untracked captures
   `evidence/polish-20260911/{21-feed,22-feed,22-reader-tab,23-archive}.xml` are
   untouched.

@@ -1,27 +1,7 @@
-# Reader v2 rollback and recovery
+# Recovery and safe source comparison
 
-Primary v2 implementation commit: `91aa1c49ebc98cb68ef0df1c9c0608d8b3c1791b`
+Current Android storage is Room **v13**. Preserve the installed owner application and data. Older APKs are not a supported in-place downgrade path: they may not understand newer schema or trust states. Inspect older source through Git in a separate worktree and run it only in an isolated package/device. Do not clear data or uninstall to downgrade or bypass signing mismatches.
 
-Receiver ACK durability follow-up: `3c4546bfd8b27fa11ac3d5af576dba2050b5de6e`
+Use a forward fix for the owner installation. Record exact source, APK digest and signing identity before an authorized in-place update, then compare installed bytes and owner integrity. Exports are readable one-way files; library/review/key restoration is not implemented. A protocol downgrade must never reinterpret a v2 channel as v1. Stricter single-member gzip validation rejects previously invalid trailing/concatenated data, not valid v2 messages.
 
-Final runtime fix commit: `6ea80ee6f3732a192307661fd9cd5c485a4dd1dc`
-
-Deterministic Chrome packaging commit: `a061ddcb111cf05048828e65fcddc9c797f1a6ec`
-
-Final audited artifact/documentation commit: recorded in generated
-`artifacts/ARTIFACTS.json` because that commit cannot contain its own hash.
-
-Immutable pre-repair baseline: `982920b4e91dd5af4af6046f56df281c7adfe545`
-
-Rollback is intentionally not an in-place protocol downgrade. Reader v2
-changes the Android database, trust states, compression framing, pairing
-transcript, retry ownership, and delivery ACK. An older build must never
-reinterpret a v2 channel or Room v5 database. The stricter one-member decoder
-does not change valid v2 bytes; it rejects only concatenated or suffixed input
-that was already outside the documented contract.
-
-## Current recovery rule
-
-Current Android storage is Room v10. Preserve the installed owner application and data; older APKs are not an in-place downgrade path. Inspect older source in a separate worktree and run it only in an isolated package/device. Do not clear data or uninstall to downgrade. Exports are one-way readable files; full library/review/key restoration is not implemented. Use a forward fix for the owner installation. Historical baseline commit identifiers above remain useful for source comparison, not install instructions.
-
-See [migration and compatibility](MIGRATION_AND_COMPATIBILITY.md), [current status](CONTINUE.md), and [known limitations](KNOWN_LIMITATIONS.md).
+See [migration](MIGRATION_AND_COMPATIBILITY.md) and [status](docs/STATUS.md). Historical commits are source comparison anchors, not install instructions.

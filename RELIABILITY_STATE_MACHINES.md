@@ -147,7 +147,7 @@ expiry. A delayed wrapper or Chrome retry for that immutable transfer cannot
 reset a completed quorum or exhausted ceiling. A process-local mutex serializes
 periodic and foreground-triggered workers.
 
-## Restart ownership
+## Restart ownership and historical coverage
 
 | Failure point | Durable owner | Recovery | Status |
 |---|---|---|---|
@@ -174,11 +174,12 @@ duplicate/reordered events, and one of three relays succeeding. Chrome and
 Android map original-event rejection, authentication failure, protocol error,
 timeout, socket/TLS failure, and acceptance to distinct states.
 
-## Evidence status
+## Historical evidence boundary
 
 - **PASS:** deterministic state-transition tests and the single observed
   seven-relay physical transfer.
 - **PASS:** zero `delivered` transitions without a verified endpoint ACK in the
   observed Chrome outbox and unit tests.
-- **NOT MEASURED:** requested statistical gates. No rate claim is made from one
-  successful end-to-end run.
+- **NOT MEASURED:** statistical reliability. No rate claim is made from one successful end-to-end run.
+
+The table records earlier scoped checks, not tests rerun on current source. See [status](docs/STATUS.md) for the latest dated candidate and remaining acceptance gaps.

@@ -1,0 +1,1628 @@
+{
+  "base_commit": "c46acefda74a26c70dbfee3fae1aacd8e8d11ab0",
+  "branch": "codex/reliability-finalize",
+  "runtime_source_sha256": "d4157f85a73bc8e87c69b2ded850d44b9ba1fe19c1aace6678a7ec970aed5c50",
+  "tracked_runtime_patch_sha256": "18ad63457ecb478a0fc617f9c3056b31b45796894c715418929a40e0c4e131bc",
+  "files": [
+    {
+      "path": "android/app/build.gradle.kts",
+      "bytes": 5752,
+      "sha256": "ac93a2a95816abb07b28a15538028d39bf1b83d013fa3bcfe3b39e2247f66a89"
+    },
+    {
+      "path": "android/app/schemas/com.reader.app.data.ReaderDb/10.json",
+      "bytes": 34762,
+      "sha256": "572d820708eb3b765f366e8c680393b8dec6ea0d6f6487989cb9255bc675a8bd"
+    },
+    {
+      "path": "android/app/schemas/com.reader.app.data.ReaderDb/11.json",
+      "bytes": 38910,
+      "sha256": "66daac6a11a0efcc9441d7eacf15cc42364a1d04d6345135cc7665fa3ab3c83a"
+    },
+    {
+      "path": "android/app/schemas/com.reader.app.data.ReaderDb/12.json",
+      "bytes": 38910,
+      "sha256": "ac5abd7727a182437ff90a8f07e67867ee9acbde5a8e6c92af8113d23d9d7f79"
+    },
+    {
+      "path": "android/app/schemas/com.reader.app.data.ReaderDb/13.json",
+      "bytes": 44042,
+      "sha256": "6e0c7a203508b7d7b321f81afd8fca7d0ef66683f3d9510ff2453250c636326c"
+    },
+    {
+      "path": "android/app/schemas/com.reader.app.data.ReaderDb/6.json",
+      "bytes": 20682,
+      "sha256": "cea92ee78426968aaae4cae938821d8f30fb4770ed9f5b34cc4c2a090ee958ca"
+    },
+    {
+      "path": "android/app/schemas/com.reader.app.data.ReaderDb/7.json",
+      "bytes": 22821,
+      "sha256": "5e7f9e7844371c783a8b22bc9a86847c05b5175b717ae74bfaf80271c023a516"
+    },
+    {
+      "path": "android/app/schemas/com.reader.app.data.ReaderDb/8.json",
+      "bytes": 30911,
+      "sha256": "02dd841f8dc45c474559e2e0c15d25396a221c7ff36585f5cb84b425532ff04d"
+    },
+    {
+      "path": "android/app/schemas/com.reader.app.data.ReaderDb/9.json",
+      "bytes": 34011,
+      "sha256": "552ad4a949016c586507c4452a6be7e5a0ca1782c44b17b55d6d8ec2a496e5a0"
+    },
+    {
+      "path": "android/app/src/androidTest/AndroidManifest.xml",
+      "bytes": 494,
+      "sha256": "8839f73f5a60eda0a55b3f97ed469a9b35f4be243940dccf76eaf1af083c1a24"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/ArchiveStorageInstrumentedTest.kt",
+      "bytes": 1888,
+      "sha256": "039d07533febd1ededdbc328b38e8191ebec7258e70ae800347cd22e6ac4d90d"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/ArticleMovesInstrumentedTest.kt",
+      "bytes": 2796,
+      "sha256": "3f36424aeb778c77e41929342ce4ba09d1fac844bb4aa93709b2fbe5fad2be1e"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/CaptureFlowInstrumentedTest.kt",
+      "bytes": 13513,
+      "sha256": "5f89b9f1e7dac0922003acdbf215c2b86b8dc61b82130dfdbcf230862fe3c841"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/CaptureMigrationInstrumentedTest.kt",
+      "bytes": 1975,
+      "sha256": "219e034383e75d28b7043fdc3dd57a5d2fa5fa2caebff674e32245b8e6d1dea1"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/HardeningStorageInstrumentedTest.kt",
+      "bytes": 6966,
+      "sha256": "00faf456e2934eae2fe013da11162758347ddfbd4d8352b3d5e5eab7f1006925"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/HighlightMenuGateInstrumentedTest.kt",
+      "bytes": 10462,
+      "sha256": "29c258511772a2f2a96df3024f91ebad65f66e10f65cbe4d08d2ddbaa0826004"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/HighlightSessionInstrumentedTest.kt",
+      "bytes": 16688,
+      "sha256": "d27c6f62b4d9bca505fb87942262f100be4859daaafb0a1390193a1530fbc95a"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/InstalledBetaInstrumentedTest.kt",
+      "bytes": 1172,
+      "sha256": "f20184f13f6b9596850c88b209f92ffcdfc4c914f9b4edf97119ae17a0b4b574"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/NativeGestureSafetyInstrumentedTest.kt",
+      "bytes": 4365,
+      "sha256": "897cad34c7c6ebdaf5f2e958d504d04161353ea11180c8db09121e2d1cc228ba"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/NativeMonoGeometryInstrumentedTest.kt",
+      "bytes": 5720,
+      "sha256": "a8316aca878c7cf9255cb12146196f94d54849fe6f9e81ebe68bddcd9038b62b"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/NativeScrollMeasurementInstrumentedTest.kt",
+      "bytes": 9179,
+      "sha256": "8344685f2ec209ecce704c3bf3d277b645c95da13db49656ccf0ba95cb50fcd3"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/NativeSelectionSpikeInstrumentedTest.kt",
+      "bytes": 7571,
+      "sha256": "855bde87c5c3cabeda1b823e7d797794d822451d76206ac64352ea03ad0fea69"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/PairingProtocolInstrumentedTest.kt",
+      "bytes": 4388,
+      "sha256": "36f3b531c0ab0313a00a247779c1f518c2294b6d5f6816d189636cc2e1f8ebfb"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/PenSettlementInstrumentedTest.kt",
+      "bytes": 14626,
+      "sha256": "48ac408f5b4aeb87d0bea2ef34ccd3b4b256f0072f9baee408296134a0d81467"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/QaCameraPermissionInstrumentedTest.kt",
+      "bytes": 2954,
+      "sha256": "db0ee303793aa5168f97d07157ec29c639275cf89563bbe5d3b0b7df71958a9c"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/QaCampaignInstrumentedTest.kt",
+      "bytes": 12577,
+      "sha256": "20cbe90bb165c63f2b9e64a956788180a7445221c66f8bda1ce3e54a10cf6b81"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/QaPairingUiInstrumentedTest.kt",
+      "bytes": 3421,
+      "sha256": "5b477f02eb9a5551a555eeccf719048db06879e7695909ce5b540b25642c3502"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/QaQuoteReceiverActivity.java",
+      "bytes": 1207,
+      "sha256": "a485036a37140e4b1bbf2ae0e30e60151c3f5666e054e8b5df023db0fffe1c89"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/QaTestRunner.kt",
+      "bytes": 2817,
+      "sha256": "7c39f349df043cdf14263c39088a0837c2ca590ba08026d8a039586be534642a"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/QaTouch.kt",
+      "bytes": 1129,
+      "sha256": "d9274b779ad50ff72483f6323960387a552cc2b4225e1e00a158bc74c18a59cf"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/ReaderDbMigrationInstrumentedTest.kt",
+      "bytes": 15333,
+      "sha256": "9755132ddc81fb9561aa50780f831994c97b614cb299c8f345744383f468e02c"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/ReaderFlowInstrumentedTest.kt",
+      "bytes": 34564,
+      "sha256": "e77a3f469869562559641891d1d163ade07cbab759ca93a747716e8dbe5eeca8"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/ReaderGzipInstrumentedTest.kt",
+      "bytes": 2441,
+      "sha256": "5e611ca3ef6b58106966ddc6ba924053558b4e7fe4f481031f6f55ba19d2b0d1"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/ReaderLargeContentInstrumentedTest.kt",
+      "bytes": 1717,
+      "sha256": "913a1016511d89b13e80881a3de6fd2602dc37131c7d0746f74bd835c29d2596"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/ReaderTransitionInstrumentedTest.kt",
+      "bytes": 4427,
+      "sha256": "3d1bbb95e040620e9c9d45438396b726c98bb1cbd40c0c51fc4c6faee77c8a01"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/ReaderUxFoundationsInstrumentedTest.kt",
+      "bytes": 4305,
+      "sha256": "4197e39e9178522381f003db6e6659475b22a80548d87efdb5e4e58ec8899305"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/SearchInstrumentedTest.kt",
+      "bytes": 8811,
+      "sha256": "e407785e6838ee393fd8a6625876336cef571e5dfbc7f60b6bb51dec4d0e8fe8"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/StopResponsivenessInstrumentedTest.kt",
+      "bytes": 2177,
+      "sha256": "b16744f917457e466617c3b55f6f9839e6703ef0abc826e28de043eb2a7630b3"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/SystemTtsInstrumentedTest.kt",
+      "bytes": 1833,
+      "sha256": "ba821a2c1227992e7ae52fc752f2041844eb856e8048ee362dc02b5369b11410"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/TransferManagerInstrumentedTest.kt",
+      "bytes": 21277,
+      "sha256": "65cc6b2d30d45ded4dc3582bd30ec7722e5f2240c7878b997d083511dff5057b"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/TtsNavigationInstrumentedTest.kt",
+      "bytes": 10166,
+      "sha256": "831b3f4763be043f3ec6791d0417511a8b91e97b27534f622f3c43d3f759a90b"
+    },
+    {
+      "path": "android/app/src/androidTest/java/com/reader/app/UiCompletionInstrumentedTest.kt",
+      "bytes": 13766,
+      "sha256": "2baf93455286e67fbcd2e203151b780395145af2deefef7a5332a708ee7d371d"
+    },
+    {
+      "path": "android/app/src/main/AndroidManifest.xml",
+      "bytes": 2184,
+      "sha256": "b63a0e5bd3bc8bed83b7c398c0f5b10ef9bc3926a03c7685dc651a2cba0d5250"
+    },
+    {
+      "path": "android/app/src/main/assets/licenses/OFL-abeezee.txt",
+      "bytes": 4516,
+      "sha256": "f0376d04eb58fb19e9f1690a99a1eb37380ad0246f7d503f2abd8e8a74ed12be"
+    },
+    {
+      "path": "android/app/src/main/assets/licenses/OFL-asul.txt",
+      "bytes": 4420,
+      "sha256": "ea274e87939d38032b31fb741af75bff9fa3f8d4a8b652265f9e0ce1ad7e9f80"
+    },
+    {
+      "path": "android/app/src/main/assets/licenses/OFL-atkinsonhyperlegible.txt",
+      "bytes": 4352,
+      "sha256": "f32d22b3908fcad2c86a74000614ec22e6a7f66ea7e867e616026a27aebdc143"
+    },
+    {
+      "path": "android/app/src/main/assets/licenses/OFL-crimsonpro.txt",
+      "bytes": 4393,
+      "sha256": "1820869bd5baa1c2d88fa87c89eea532cf9442d841008acab720654b7f82823d"
+    },
+    {
+      "path": "android/app/src/main/assets/licenses/OFL-newsreader.txt",
+      "bytes": 4394,
+      "sha256": "fdfad38143ec470553cae82a1e45320bdd1b9ec70415d37bd0171051d8a4ded8"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ReaderApp.kt",
+      "bytes": 1560,
+      "sha256": "a6a11c2d5074bff163cebe340ef5ca7a0813f828180ea9c8e8eabc43e0dcb8c0"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/capture/ArticleExtractor.kt",
+      "bytes": 24210,
+      "sha256": "3d75193e8c6bf03b1e4d0c6cfcb382e69af264dc6b779a554e0e215944fecde1"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/capture/CaptureDns.kt",
+      "bytes": 1080,
+      "sha256": "2be30a1f853fadd53897aec224522aa137e0ada75dac4f5ef8d9f9cc9d7616bd"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/capture/CaptureFetcher.kt",
+      "bytes": 11725,
+      "sha256": "150f7e0f17715af014d5f0036f317595d618548b808c572a8aafa3ecce0d5faa"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/capture/CaptureRepository.kt",
+      "bytes": 11886,
+      "sha256": "3888150a117b2eda30c5e09b7b952f7955de9899168aabf29e3a48bdc3d3a51a"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/capture/CaptureRequest.kt",
+      "bytes": 5539,
+      "sha256": "400eb46037ab955def7669990c838814b841e8c45ccdeba3cbac568d34d27bbf"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/capture/CaptureUrlPolicy.kt",
+      "bytes": 6619,
+      "sha256": "d07483a2f2e45a2b6d86a96bfd9c060b9064b2c5629efe45cea295318a274b87"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/capture/CaptureWorker.kt",
+      "bytes": 8371,
+      "sha256": "af5ad13bc1176a8cc06659b44c722df5cac092d757757eb4ae4fd2b3a2a33aa5"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/capture/ShareIntentClassifier.kt",
+      "bytes": 7526,
+      "sha256": "1750f7f935ac31131f754095e676b0a46d096712af1cd5c08730406e4256f42a"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/ArticleModel.kt",
+      "bytes": 9924,
+      "sha256": "abdbbceb7ddbc77206ef7432292ceecfe9b6f35ac72170dc9d3e9c0201aaad48"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/ArticleSections.kt",
+      "bytes": 2602,
+      "sha256": "680b307f9890b49748e26ab1cc0f2a6c10f622885de2d674c8f5f14e1bf534ef"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/BoundedText.kt",
+      "bytes": 1421,
+      "sha256": "5cd7f8a705c5d8eb424963257b84d2f95f7fce1c477aa8b9ab16d6a9461fa4ed"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/HtmlMarkdown.kt",
+      "bytes": 3689,
+      "sha256": "9631277a2a9fd78a99f31307117f4c09cd110826481f38c643cd7d5fce14ab3a"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/ReaderCore.kt",
+      "bytes": 10901,
+      "sha256": "1fa1284cba82d357be6e89a7436dd72e075e90f7069124a060853f8f27b1cf46"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/ReaderGzip.kt",
+      "bytes": 2381,
+      "sha256": "55b21f9e102b8ccc694e61e2ece3b7356b1b44fc68d84778c6e1d3d5d545328f"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/RenderedProjection.kt",
+      "bytes": 8586,
+      "sha256": "7e9a3859315d06ac633a43a4746d716d6a13125923f9c5aec4a9787fe82424b0"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/ReviewScheduler.kt",
+      "bytes": 7229,
+      "sha256": "b45f4286878d1bec4789369da68b96630b67788b840c07afd33593a78ca10729"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/SearchQuery.kt",
+      "bytes": 5971,
+      "sha256": "c8818e7901be2c3227a3721fac60804d43b70d75db3f0d8f488a0ccf441ff41d"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/core/SearchTerms.kt",
+      "bytes": 699,
+      "sha256": "2b6077e715d8d0e60aaa2f79e72062e184d2feb2e0a565f52d9d77e2f6d81204"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/cursor/SemanticCursor.kt",
+      "bytes": 339,
+      "sha256": "7f9a19bb4e627d09437a896921da37e5bd47d7423a29393565e0d5d87b6eae88"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ArchiveExporter.kt",
+      "bytes": 6241,
+      "sha256": "1929a5417c45fbbc52c622cb1cacc7ab9cfc5d21af4d61de029bb3a8a3d89efe"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ArticleCompletion.kt",
+      "bytes": 2274,
+      "sha256": "560d84182e65fbfbc2d93a5d1b1e261f92f00b5654a7cd9fef7847b0643dd453"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ArticleMoves.kt",
+      "bytes": 1488,
+      "sha256": "1abedc59810c934b6f453b5b8e398f346f8925bd5838b4de2490e9a19128260a"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ArticleNavigation.kt",
+      "bytes": 4389,
+      "sha256": "2b883eb00a1864f82034cad63e0d1ee71e37a7916aded346a3dc072f3f39356a"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ArticleRepository.kt",
+      "bytes": 3976,
+      "sha256": "5a352410ebf8561066c275cb055d0aa2084ef606977e1a157bfcb5c70b160944"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/HighlightRepository.kt",
+      "bytes": 18180,
+      "sha256": "6101650d366feeb01cf6f23acd2b1f693e40a7b8b9c0036e9fda532124606333"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/Highlights.kt",
+      "bytes": 5388,
+      "sha256": "a068898569de93a31c886b2cc2914fe703d84105baa53f326fecec4622aa9662"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/Labels.kt",
+      "bytes": 7248,
+      "sha256": "f05f0446817f490d0fe3badadbb6daaaf97cdcd8f997c85b6e13ac2043ebe148"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/LibrarySearch.kt",
+      "bytes": 3678,
+      "sha256": "750ff7608a4c72ba8c56b582e9d0f00dd8769558c275ce5f8cf44fb18892f6ee"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ProgressWriter.kt",
+      "bytes": 1840,
+      "sha256": "2fdae11142eaabec404b8be469f64637e61ec521e969393505a7d70039aee508"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ReaderDb.kt",
+      "bytes": 36114,
+      "sha256": "ff14904aee24f429a0102619690f9ba44d9c53e718a91f5273001eee99f03d67"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ReadingRun.kt",
+      "bytes": 1084,
+      "sha256": "6e47f0b5118aaed7aa10f49ca809e4c06d90a907262339477b7c5ffd4fe497fe"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/ReadingSession.kt",
+      "bytes": 10779,
+      "sha256": "07d3caac6e0a931550d9883cd8564fb468f68ea374abbcf2a3ec26cef9512e1d"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/Search.kt",
+      "bytes": 5971,
+      "sha256": "90532a686e77226e979b72ee3d0a5a7a6c04d6f780dbeb75368c910580600b88"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/data/SearchRepository.kt",
+      "bytes": 10994,
+      "sha256": "30e0c98d56bbc780632f8e1a128437260bb4ea8d72b8c53def16b4f8644f4465"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/nostr/Nip44.kt",
+      "bytes": 6719,
+      "sha256": "712c17c2eb42e5de140328632fd06ab0c2945fc7631dcd4a50da9eff2a9cca9b"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/nostr/NostrCodec.kt",
+      "bytes": 31004,
+      "sha256": "ef55d33eb0375d72b1481670402b59f90498380fcb00dc3d84b83b94d7e0882f"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/nostr/PairingProtocol.kt",
+      "bytes": 12001,
+      "sha256": "36aa7d09d2b50433f8912245e70c098f6e0a529b6b1ba55d1d60e51583e68540"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/nostr/RelayDns.kt",
+      "bytes": 1088,
+      "sha256": "cc2684300905b2280df1d320a9dd3378e7439ab89af50bbcc1abc75cdbbfc975"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/nostr/Secp256k1.kt",
+      "bytes": 5547,
+      "sha256": "1079d347a7c418a04266e393beabcab93375d37dfcbb7c1072c4b980843a6244"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/nostr/StrictJson.kt",
+      "bytes": 4887,
+      "sha256": "d4888f44c2681d8153e7a84f68bd728af85f08a9d33631539d954a9615457033"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/prefs/LabelAppearance.kt",
+      "bytes": 1123,
+      "sha256": "96ab8624b0c8a02d2cc6e4f70218ae34c7a2715f6432f5f6cc041bba021527dd"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/prefs/Prefs.kt",
+      "bytes": 11644,
+      "sha256": "97363919d204441c7e81fd82c7464e8a76c6adf2578326dc367fe94652864026"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/rsvp/RsvpSession.kt",
+      "bytes": 2679,
+      "sha256": "fd147b30053826d231bc1d2f544328d6820a535db82c61991318f5fd3b04978c"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/security/KeystoreWrap.kt",
+      "bytes": 2394,
+      "sha256": "0390d69a08776e5e4fb08718792acfaca8fd61e40988ef623f84e67b246436ae"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/signer/AmberSigner.kt",
+      "bytes": 1534,
+      "sha256": "70802f3b5f028d9021d82284721f40647a5d21db793f2735458000be4f236237"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/sync/AckDispatcher.kt",
+      "bytes": 3674,
+      "sha256": "cf1119994dd858e211d2ddebf9f0be5e766c8e224ca6617fa00c1ed17c058d67"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/sync/AckRecovery.kt",
+      "bytes": 812,
+      "sha256": "584c8e2d172f905f9d1c10f9a5323bc8038f92637e8144dbc703e3a1a4e2a6b1"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/sync/ChannelLease.kt",
+      "bytes": 2951,
+      "sha256": "d6672ebd210775243cd991308da30e57b4c50a884650ad33414668a55a90d933"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/sync/HistoryCoverage.kt",
+      "bytes": 1858,
+      "sha256": "1c8c6e9c637cb3f0cdabbdbb9478db2c112b39b8d1fa23fb0f356ea29f3e1f77"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/sync/Ingest.kt",
+      "bytes": 5822,
+      "sha256": "f1c605c7ada2323e22a0a77e3697a662be6074f78b4b0c6858b92f0907644934"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/sync/PairingCoordinator.kt",
+      "bytes": 17180,
+      "sha256": "19d34a70ca92670ad4593385346cf09a1a8d1d502ddd88acf7e33fb5f24c448d"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/sync/SyncWorker.kt",
+      "bytes": 12317,
+      "sha256": "b14437706dec46002826c819bc4201a6f274cdcd64fa579162e77601eab5ca5f"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/sync/TransferManager.kt",
+      "bytes": 26340,
+      "sha256": "ae916213a6f82bbded76f267b73dec59bb501b6d58c5072d08a78ec9ab7e848f"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/AndroidTtsEngine.kt",
+      "bytes": 5239,
+      "sha256": "1a8ae7012224dcffb99ba66a60dec8ea70ba8057ec27861e7f6fd7f81c66469c"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/Narration.kt",
+      "bytes": 3187,
+      "sha256": "871a96a4ca2e854791bf025091983154eb337ba7b3ead3e7ba9307a645177b32"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsController.kt",
+      "bytes": 3866,
+      "sha256": "2cdfc3d19d3d4fbaaaac0947633eb8bc6bcf57451c8d8934617f9654c6de786b"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsEngine.kt",
+      "bytes": 580,
+      "sha256": "449e0a99f83ff932aebac69b85317d7a88e969a1e23220413d0721118b4a29f1"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsMediaPlayer.kt",
+      "bytes": 4417,
+      "sha256": "31689fe7f0ef48a70597ed1154a05471bc7bd3456d6a9a2589e6652d10cdcc52"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsNarrator.kt",
+      "bytes": 6482,
+      "sha256": "8d71aeeaafa5121abd7e9b793b6c80de9d875d37602e65b1dc35be5eb5eb48ad"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsPlaybackBus.kt",
+      "bytes": 672,
+      "sha256": "6481c45c895d45c2327a039ed885faefacafd2d5469722572a8d9c6eb15258ef"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsPlaybackClient.kt",
+      "bytes": 3940,
+      "sha256": "4f78ff014f205fbf48c20f6f0a7ed1dc9161fbcd05cd63df13d5353222111dfd"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsPlaybackService.kt",
+      "bytes": 9430,
+      "sha256": "82a3c18f441e1ef7c2eb3abc5f0b091e16898db59f6b35166bf550288aa23019"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsPlaybackState.kt",
+      "bytes": 1093,
+      "sha256": "67f60c41cf55cd9e664b0993865614c7a002a8d6bfadd599dc1b39de6556835d"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/tts/TtsSessionCommands.kt",
+      "bytes": 858,
+      "sha256": "45979e560d4bd5594487a3568883b1e3b2aa2a92a5bdc2ea99b45444112e6c1d"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/ArticleAction.kt",
+      "bytes": 929,
+      "sha256": "96ad24e86c2263c1d788b295ef85309612a3edfe4784bf12df819465b1344ff1"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/CurrentReviewCommand.kt",
+      "bytes": 318,
+      "sha256": "25d19be252a7e11910778e734df7bd76ad117e97d17e408798df46e92eb00ee7"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/DestinationHeader.kt",
+      "bytes": 1820,
+      "sha256": "8f1e3301e986735f2d845783fb3f2f14cc4098effdf4ad15590c516db327b90b"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/Haptics.kt",
+      "bytes": 2397,
+      "sha256": "0dabdb1f0bfce00d5e725b4448744c3b08fb0a5cb44754089619218561d09e78"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/HighlightAction.kt",
+      "bytes": 607,
+      "sha256": "0ef235e601bc71cac62c024c76aceae7863968000d02f820d6bc85324bdcb0d6"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/MainActivity.kt",
+      "bytes": 59663,
+      "sha256": "c1031f169d7034e1706fdc99c1d4f37425b496d5315b5ddaea93488527e96725"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/MoveNotice.kt",
+      "bytes": 590,
+      "sha256": "eeb0e45941c7ff95d51520ffc5507c5f9e2ef541e121e7374b60771e702b0f25"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/NoticeCoordinator.kt",
+      "bytes": 2187,
+      "sha256": "79bb16a8d9fa18cf894346290db05d838f8a3b3475c42563e51f04dc79b24e49"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/ReaderBottomNavigation.kt",
+      "bytes": 1329,
+      "sha256": "e8898a23a316d55926d7f4fe18ff41a8ac6aea7129eea7baaf23550f958b22fb"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/ReaderSearchField.kt",
+      "bytes": 5567,
+      "sha256": "f2c794c9f080e7aeb8b2f1ee113a5aa9ab2d057478f0e4825d6533b32628fb26"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/Route.kt",
+      "bytes": 1431,
+      "sha256": "0fdebc323668761f7a90041639d9dd037974e8def80c687c39d42bd103f59621"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/RouteStack.kt",
+      "bytes": 922,
+      "sha256": "b1d4d14b0db8f6897023aa9d84d5e44708f54e2e02982aa714e1759b333ae9f7"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/Triage.kt",
+      "bytes": 2154,
+      "sha256": "591f89af2a6c0d48fa86836705650cef7459e23dee6333ad28a280fd5cc215e6"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/ArticleHighlights.kt",
+      "bytes": 15792,
+      "sha256": "30cf39e591057213087560267be1bb1858639be748ccefd6cc2b122d26281cd6"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/ArticleRenderer.kt",
+      "bytes": 8127,
+      "sha256": "c08687858c9e4e28f7d3f7dfcea0df652cd0bc2fe0f20c069d68e42e6828d02d"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/HighlightActionsSheet.kt",
+      "bytes": 4228,
+      "sha256": "a0dc79d09b7bb3b4460569bbafc1937f47a0d27a280130394ddde424a4e7cee6"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/HighlightDetailScreen.kt",
+      "bytes": 3868,
+      "sha256": "ddfc777a87b7ba57b237240302b7005981ed427f8364d8d787b1bf4dac1297a8"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/HighlightsFeed.kt",
+      "bytes": 25913,
+      "sha256": "1525eb50697ecf074134455667817cf58154cb170021e2080e7a416780dc1b04"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/InboxScreen.kt",
+      "bytes": 62502,
+      "sha256": "64d3e29436d2cc079a49a33c40e45a753b2ff3ec2a76eb58a2b56687057e7e4a"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/LabelBadge.kt",
+      "bytes": 3134,
+      "sha256": "39db48e8d938539c028dc91c8dbc582025f4abdbbcef8fdeb5ea1b551f7b1881"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/LabelsDialog.kt",
+      "bytes": 5103,
+      "sha256": "7d9440fc5143b44492ef7d8028e55f4e96f0b7b636de5cbe43b6bcde44f6cbdb"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/ManageLabelsScreen.kt",
+      "bytes": 9240,
+      "sha256": "7f9fb6dff1c3a1adf85d9e80718ed4767aa6218eed10fed5439ef9b546a7dafd"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/NativeArticleView.kt",
+      "bytes": 52712,
+      "sha256": "e85427d22e575b07e9393cb3bf56f3488e537137b008f29b273c055110f38c2f"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/NativeTableStyle.kt",
+      "bytes": 3161,
+      "sha256": "5c8b574f030ee5b131e265976161264bc6a01b4793a1bb3a1cd1ef31d966f2ed"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/NowPlayingBar.kt",
+      "bytes": 2585,
+      "sha256": "5dbb41ec4a66fd8cf9de41272c58e77c24ed6e0b9bfc5d2b125b2af6f9ef0b02"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/PairingScreen.kt",
+      "bytes": 14998,
+      "sha256": "0626f1dcc95e142bd1391b91764c38d6d014532e45e2c865fb5ab4726b4f955b"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/PreparedReaderScreen.kt",
+      "bytes": 60852,
+      "sha256": "dee475cb976ee46d5a9c30ae0087dabcfedd3877fdffaece2d695fcd1263b6c5"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/ReaderScreen.kt",
+      "bytes": 15734,
+      "sha256": "ceebfca7d714e8e0ef76ab494dfbd47659fb938ce4d104dae1f0a02cb95a7077"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/ReviewScreen.kt",
+      "bytes": 12761,
+      "sha256": "315f0b2bd9b8fa77a882d98ef1bb3936eaa8e7160b28e176e1d2511ea994cd04"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/RsvpScreen.kt",
+      "bytes": 9304,
+      "sha256": "59aa1fd87ea7104399162cb9daccbe35dee85de91be72cf7d062cccdf87355e3"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/SettingsScreen.kt",
+      "bytes": 6671,
+      "sha256": "f52b958582fc7dbdf4ad1149932af2d12ae17cdc671cce572507926b349a907b"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/TableViewer.kt",
+      "bytes": 3136,
+      "sha256": "e2f81984220cdd8a0c931bf35f390c82405ee05a1a0153ae9f298d8bb9f56e63"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/screens/TtsBar.kt",
+      "bytes": 2935,
+      "sha256": "59af7a1da33a7cd19595f36ea7140619bb4d20c6576f09c721226a0012d653a9"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/theme/EinkHighlight.kt",
+      "bytes": 2237,
+      "sha256": "e2bd29fd5a1c36c835070f0ca500216707ff90938d8c5439d50ce782f8876faa"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/theme/HighlightPalette.kt",
+      "bytes": 678,
+      "sha256": "90d9050c3111fc243d57ab6858d82343e84e0798d92bd3e0ce26ac10ca057046"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/theme/LabelPalette.kt",
+      "bytes": 643,
+      "sha256": "04f19735a18d92c007ad37a51936c29a7103fc8cd2bb9375d2beecf79c406ae1"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/theme/Motion.kt",
+      "bytes": 2718,
+      "sha256": "d9d49c515b3c161f50e96ccc93f55f7b17ab85ab5cab0259a66700796f1c77ad"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/theme/Tokens.kt",
+      "bytes": 12991,
+      "sha256": "b5250416af5719cffd04a070e2a53a65d93457466c48a994ce648855814df148"
+    },
+    {
+      "path": "android/app/src/main/java/com/reader/app/ui/theme/WindowAppearance.kt",
+      "bytes": 1080,
+      "sha256": "68afb3cb29cfef154095077c9d93dcb91dd09bc0b3b0d91f1c3112f5f2985642"
+    },
+    {
+      "path": "android/app/src/main/res/drawable/ic_reader.xml",
+      "bytes": 793,
+      "sha256": "7a5239a8fa45af1be93a25783b93dcd29ccb9ed131efdfa26716f665c9445bec"
+    },
+    {
+      "path": "android/app/src/main/res/drawable/ic_reader_monochrome.xml",
+      "bytes": 520,
+      "sha256": "491bb5ef0f17f62bba0435067474b41b3dcdf53a065ab6c7a88b4256a20571fb"
+    },
+    {
+      "path": "android/app/src/main/res/drawable/ic_swipe_archive.xml",
+      "bytes": 300,
+      "sha256": "18b158aead3a1ec7348d87aee887543a6b139f277409180a3c71d5ed0fad855e"
+    },
+    {
+      "path": "android/app/src/main/res/drawable/ic_swipe_delete.xml",
+      "bytes": 323,
+      "sha256": "9022497feba97ecffa1ed2b19305861430d7fe210c090308e83d128a2bf76764"
+    },
+    {
+      "path": "android/app/src/main/res/drawable/ic_swipe_later.xml",
+      "bytes": 320,
+      "sha256": "fba1db1cbda159ae967af5d865e4af2b5bb5a2a0a7ea172f042cfb97d09091dc"
+    },
+    {
+      "path": "android/app/src/main/res/drawable/ic_swipe_unarchive.xml",
+      "bytes": 302,
+      "sha256": "ffc1e66c29413d9e6fbf9ef7854303053e1022d086e21058769f299a50a5aaf6"
+    },
+    {
+      "path": "android/app/src/main/res/font/abeezee_italic.ttf",
+      "bytes": 47012,
+      "sha256": "3892bb74578207ed6edae040a0869e54dcae13a466d005460570947062137dd8"
+    },
+    {
+      "path": "android/app/src/main/res/font/abeezee_regular.ttf",
+      "bytes": 46016,
+      "sha256": "2901c8df256648cc2bb2e3afb381cb8d28e65ed3dbe11de20695ae4d5ffdeda9"
+    },
+    {
+      "path": "android/app/src/main/res/font/asul_bold.ttf",
+      "bytes": 33424,
+      "sha256": "0aea5c8f5f04c9b2f252eb5b3d7f6d2ee80cbef613526ebbc330c592900bbcfe"
+    },
+    {
+      "path": "android/app/src/main/res/font/asul_regular.ttf",
+      "bytes": 33440,
+      "sha256": "2bd614af0594c9657cc6f986f602b294d2a903b3a7ce137942a35ac01b6f1f76"
+    },
+    {
+      "path": "android/app/src/main/res/font/atkinson_bold.ttf",
+      "bytes": 55256,
+      "sha256": "5a3b0c8cc8ca545155150b4512a1fa248298df121c50d6557e651e61fbdab92f"
+    },
+    {
+      "path": "android/app/src/main/res/font/atkinson_regular.ttf",
+      "bytes": 54348,
+      "sha256": "7fb917c89019896d0b52ee84b7cbb3304c18cb90b19a62f5e32712bd23e97669"
+    },
+    {
+      "path": "android/app/src/main/res/font/crimsonpro_var.ttf",
+      "bytes": 246324,
+      "sha256": "16aa9fb7300a93637da51fac03a071b2ff08b6bbf65f99c794c25f040b58af6a"
+    },
+    {
+      "path": "android/app/src/main/res/font/inter_bold.ttf",
+      "bytes": 420428,
+      "sha256": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+    },
+    {
+      "path": "android/app/src/main/res/font/inter_regular.ttf",
+      "bytes": 411640,
+      "sha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
+    },
+    {
+      "path": "android/app/src/main/res/font/newsreader_var.ttf",
+      "bytes": 451664,
+      "sha256": "8a08d13f8a6c0d51be379a60af84f945f65369a67e509ee3c3bdcc421254d7c1"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "bytes": 253,
+      "sha256": "9e69283f8cac8abe7a29bcaf5a7f83cf2da47789847f9f210bbcc40578822d1e"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-anydpi-v33/ic_launcher.xml",
+      "bytes": 320,
+      "sha256": "946c6e8073661a02ce1faad7e079f8a62f5d2435b84f837ea3416abd908af57c"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "bytes": 2067,
+      "sha256": "8a1cf4e88237ad94aeaecd256f5fcde0a7326a6b697e503154b95daf257d19e3"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "bytes": 1508,
+      "sha256": "bae4a1c7d5d1ccaae443a99cedb715b07a4151b13800876a02335292ee6defb6"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "bytes": 2533,
+      "sha256": "dbdad59cd6675b266b4d25d514f5c01e1cd62e18d9ea9c3868342c1483a75e35"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "bytes": 3835,
+      "sha256": "0b6d017e77445bc99762aba1075f325b485fad4a6ef18c820e81feec66115d7b"
+    },
+    {
+      "path": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "bytes": 4610,
+      "sha256": "b25eb3034ea6b8adbb2ef4b1a54f44bfebdd59729c5d117a69f929fb8f230b75"
+    },
+    {
+      "path": "android/app/src/main/res/values/colors.xml",
+      "bytes": 76,
+      "sha256": "aa9597e5d0684a3f4e1d464d8bbf2524e7bbb134ddbc953993786edbb41b9241"
+    },
+    {
+      "path": "android/app/src/main/res/values/strings.xml",
+      "bytes": 63,
+      "sha256": "f2758714ee5c23453adc30de957e33d1f0dfb9a2169f2c736365987038beb54e"
+    },
+    {
+      "path": "android/app/src/main/res/values/themes.xml",
+      "bytes": 501,
+      "sha256": "8b563229c15fd97fd6ae3204cac944d6ee14179211f4b1bc965b659ebe9afb27"
+    },
+    {
+      "path": "android/app/src/main/res/xml/backup_rules.xml",
+      "bytes": 952,
+      "sha256": "9c0680166f549a448ff3b4acc76af3c08b854ccbb0e9278062fcf8f788504f1b"
+    },
+    {
+      "path": "android/app/src/main/res/xml/backup_rules_legacy.xml",
+      "bytes": 460,
+      "sha256": "b6d25f2b96cdd6b451a701a01ec246934538f89635a534d679e0825dd2f555ee"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/AckRecoveryTest.kt",
+      "bytes": 1711,
+      "sha256": "2d530dec57511c755d0fb47c3b5e13825c61c508fa104fb0857f790b5b3b67e7"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ArticleExtractorTest.kt",
+      "bytes": 10188,
+      "sha256": "81f8ad390233fddca2459ce9fc72a4eb99e079f7445c67208d6442a6e4e040cd"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ArticleModelTest.kt",
+      "bytes": 2209,
+      "sha256": "c49b544ec8340aa6d0316bf89f5f94e6d216a843b04f42d17ffe85f3e5a87094"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ArticleNavigationTest.kt",
+      "bytes": 1470,
+      "sha256": "098c1dc96928fe4f65b4af88a8e35bc6709987a5b59dc195a96bd72b258a665d"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ArticleReviewScopeTest.kt",
+      "bytes": 4695,
+      "sha256": "e4f8d5df15e6c52ce3cc3feb057a9679fa50630ee5c1ec11ec06cee5c96e11a9"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/BoundedTextTest.kt",
+      "bytes": 1248,
+      "sha256": "eeabaff580107ff01c5d3dcadb46731bf34d48417b4a38684ee823974d49f283"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/CaptureFetcherTest.kt",
+      "bytes": 8958,
+      "sha256": "fd54a59dcf7136882f98afcf860024a33da6d90ba9f16c016936a9d3486cf56c"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/CaptureUrlPolicyTest.kt",
+      "bytes": 4010,
+      "sha256": "4872568ef7bf5b9cf5d163ce1433b67bfa1124a614ab8001cd66de55b01545cf"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/CurrentReviewCommandTest.kt",
+      "bytes": 681,
+      "sha256": "38f1d02dd9070a78b13b3335c9f23492d1c1401fc812d39f80867bc5b1f4d655"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/DuplicateTitleTest.kt",
+      "bytes": 2603,
+      "sha256": "3ad023a43a868022f367749842cf363de7417c6bf8b6ba5279528d7df7481184"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/EvalMain.kt",
+      "bytes": 3610,
+      "sha256": "84d4cf9eb8088ff8f74f27fe591dcd10e3cefd55672c2f229b1f20df4336c7ca"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/GiftWrapTest.kt",
+      "bytes": 9173,
+      "sha256": "860a717dfbaa5e923dd18fcfaf1de877b759c80ef302f4d12099a3a74f551c45"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/HighlightActionTest.kt",
+      "bytes": 922,
+      "sha256": "ed6cc1f5aa6645b65f767fd10dc8f380ff7646e116725e168d537d52c52301be"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/HistoryCoverageTest.kt",
+      "bytes": 1425,
+      "sha256": "fbf4cb67def569b6b6c4603429dc8bed9beac4c5a7294461737a204a60214628"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/HtmlMarkdownTest.kt",
+      "bytes": 2557,
+      "sha256": "ef2cbbf3e196ba5db869ffc313e516d6528b74c9d50a4450cf234e69e9620cf5"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/LabelAppearanceTest.kt",
+      "bytes": 1626,
+      "sha256": "0b928ae145eab61dc662a9b2fc651aef5b9fec7d56f9aa63aa08bb47f4ca43b0"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/LabelNormTest.kt",
+      "bytes": 874,
+      "sha256": "eaa3858a450ebc76b1aef959ab715a811975ce2c080f27fcfe8658f2d3c40e90"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/LabeledCorpusTest.kt",
+      "bytes": 9751,
+      "sha256": "a06ba6ee2351c9e17a11780ec9c89f3366bd07eb2dc243259f2cef6ea2fe413f"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/NativeArticleSelectionTest.kt",
+      "bytes": 702,
+      "sha256": "27017e21eef996df7877734a0b7a5f02961ddfa200e2c8515cfb96a3e2f8ae5a"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/NativeMonoFallbackTest.kt",
+      "bytes": 468,
+      "sha256": "1feba9e2e62de3fcc4f75e195800a5ff92a5c6d744b11a8b2941ec3c4a9edfeb"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/Nip44Test.kt",
+      "bytes": 9384,
+      "sha256": "6ca453b2e2c5a714af9dfa8ad7d59881dfa2d13757307e8f42e3072025ebd884"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/PairingCameraTest.kt",
+      "bytes": 2300,
+      "sha256": "488c79445729ea487c2bed9df7ba3ed70c63ae68709e127cb7d7c9ef50cc56f6"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/PairingProtocolTest.kt",
+      "bytes": 8978,
+      "sha256": "0c30144d816c93263623319b0919c6b1605f3d8222c3f3bb46b92748ca855ec1"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/PasteDetectTest.kt",
+      "bytes": 1448,
+      "sha256": "ad65c2d62d8bb650f70ec3e12cb17e0be4ca99d8e64ba93b92fa516f3a222f52"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/PenSettlementPolicyTest.kt",
+      "bytes": 2096,
+      "sha256": "75a3a90bd0fbd87b855ff7b2dc6ecc315f7e182ed0a9a36f92011c11e67c8d08"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/PrefsMigrationTest.kt",
+      "bytes": 4123,
+      "sha256": "e017d332d93712ec65c067fa0322b0d64a76540e8669831e2d9409f480a07dfe"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ReaderCoreTest.kt",
+      "bytes": 6097,
+      "sha256": "042183403efb337e686bab13baa2460fdc7b8fe9a7a8e988f4fed6f7001d71b4"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ReaderGzipTest.kt",
+      "bytes": 2894,
+      "sha256": "85505c063875b1af71474aadd92989afe1e70b654aabb6d9ce2e84556263ab6b"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ReadingRunTest.kt",
+      "bytes": 1337,
+      "sha256": "a573dc7ada255a30f0ae88d18b44b05931f48ba7d0b7f12ec3dd428522a9f846"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ReadingSessionTest.kt",
+      "bytes": 9353,
+      "sha256": "b8cc790f9cbabc7852595b53938cafab6daf07d592638534eaab271b45c87394"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/RelayClientAuthTest.kt",
+      "bytes": 14601,
+      "sha256": "d1eaf5291891c09ccd32d2232edbe31f473f975ea31d4ad23a4cc3d9d3ae810d"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/RelayClientFaultTest.kt",
+      "bytes": 6094,
+      "sha256": "080b05d1ecca1fd9c08db19c4854dc72f80818d37d244f5936de29b94791f069"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/RelayReceiveTest.kt",
+      "bytes": 6455,
+      "sha256": "cd9377bd026135fc102953653ec508c515546225363d593177817633b984e19b"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/RenderedProjectionTest.kt",
+      "bytes": 1370,
+      "sha256": "ddabf011defa6bb3e37f4a1b06a91fe8817420a3c1e1a6ab982b1c24f1949e16"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ReviewSchedulerTest.kt",
+      "bytes": 8362,
+      "sha256": "10ce4be6adb008ced9ad9a83e2077aae92ef15cf8c0b3fdb464811a48a15e7ce"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/RouteStackTest.kt",
+      "bytes": 2224,
+      "sha256": "ca002522bc3f8924841485e1fcf14ea581a7f0386e2211282b2ab2176d09094a"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/RsvpTtsTest.kt",
+      "bytes": 3135,
+      "sha256": "1f7bf630623dc7325bf9e34696497decebdbc2cfe4a5a3ddd5c0ede551a3e6dc"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ScriptAndBoundsTest.kt",
+      "bytes": 7041,
+      "sha256": "8a446e9d32a46ac64d65f847bd94b7f2ba0ad39f0120cb55ffd8f95090c9f76e"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/SearchQueryTest.kt",
+      "bytes": 3922,
+      "sha256": "e61c912b84b89672a656443b9a68582dd4631d8cb031bd2ba071a8ad3196de3f"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/SearchTermsTest.kt",
+      "bytes": 984,
+      "sha256": "35eb031f051d4c13bed513cbfd9b3aae3f39d80441e11a2891d96b3127fe3d20"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/ShareIntentClassifierTest.kt",
+      "bytes": 3405,
+      "sha256": "702a2428d7b74aa5e21e4e849ea22ccf7679aea3df62439bacdd83a5201d928c"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/StrictJsonTest.kt",
+      "bytes": 1168,
+      "sha256": "a6e7c9b748b857947b246b96e4ddb8b9e1b6e7836c260fc1ee1d4a0862157228"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/SyncWorkerLogicTest.kt",
+      "bytes": 1686,
+      "sha256": "022d5fb3c5a8c4042fbe713c2107a2800500e33e22df1a8517a2bbbf6c779062"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/TriageMovesTest.kt",
+      "bytes": 2607,
+      "sha256": "52a1548a2eacb41ea1141e2a1c815a04e38871a84be96281976832819f53cfcc"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/TtsNarratorTest.kt",
+      "bytes": 11156,
+      "sha256": "969b5ad24df9257f858aabcec9b79edec07f403624a3ae37d09e92a1c391a0b7"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/TtsPendingStartTest.kt",
+      "bytes": 3680,
+      "sha256": "d9b5faa23b534369b2ac018be21be5822d5dfc9e1e957079ba48f45c13910b37"
+    },
+    {
+      "path": "android/app/src/test/java/com/reader/app/WikipediaExtractorTest.kt",
+      "bytes": 12903,
+      "sha256": "e654036d8c12c77addaa7c9db7578d993924368ffb2e767d6277bdc39fc87bb4"
+    },
+    {
+      "path": "android/build.gradle.kts",
+      "bytes": 358,
+      "sha256": "2398f48e700593989919a3d3b63a1ede05daafc90ddc8956c62ba6ce2c617cac"
+    },
+    {
+      "path": "android/gradle.properties",
+      "bytes": 133,
+      "sha256": "9ea6d394c7683b725ea86c9d50d77c75470c7f55d1d16c8d74f10bb16c8c63d5"
+    },
+    {
+      "path": "android/gradle/wrapper/gradle-wrapper.jar",
+      "bytes": 43504,
+      "sha256": "498495120a03b9a6ab5d155f5de3c8f0d986a449153702fb80fc80e134484f17"
+    },
+    {
+      "path": "android/gradle/wrapper/gradle-wrapper.properties",
+      "bytes": 337,
+      "sha256": "dc0c4f45f299ac2d51077dd1587e619128d091816ad9170d535a23694ddf355b"
+    },
+    {
+      "path": "android/gradlew",
+      "bytes": 8762,
+      "sha256": "a3648413b47ef77af21d5ebc36c687c7d103aaef3e17f33de7d4f080a6f300a3"
+    },
+    {
+      "path": "android/gradlew.bat",
+      "bytes": 2966,
+      "sha256": "57931b17dd228e5c24dac90e815d0bf82477e831a4618dfab4136f5446b42a9f"
+    },
+    {
+      "path": "android/settings.gradle.kts",
+      "bytes": 294,
+      "sha256": "e1c2256589fab4f587aef7954cdfc49ab455cc22db679f69bb27ced9439869ee"
+    },
+    {
+      "path": "chrome/icons/icon128.png",
+      "bytes": 3926,
+      "sha256": "b6670ee18b15bd84ec7622ab8c321ce077b0ea1196c8d0890033ccb9fdaa9585"
+    },
+    {
+      "path": "chrome/icons/icon16.png",
+      "bytes": 689,
+      "sha256": "e20e6a63f2a758b2f8d251510efc21cfdefd5efac8f7923ae61b68d77f39c1d4"
+    },
+    {
+      "path": "chrome/icons/icon32.png",
+      "bytes": 1258,
+      "sha256": "427a22a8aab777a01ae1dc4b4dc61d1f15ad89855647db9eba2971df4d47b84d"
+    },
+    {
+      "path": "chrome/icons/icon48.png",
+      "bytes": 1729,
+      "sha256": "29f97dd837822642bdec067d669420e02643fce26292edfedb50ebf45b0d4b7c"
+    },
+    {
+      "path": "chrome/manifest.json",
+      "bytes": 1421,
+      "sha256": "01c0f8395bf2a428354388f4ed91877e991a3cd36dbac6596bb937415ab12b81"
+    },
+    {
+      "path": "chrome/package-lock.json",
+      "bytes": 99992,
+      "sha256": "45c3d055f94c578700064e12fe0e29210e1b2b796e3059cec43ad3f4f6c699ac"
+    },
+    {
+      "path": "chrome/package.json",
+      "bytes": 996,
+      "sha256": "8e467c29c3d3513c8f91c401e0efa5da7ffbcdc55e3c293faf410aa43ae84a0c"
+    },
+    {
+      "path": "chrome/scripts/cdp-installed-check.mjs",
+      "bytes": 13421,
+      "sha256": "de8d2babff84ff01e2f3d03cfd9f18d044333f420b56e6573cf074048579e524"
+    },
+    {
+      "path": "chrome/scripts/smoke-relay.mjs",
+      "bytes": 4283,
+      "sha256": "de5f6a47ee1d5e7dd47de1f80c0324864b37846a224b23adc0a3117798429692"
+    },
+    {
+      "path": "chrome/scripts/verify-dist.mjs",
+      "bytes": 1198,
+      "sha256": "3fa58099c8d09671b7c328ed4168d0493773c02beaa4c0243ede0dcd7132b49e"
+    },
+    {
+      "path": "chrome/src/background/durable-alarms.ts",
+      "bytes": 1301,
+      "sha256": "de267f29332e6fa25b6dca73ce67ba69df8ea753a8c97b2f45421f75ad27fdf0"
+    },
+    {
+      "path": "chrome/src/background/resumable-publisher.ts",
+      "bytes": 1722,
+      "sha256": "f36849af17fbb9c2976bff94217375ff693118aab16800a4c4cc62093fc04a9a"
+    },
+    {
+      "path": "chrome/src/background/service-worker.ts",
+      "bytes": 71079,
+      "sha256": "516a0b5d7697f435a9278f4eb23daada9d43fe85aff7ae623ee061e88597f1ba"
+    },
+    {
+      "path": "chrome/src/background/site-access.ts",
+      "bytes": 1633,
+      "sha256": "5b38036af58a76828e476da686a5a7d9f1285c71dab6dcfb3ac71dad5fe5aabd"
+    },
+    {
+      "path": "chrome/src/content/capture-feedback.ts",
+      "bytes": 2230,
+      "sha256": "4d4b85c1ebfb464404363fea08380ef34c96e0f8ba7edebec632cb3791072747"
+    },
+    {
+      "path": "chrome/src/content/capture.ts",
+      "bytes": 13231,
+      "sha256": "f5d31e108e520becb262df9280f699b1d363ce3f90ccf27729b5ec4773b0043b"
+    },
+    {
+      "path": "chrome/src/extraction/pipeline.ts",
+      "bytes": 11172,
+      "sha256": "8eda967b27b61180343506bd25c9682cf0bdaa9d8e43c6198e53e8ea2391aebb"
+    },
+    {
+      "path": "chrome/src/nostr/history-scan.ts",
+      "bytes": 2621,
+      "sha256": "dcbe20efd8f215143fea0adf7d73839c274bad89244aceb6274b0cc5fdcaab69"
+    },
+    {
+      "path": "chrome/src/nostr/nip44.ts",
+      "bytes": 5593,
+      "sha256": "e2d5104d1da521c7fbbf7fdc3833cbe5102051b31a0de38e6cce6d8d0f4804bf"
+    },
+    {
+      "path": "chrome/src/nostr/transport.ts",
+      "bytes": 24134,
+      "sha256": "d21e41b0b9ab3a1c5716a1ff46d2cb1add917b88e3b0c5f2fbe762840906eb70"
+    },
+    {
+      "path": "chrome/src/protocol/capture-feedback.ts",
+      "bytes": 686,
+      "sha256": "bc66421f2b70852f90a923655c7c62c1ecda2fe794a8304b9bd0aadbeb401db5"
+    },
+    {
+      "path": "chrome/src/protocol/codec.ts",
+      "bytes": 4821,
+      "sha256": "1e8aef72e811e9c6859c683b893cb37eee0d60549e7dc876568dc16869a7884e"
+    },
+    {
+      "path": "chrome/src/protocol/core.ts",
+      "bytes": 3639,
+      "sha256": "c8d13a92276a97208d0e69752d91391a3876e8fdb9cd449da44aa79e625095c6"
+    },
+    {
+      "path": "chrome/src/protocol/delivery-state.ts",
+      "bytes": 1323,
+      "sha256": "660a7bc0ed43432b665f4ce2d97d4c65971c7764d49e77e1c4a6c55ea61d0570"
+    },
+    {
+      "path": "chrome/src/protocol/device-binding.ts",
+      "bytes": 2222,
+      "sha256": "c82fc591f328da51abfbd2a1a82c5782d109f58fc6019505b061b83cbba43bd4"
+    },
+    {
+      "path": "chrome/src/protocol/messages.ts",
+      "bytes": 4061,
+      "sha256": "f1fef92c5a8a7ab4f473f04ff3dae036786e0c5dd288885c7834aacd626c5839"
+    },
+    {
+      "path": "chrome/src/protocol/pairing-session.ts",
+      "bytes": 2716,
+      "sha256": "efecb03a2feb8d668bd1b7ca1c872b2215f31b3dc92b49878a5d5ea07420050f"
+    },
+    {
+      "path": "chrome/src/protocol/pairing.ts",
+      "bytes": 10095,
+      "sha256": "e5f3993dcbb582ed75876f7214926d61c3cf730c5e0acefa3c1b942ef72b3332"
+    },
+    {
+      "path": "chrome/src/protocol/relays.ts",
+      "bytes": 3006,
+      "sha256": "33678ecf25ba293a20cb89cc803756ddf3ee3ccd822033f190c5cadea7057792"
+    },
+    {
+      "path": "chrome/src/protocol/serial-executor.ts",
+      "bytes": 962,
+      "sha256": "b5e92badcd46899015dd43d9a00f4284f47a2a79c41f261dc496fe717eb8076f"
+    },
+    {
+      "path": "chrome/src/protocol/strict-json.ts",
+      "bytes": 4695,
+      "sha256": "ca1fc705d7d0c7df57b514c53751e8c838d980f72b5774d9dfc8e39914942f62"
+    },
+    {
+      "path": "chrome/src/providers/adapters.ts",
+      "bytes": 11498,
+      "sha256": "34736b3c7f19a9f054d58831d00372daa5b22b3f70713bf9ecd7d82a90d4abe1"
+    },
+    {
+      "path": "chrome/src/signer/nip07.ts",
+      "bytes": 1333,
+      "sha256": "096f426ebcd89f8d56102a1f340192b6638bdb25a139e99646a4a22f4481f3fc"
+    },
+    {
+      "path": "chrome/src/styles/tokens.css",
+      "bytes": 213,
+      "sha256": "f60a437499580e74041184f70e6bcbfd2001caa600d79fdea949b65d14dcb041"
+    },
+    {
+      "path": "chrome/src/ui/options.html",
+      "bytes": 16789,
+      "sha256": "8db59e45a78db7d520ee2b40654f5aabd0177ba637eee82576dd06174c6d40cd"
+    },
+    {
+      "path": "chrome/src/ui/pairing.html",
+      "bytes": 3728,
+      "sha256": "01d0fd6286b8c5c8890ea26f8f6c06a81feb9ca36fa1cf52f16c0dd4aa36a4fd"
+    },
+    {
+      "path": "chrome/src/ui/popup.html",
+      "bytes": 1201,
+      "sha256": "cd88a258d56fc3647bd2cd15b1fb9741db02478e4fd13f42ab3b3fb4d8b282df"
+    },
+    {
+      "path": "chrome/src/ui/theme.css",
+      "bytes": 1548,
+      "sha256": "040555e5004c08308926668cd61634fedea7223deebe6130633ca3da9794130b"
+    },
+    {
+      "path": "chrome/src/ui/theme.ts",
+      "bytes": 859,
+      "sha256": "7e55efef53c954be6d8d7e667b73756ac52499beeefdb57869e017aae3dcd3e2"
+    },
+    {
+      "path": "chrome/tests/capture-feedback.test.ts",
+      "bytes": 5643,
+      "sha256": "bd3b6767c32d77714fc9a4cc3d79e45546029422f26e114ccefb1b5a4e105e95"
+    },
+    {
+      "path": "chrome/tests/capture-selection.test.ts",
+      "bytes": 1985,
+      "sha256": "5d75b6408026d50df843095fbdd8d19ec4f50ff1e5e26b0b9b605479729fe489"
+    },
+    {
+      "path": "chrome/tests/core.test.ts",
+      "bytes": 5191,
+      "sha256": "1b305bce12f2c65addca993fe621f0b505e2d708b59c055951f691ff5b36f06d"
+    },
+    {
+      "path": "chrome/tests/default-relays.test.ts",
+      "bytes": 3514,
+      "sha256": "7633536d08e25640b8508f26547f6bfbd8774f9b68d390da86642a9f9315b85f"
+    },
+    {
+      "path": "chrome/tests/delivery-state.test.ts",
+      "bytes": 1024,
+      "sha256": "68bbb92b0b9686fb620c1e16b87fe2deb33caaf9f34e91c6747cb1464c55f4a3"
+    },
+    {
+      "path": "chrome/tests/device-binding.test.ts",
+      "bytes": 1610,
+      "sha256": "41799fc620bc1a106455d4f838c383c12e5a0ebcaa2e4b1c437b6df86176eba1"
+    },
+    {
+      "path": "chrome/tests/durable-alarms.test.ts",
+      "bytes": 2801,
+      "sha256": "052ec67aef7f5be12acd2bb20460d23bc2365ffee1d1df5deaa2214e6aa67669"
+    },
+    {
+      "path": "chrome/tests/extraction.test.ts",
+      "bytes": 8160,
+      "sha256": "73be3530fedf1c88bdeb8c7c3af951d463e5f87734c407ca5501714011bf3045"
+    },
+    {
+      "path": "chrome/tests/fault-relay.test.ts",
+      "bytes": 14222,
+      "sha256": "2d9231d3676701bb8d5a9b8260ba31c82460cd87cf953396a11311ba05fa794f"
+    },
+    {
+      "path": "chrome/tests/history-scan.test.ts",
+      "bytes": 3001,
+      "sha256": "3115e6f1d5e60a47a3dd3d8d63ac69514ed9cffc11cd67dde55fc4e1e92bcc9c"
+    },
+    {
+      "path": "chrome/tests/inline-mount.test.ts",
+      "bytes": 4052,
+      "sha256": "201cdb869f17655b87c54b5b1e22b5fef5db68fe03a112b4a4148eb45c7731ed"
+    },
+    {
+      "path": "chrome/tests/inline-observer.test.ts",
+      "bytes": 9590,
+      "sha256": "0840816c006962db1a132ac1876328804ea72e062db78eb96e3c3442c89fa779"
+    },
+    {
+      "path": "chrome/tests/jsdom.d.ts",
+      "bytes": 116,
+      "sha256": "f3aa6ec77bbeb8096e754d4a9969615508a2228e5c5ebd9daaea7e35c26770b3"
+    },
+    {
+      "path": "chrome/tests/messages.test.ts",
+      "bytes": 1998,
+      "sha256": "5e89418d1cc831be7448e28dbfab9f498a76e274561534b82f21833ea0cbc020"
+    },
+    {
+      "path": "chrome/tests/nip07.test.ts",
+      "bytes": 1340,
+      "sha256": "b2765d812d24761d465a2e2817b41f94b60b042a9d9a5d80d1daeed434c8e581"
+    },
+    {
+      "path": "chrome/tests/nip44.test.ts",
+      "bytes": 5128,
+      "sha256": "c25e6021c5c18be342fd1e59ea5d2c2ede0397e44fec59a367748bb855836f18"
+    },
+    {
+      "path": "chrome/tests/pairing-session.test.ts",
+      "bytes": 3032,
+      "sha256": "bc00c6c986ead5594424e9066e78a6a03eae3d86b8b17bfacdfd79d545549063"
+    },
+    {
+      "path": "chrome/tests/pairing.test.ts",
+      "bytes": 5175,
+      "sha256": "6746ee04599717bebef52ceba3a8c43daff75452e08069143c0d655fd61e827f"
+    },
+    {
+      "path": "chrome/tests/relay-auth.test.ts",
+      "bytes": 9171,
+      "sha256": "d65b5b8993bbdf309b04f0cbcdcadc12e55f7f6906afac6c8d45a79cff9d66bb"
+    },
+    {
+      "path": "chrome/tests/resumable-publisher.test.ts",
+      "bytes": 3354,
+      "sha256": "193d16e7bf4bf2d47819e630130b54cf070a66306f1ad288c5e14e8fd2db5b82"
+    },
+    {
+      "path": "chrome/tests/rolling-window.test.ts",
+      "bytes": 821,
+      "sha256": "0c238fde1bd50e003976a02f84ad3da96f19efd9769061a51cd9bc813126f5cb"
+    },
+    {
+      "path": "chrome/tests/serial-executor.test.ts",
+      "bytes": 2036,
+      "sha256": "d17e0d1eab25a004804a0d5f60e8fdbeb832916e18ff88ab07a11ea5de7a4ea4"
+    },
+    {
+      "path": "chrome/tests/service-worker-recovery.test.ts",
+      "bytes": 1593,
+      "sha256": "61286c502425ec18034d1664c8bd5435a907a427e2689dce952b92aa9f85d0c5"
+    },
+    {
+      "path": "chrome/tests/strict-json.test.ts",
+      "bytes": 869,
+      "sha256": "c44eeaa6f1b4d5db12e69eda1798d5fd302c9a29819e4703198b70fb87e00f3e"
+    },
+    {
+      "path": "chrome/tests/transport.test.ts",
+      "bytes": 8196,
+      "sha256": "889d71e1a0cfdfd73734fbbef57370126b0a75e21a6105b91da4d05c53fed6b2"
+    },
+    {
+      "path": "chrome/tests/worker-runtime.test.ts",
+      "bytes": 22941,
+      "sha256": "9015bebb7af0abb0cc51522347c616a29a8630549e0e19ef9321ec061167a8cd"
+    },
+    {
+      "path": "chrome/tsconfig.json",
+      "bytes": 308,
+      "sha256": "b252f77bafaec55e76098042d373eb04f5d33bc1b2841dfc2b39868171059f74"
+    },
+    {
+      "path": "chrome/vite.config.ts",
+      "bytes": 1349,
+      "sha256": "5dd00550534f0e59d16cee1963af041694a69dd2061bbf94dad958d6db2c333d"
+    },
+    {
+      "path": "chrome/vite.content.config.ts",
+      "bytes": 873,
+      "sha256": "af40e44ac7caa49f93cdc589960329454512cd58702ab9c1a523e8a2719002ac"
+    },
+    {
+      "path": "chrome/vitest.config.ts",
+      "bytes": 130,
+      "sha256": "819e53128eda1d4d8b3646be576590563b24d73361186968b14ced760dceb929"
+    },
+    {
+      "path": "shared/default-relays.json",
+      "bytes": 228,
+      "sha256": "370d5f09f96c32a4e91368f6bdd550e25af59e010ec2e88c4e552f4f289f3ba4"
+    },
+    {
+      "path": "shared/fixtures/chatgpt/expected.md",
+      "bytes": 190,
+      "sha256": "27bf003a7ea174ae4ff6e8b1d3aa3b2e81f99bae7ca32c4b3b16d5c08a742c21"
+    },
+    {
+      "path": "shared/fixtures/chatgpt/response.html",
+      "bytes": 395,
+      "sha256": "e78a41a4f82ee4175b37ce08e60bfd4239657fe05b01fcb5aecff85eb902cae2"
+    },
+    {
+      "path": "shared/fixtures/claude/response.html",
+      "bytes": 282,
+      "sha256": "3fe8332850c13d320b60c75c01ae659038128955d772b31fd04529930ff54d19"
+    },
+    {
+      "path": "shared/fixtures/gemini/response.html",
+      "bytes": 221,
+      "sha256": "2a96648d0961354f58fb16af365fda70ec2a366d9ac730db192b9e777a5f5012"
+    },
+    {
+      "path": "shared/fixtures/generic/article-noise.html",
+      "bytes": 877,
+      "sha256": "f20f1adbf6c42f98cd33120a9ec0d80f4fd79256d5223467b661133e721ef0a3"
+    },
+    {
+      "path": "shared/fixtures/generic/expected.md",
+      "bytes": 293,
+      "sha256": "aba9b006366ca167c60a5a4fb2f35a55a4952d60f9cb286726bbb2a2221fc07e"
+    },
+    {
+      "path": "shared/fixtures/perplexity/response.html",
+      "bytes": 161,
+      "sha256": "b9512780e1198410e8a08650e62385af8d1ee89b7230863a066b6421cd25ac6d"
+    },
+    {
+      "path": "shared/schemas/ack.json",
+      "bytes": 1120,
+      "sha256": "36631f75b2399a6239f9c08dc0f32cb56b4051f56495b8d4e67a151ca90e461a"
+    },
+    {
+      "path": "shared/schemas/chunk.json",
+      "bytes": 957,
+      "sha256": "8d78e50ade653b3706781ee03763a4c6103f5224ab9fe26d6839852dc71681ed"
+    },
+    {
+      "path": "shared/schemas/manifest.json",
+      "bytes": 2145,
+      "sha256": "4406f45c68867ac4c7f394927fe6c9f226a975a01ebe7d710faa97c69a0f9977"
+    },
+    {
+      "path": "shared/schemas/pair-ack.json",
+      "bytes": 1055,
+      "sha256": "b074662db8517c4b2298f5e9515bc8e888dfdbee041ae1a8b7f861e1f0691004"
+    },
+    {
+      "path": "shared/schemas/pair-complete.json",
+      "bytes": 863,
+      "sha256": "55edfce99108e74b6299ac06bdc9f1647d2ab39d7bd8f85deffa408edd3ebd64"
+    },
+    {
+      "path": "shared/schemas/pair-response.json",
+      "bytes": 1305,
+      "sha256": "eb175e8cbf76662dfd6e05d9603134225b0920f381480e8c97a6dad593e49c5b"
+    },
+    {
+      "path": "shared/schemas/pairing.json",
+      "bytes": 1221,
+      "sha256": "02cd110e00f96cc70bbb007d670054d35a81e1e36ae0da5cc1f52751a6e38f3a"
+    },
+    {
+      "path": "shared/test-vectors/bip340-official.csv",
+      "bytes": 6564,
+      "sha256": "2cb77c9d511ec6863bbf4945d20ea01c72cff71951fe84ede8e6b1c7d7c7403f"
+    },
+    {
+      "path": "shared/test-vectors/codec-v2.json",
+      "bytes": 3601,
+      "sha256": "465244d39c7724bce875a3fccdf3da11514085d339f8b5966ffa1c3553ea049c"
+    },
+    {
+      "path": "shared/test-vectors/golden-v1.json",
+      "bytes": 1899,
+      "sha256": "39c007366e63efc858b3627c13c6874000d64bfccc031f78d4256f30b27871d2"
+    },
+    {
+      "path": "shared/test-vectors/nip44-official.json",
+      "bytes": 37630,
+      "sha256": "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040"
+    },
+    {
+      "path": "shared/test-vectors/nip44-v1.json",
+      "bytes": 999,
+      "sha256": "bdb70a33b0e4a9111b541211b5c78c06006160a5adbc196573016c9668ecff37"
+    },
+    {
+      "path": "shared/test-vectors/pairing-v2.json",
+      "bytes": 3202,
+      "sha256": "4a83c9573ab9c30ed15a548284eff9627c097a793c723bc7566e95c4125e8f23"
+    }
+  ]
+}

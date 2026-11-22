@@ -213,6 +213,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          onResumeAudio: () -> Unit = {},
                          onHighlightRemoved: ((HighlightMutation) -> Unit)? = null,
                          speechPlaying: Boolean = false,
+                         speechPlayWhenReady: Boolean = speechPlaying,
                          playerVisible: Boolean = false,
                          // Search landing: open at this cursor with a fading
                          // match tint; null means normal (quote/progress) entry.
@@ -374,16 +375,16 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   // Survives rotation: a transition in-flight across recreation stays guarded
   // so its action() cannot run twice. UI is disabled while true.
   var transitioning by remember(id) { mutableStateOf(false) }
-  fun transition(action: suspend () -> Unit) {
+  fun transition(pauseAudio: Boolean = false, action: suspend () -> Unit) {
     if (transitioning) {
       scope.launch { snackbar.showSnackbar("Saving… please wait.") }
       return
     }
     view?.flushSelection()
-    onPauseAudio()
+    if (pauseAudio) onPauseAudio()
     val cursor = inspectionOrigin ?: liveCursor ?: view?.currentCursor() ?: initial
     if (inspectionOrigin == null) initial = cursor
-    prepared?.let {
+    prepared?.takeIf { !speechPlayWhenReady }?.let {
       try { app.progress.offer(cursor, if (inspectionOrigin != null) inspectionFraction else it.fraction(it.projection.offset(cursor.blockId, cursor.charOffset))) }
       catch (_: Exception) { /* offer is coalesced; flush below surfaces failures */ }
     }
@@ -414,7 +415,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     // then leaves the article.
     if (immersed) { immersed = false; return }
     if (pen) { paletteOpen = false; pen = false; return }
-    transition(onBack)
+    transition(action = onBack)
   }
   BackHandler(enabled = !transitioning) { leave() }
   // Fullscreen focus reports its state to the Activity-owned window coordinator,
@@ -486,7 +487,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       if (part == destination) view?.jumpTo(origin) else part = destination
     }
   }
-  fun finish() { transition { finishReceipt = completion.finish(id) } }
+  fun finish() { transition(pauseAudio = true) { finishReceipt = completion.finish(id) } }
   fun undoFinish() {
     val receipt = finishReceipt ?: return
     transition {
@@ -525,9 +526,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           DropdownMenuItem(text = { Text("Find in article") }, onClick = { menu = false; navigationSheet = "find" })
           DropdownMenuItem(text = { Text("Contents") }, onClick = { menu = false; navigationSheet = "contents" })
           DropdownMenuItem(text = { Text("Listen") }, enabled = prepared != null && !playerVisible,
-            onClick = { menu = false; prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } })
+            onClick = { menu = false; prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition(pauseAudio = true) { onListen(it.projection, cursor) } } })
           DropdownMenuItem(text = { Text("Speed") }, enabled = prepared != null,
-            onClick = { menu = false; val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } })
+            onClick = { menu = false; val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition(pauseAudio = true) { onSpeedRead(cursor) } })
           DropdownMenuItem(text = { Text("Labels") }, onClick = { menu = false; showLabels = true })
           DropdownMenuItem(text = { Text("Article highlights · ${marks.size}") }, onClick = { menu = false; onOpenArticleHighlights() })
           if (!doc?.sourceUrl.isNullOrBlank()) DropdownMenuItem(text = { Text("Open original") }, onClick = { menu = false; openWeb(doc!!.sourceUrl!!) })
@@ -615,14 +616,14 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             ReadingActionItem("Contents", Icons.AutoMirrored.Filled.FormatListBulleted, false, ready != null) {
               navigationSheet = "contents"
             },
-            ReadingActionItem(if (speechPlaying) "Pause" else "Listen",
-              if (speechPlaying) Icons.Default.Pause else Icons.AutoMirrored.Filled.VolumeUp, speechPlaying, ready != null) {
-              if (speechPlaying) onPauseAudio()
+            ReadingActionItem(if (speechPlayWhenReady) "Pause" else "Listen",
+              if (speechPlayWhenReady) Icons.Default.Pause else Icons.AutoMirrored.Filled.VolumeUp, speechPlayWhenReady, ready != null) {
+              if (speechPlayWhenReady) onPauseAudio()
               else if (playerVisible) onResumeAudio()
-              else prepared?.let { transition { onListen(it.projection, cursorNow) } }
+              else prepared?.let { transition(pauseAudio = true) { onListen(it.projection, cursorNow) } }
             },
             ReadingActionItem("Speed", Icons.Default.Speed, false, ready != null) {
-              transition { onSpeedRead(cursorNow) }
+              transition(pauseAudio = true) { onSpeedRead(cursorNow) }
             },
           )
           if (LocalDensity.current.fontScale > 1.3f) Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
@@ -711,7 +712,14 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           Spacer(Modifier.height(4.dp))
         }
       }
-      if (saveError != null) TextButton(onClick = { transition { } }) { Text("Save failed — Retry", color = colors.error) }
+      saveError?.let { issue ->
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+          Text(issue.message, color = colors.error, style = MaterialTheme.typography.bodySmall)
+          if (issue.retryable) TextButton(onClick = { transition { } }) {
+            Text("Retry", color = colors.error)
+          }
+        }
+      }
       if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)
       else if (ready == null || text == null) {
         if (com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome) Text("Opening article…", Modifier.padding(24.dp), color = colors.text)
@@ -811,7 +819,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             if (native.tag == styleKey) {
               val whole = ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))
               liveFraction = whole
-              if (!speechPlaying && inspectionOrigin == null) app.progress.offer(cursor, whole)
+              if (!speechPlayWhenReady && inspectionOrigin == null) app.progress.offer(cursor, whole)
             }
             // The match tint survives the landing settle (cursor == hit) and
             // clears on the first real scroll away from it.
@@ -878,7 +886,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                   undo = aggregate.takeIf { it.before != null || it.after != null }
                   ack(true)
                 }
-              } catch (_: Exception) { ack(false) }
+              } catch (error: Exception) {
+                ack(false)
+                scope.launch { snackbar.showSnackbar(error.message ?: "Couldn’t prepare highlight. Try the selection again.") }
+              }
             }
           }
         })

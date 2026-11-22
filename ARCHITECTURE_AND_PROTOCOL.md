@@ -145,13 +145,6 @@ byte is accepted.
 - Android assembly/ACK: `android/app/src/main/java/com/reader/app/sync/TransferManager.kt`.
 - Android durable schema/migrations: `android/app/src/main/java/com/reader/app/data/ReaderDb.kt`.
 
-## Current validation boundary
+## Validation boundary
 
-- **PASS:** one real Chrome/TCL v2 pairing, seven authenticated relays, one
-  synthetic article, exactly one stored document, and a verified device ACK
-  clearing Chrome's outbox.
-- **PASS:** local fault relay, shared field-exact Chrome/Android pairing and
-  codec vectors, Chrome restart/reload preservation, Android instrumentation
-  on emulator and both authorized physical phones.
-- **NOT MEASURED:** the mandatory 20/20 and 50/50 reliability quotas and the
-  complete physical lifecycle matrix. See `TCL_PHYSICAL_VALIDATION.md`.
+The architecture describes implemented ownership, not current device acceptance. Existing records include one Chrome/TCL pairing and authenticated receipt, controlled fault-relay coverage, shared pairing/codec vectors and scoped storage/device checks. Those results belong to their dated revisions. Statistical reliability and complete physical lifecycle coverage remain unmeasured; see [status](docs/STATUS.md). The host checks performed during cleanup are listed in that status guide.
