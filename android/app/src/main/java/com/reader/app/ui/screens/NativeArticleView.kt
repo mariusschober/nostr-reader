@@ -67,6 +67,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var pendingCommittedContinuation = false
   private var pendingSelection: Runnable? = null
   private var pen = false
+  private var heldWord: IntRange? = null
   private var restoring = false
   private var markRanges: List<NativeMark> = emptyList()
   var onSelection: (String, Long, IntRange) -> Unit = { _, _, _ -> }
@@ -168,6 +169,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     val dy = event.y - swipeY
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
+        heldWord = null
         penSettlement.beginGesture()
         gestureActive = true
         gestureAbandoned = false
@@ -330,6 +332,15 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       }
     }
     body.setOnLongClickListener {
+      // Android can select a word on DOWN after a previous save, then start a system
+      // text drag on long-press. The system cancels our gesture and consumes its UP.
+      // Keep this pen gesture inside the article, including when it overlaps an old quote.
+      if (pen && gestureActive && validSelection(body.selectionStart, body.selectionEnd)) {
+        val at = body.getOffsetForPosition(swipeX - paddingLeft, swipeY)
+        if (at in body.selectionStart until body.selectionEnd && claimSelectedWord(at)) {
+          return@setOnLongClickListener true
+        }
+      }
       // A second long-press is a new intentional selection even when Android
       // keeps the existing ActionMode alive. Flush the old pen/committed range
       // once, clear its owner, and return false so TextView retains its native
@@ -437,6 +448,19 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     }
     var downX = 0f; var downY = 0f
     body.setOnTouchListener { _, event ->
+      val seed = heldWord
+      if (seed != null && event.actionMasked == MotionEvent.ACTION_MOVE) {
+        val moved = kotlin.math.abs(event.x - downX) > touchConfig.scaledTouchSlop ||
+          kotlin.math.abs(event.y - downY) > touchConfig.scaledTouchSlop
+        if (moved) {
+          val line = body.lineHeight
+          if (event.y < line) body.scrollTo(0, (body.scrollY - line).coerceAtLeast(0))
+          if (event.y > body.height - line) body.scrollTo(0, (body.scrollY + line).coerceAtMost(maxScrollY()))
+          val hit = body.getOffsetForPosition(event.x, event.y).coerceIn(0, body.length())
+          android.text.Selection.setSelection(body.text as Spannable, minOf(seed.first, hit), maxOf(seed.last + 1, hit))
+        }
+        return@setOnTouchListener true
+      }
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> { downX = event.x; downY = event.y }
         MotionEvent.ACTION_UP -> if (actionMode == null && body.selectionStart == body.selectionEnd &&
@@ -647,7 +671,23 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     selectionCommitted = true; emitSelection(); return true
   }
 
+  private fun claimSelectedWord(offset: Int): Boolean {
+    val value = projection ?: return false
+    if (offset !in value.text.indices || value.text[offset].isWhitespace()) return false
+    val words = java.text.BreakIterator.getWordInstance(java.util.Locale.getDefault())
+    words.setText(value.text)
+    val start = words.preceding(offset + 1)
+    val end = words.following(offset)
+    if (start < 0 || end <= start) return false
+    val word = value.range(start, end) ?: return false
+    resetSelectionOwner()
+    heldWord = word
+    android.text.Selection.setSelection(body.text as Spannable, word.first, word.last + 1)
+    return true
+  }
+
   private fun resetSelectionOwner() {
+    heldWord = null
     penSettlement.invalidate()
     pendingSelection?.let { removeCallbacks(it) }
     pendingSelection = null
