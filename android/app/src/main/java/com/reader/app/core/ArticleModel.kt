@@ -184,12 +184,15 @@ object ArticleParser {
     return out
   }
 
-  /** Only http/https links survive; javascript:/data: become plain text. */
+  /** Preserve web links and local section anchors. */
   fun sanitizeUrl(url: String): String? {
     val t = url.trim()
     return runCatching {
       val uri = java.net.URI(t)
-      t.takeIf { uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.userInfo == null }
+      t.takeIf {
+        (it.startsWith('#') && !uri.rawFragment.isNullOrEmpty()) ||
+          ((uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) && !uri.host.isNullOrBlank() && uri.userInfo == null)
+      }
     }.getOrNull()
   }
 
@@ -202,12 +205,7 @@ object ArticleParser {
         is Inline.Emphasis -> inlineText(i.inlines)
         is Inline.Strike -> inlineText(i.inlines)
         is Inline.InlineCode -> {} // skipped for narration
-        is Inline.Link -> {
-          if (!i.url.startsWith("http")) inlineText(i.inlines)
-          else {
-            inlineText(i.inlines)
-          }
-        }
+        is Inline.Link -> inlineText(i.inlines)
         is Inline.FootnoteRef -> {}
       }
     }

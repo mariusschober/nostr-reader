@@ -52,6 +52,9 @@ interface CaptureRequestDao {
   @Query("SELECT * FROM capture_requests WHERE requestId = :id LIMIT 1")
   suspend fun byId(id: String): CaptureRequestEntity?
 
+  @Query("SELECT * FROM capture_requests WHERE requestId = :id")
+  fun observeById(id: String): kotlinx.coroutines.flow.Flow<CaptureRequestEntity?>
+
   @Query("SELECT * FROM capture_requests WHERE normalizedUrl = :normalized AND state IN ('pending','fetching') ORDER BY createdAt LIMIT 1")
   suspend fun pendingByNormalized(normalized: String): CaptureRequestEntity?
 
@@ -68,19 +71,19 @@ interface CaptureRequestDao {
   suspend fun dueById(id: String, nowMillis: Long): CaptureRequestEntity?
 
   /** Atomic claim: exactly one worker wins the fetch for this request. */
-  @Query("UPDATE capture_requests SET state = 'fetching', attemptCount = attemptCount + 1, nextAttemptAt = NULL, updatedAt = :now WHERE requestId = :id AND state IN ('pending','fetching')")
+  @Query("UPDATE capture_requests SET state = 'fetching', generation = generation + 1, attemptCount = attemptCount + 1, nextAttemptAt = NULL, updatedAt = :now WHERE requestId = :id AND state IN ('pending','fetching') AND (nextAttemptAt IS NULL OR nextAttemptAt <= :now)")
   suspend fun claimForFetch(id: String, now: Long): Int
 
   /** Atomic park: only while attempts remain (callers handle exhaustion). */
-  @Query("UPDATE capture_requests SET state = 'pending', errorCode = :code, errorMessage = :message, nextAttemptAt = :nextAt, updatedAt = :now WHERE requestId = :id AND state IN ('pending','fetching') AND attemptCount < :maxAttempts")
-  suspend fun parkForRetry(id: String, code: String, message: String, nextAt: Long, now: Long, maxAttempts: Int): Int
+  @Query("UPDATE capture_requests SET state = 'pending', errorCode = :code, errorMessage = :message, nextAttemptAt = :nextAt, updatedAt = :now WHERE requestId = :id AND state = 'fetching' AND generation = :generation AND attemptCount < :maxAttempts")
+  suspend fun parkForRetry(id: String, generation: Int, code: String, message: String, nextAt: Long, now: Long, maxAttempts: Int): Int
 
   /** Atomic cancel: bumps generation so a stale worker cannot commit. */
   @Query("UPDATE capture_requests SET state = 'cancelled', generation = generation + 1, updatedAt = :now WHERE requestId = :id AND state IN ('pending','fetching')")
   suspend fun cancelActive(id: String, now: Long): Int
 
   /** Atomic reopen for manual retry. */
-  @Query("UPDATE capture_requests SET state = 'pending', errorCode = NULL, errorMessage = NULL, nextAttemptAt = NULL, generation = generation + 1, updatedAt = :now WHERE requestId = :id AND state IN ('failed','link_only','pending')")
+  @Query("UPDATE capture_requests SET state = 'pending', attemptCount = 0, errorCode = NULL, errorMessage = NULL, nextAttemptAt = NULL, generation = generation + 1, updatedAt = :now WHERE requestId = :id AND state IN ('failed','link_only','pending')")
   suspend fun reopenForRetry(id: String, now: Long): Int
 
   @Query("SELECT * FROM capture_requests WHERE state IN ('pending','fetching') ORDER BY createdAt LIMIT :limit")

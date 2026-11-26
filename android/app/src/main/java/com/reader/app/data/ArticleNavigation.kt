@@ -1,7 +1,10 @@
 package com.reader.app.data
 
+import com.reader.app.core.RenderedProjection
 import com.reader.app.core.TextKind
 import com.reader.app.cursor.SemanticCursor
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -38,6 +41,34 @@ internal fun matchSnippet(text: String, at: Int, end: Int): SnippetWindow {
   return SnippetWindow(snippet, at - start, end - start)
 }
 
+internal const val FIND_PAGE_SIZE = 100
+internal data class MatchPosition(val part: Int = 0, val offset: Int = 0)
+internal data class MatchPage(val matches: List<ArticleMatch>, val next: MatchPosition?)
+
+/** Hold one page of snippets. The continuation identifies the first unconsumed match. */
+internal suspend fun scanMatches(
+  id: String, needle: String, parts: Int, start: MatchPosition, firstOnly: Boolean = false,
+  projection: suspend (Int) -> RenderedProjection,
+): MatchPage = withContext(Dispatchers.Default) {
+  val matches = ArrayList<ArticleMatch>()
+  if (needle.isNotEmpty()) for (part in start.part until parts) {
+    val p = projection(part)
+    var from = if (part == start.part) start.offset else 0
+    while (from < p.text.length) {
+      currentCoroutineContext().ensureActive()
+      val at = p.text.indexOf(needle, from, ignoreCase = true)
+      if (at < 0) break
+      if (matches.size == FIND_PAGE_SIZE) return@withContext MatchPage(matches, MatchPosition(part, at))
+      val end = at + needle.length
+      val window = matchSnippet(p.text, at, end)
+      matches.add(ArticleMatch(part, p.cursor(id, at), window.text, end, window.matchStart, window.matchEnd))
+      if (firstOnly) return@withContext MatchPage(matches, null)
+      from = end
+    }
+  }
+  MatchPage(matches, null)
+}
+
 /** Builds small navigation metadata from bounded parts; never changes stored text. */
 class ArticleNavigation(private val articles: ArticleRepository, private val db: ReaderDb) {
   suspend fun contents(id: String): List<ArticleLocation> {
@@ -52,57 +83,44 @@ class ArticleNavigation(private val articles: ArticleRepository, private val db:
       }
     }
   }
-  suspend fun find(id: String, query: String): List<ArticleLocation> {
-    return matches(id, query).map { it.toLocation() }
-  }
-  suspend fun matches(id: String, query: String): List<ArticleMatch> {
+  internal suspend fun matchPage(id: String, query: String, start: MatchPosition = MatchPosition(), firstOnly: Boolean = false): MatchPage {
     val needle = query.trim()
-    if (needle.isEmpty()) return emptyList()
+    if (needle.isEmpty()) return MatchPage(emptyList(), null)
     val index = articles.index(id)
-    return buildList {
-      index.sections.indices.forEach { part ->
-        val p = articles.section(id, part).projection
-        withContext(Dispatchers.Default) {
-          var from = 0
-          while (from < p.text.length) {
-            val at = p.text.indexOf(needle, from, ignoreCase = true)
-            if (at < 0) break
-            val end = at + needle.length
-            val window = matchSnippet(p.text, at, end)
-            add(ArticleMatch(
-              part = part,
-              cursor = p.cursor(id, at),
-              snippet = window.text,
-              textEnd = end,
-              matchStart = window.matchStart,
-              matchEnd = window.matchEnd,
-            ))
-            from = end
-          }
-        }
-        yield()
-      }
-    }
+    return scanMatches(id, needle, index.sections.size, start, firstOnly) { articles.section(id, it).projection }
   }
   suspend fun fragment(id: String, raw: String): ArticleLocation? {
-    val target = java.net.URLDecoder.decode(raw.removePrefix("#"), "UTF-8")
+    val target = runCatching { java.net.URLDecoder.decode(raw.removePrefix("#").replace("+", "%2B"), "UTF-8") }.getOrNull() ?: return null
     val index = articles.index(id)
-    for (part in index.sections.indices) {
-      val p = articles.section(id, part).projection
-      for (block in p.blocks) {
-        val title = p.text.substring(block.bodyStart, block.bodyEnd)
-        val slug = title.lowercase().replace(Regex("[^\\p{L}\\p{N} _-]"), "").trim().replace(Regex("\\s+"), "-")
-        val range = block.canonical
-        val source = if (range != null) withContext(Dispatchers.IO) {
-          db.documents().contentRange(id, range.startUtf16, minOf(range.endUtf16, range.startUtf16 + 500))
-        } else ""
-        val footnote = Regex("\\[\\^([^]]+)]:").find(source)?.groupValues?.get(1)
-        val aliases = if (footnote == null) emptySet() else setOf("^$footnote", "fn-$footnote", "fn:$footnote", footnote)
-        val anchors = Regex("(?:id|name)=[\"']([^\"']+)[\"']").findAll(source).map { it.groupValues[1] }.toList()
-        if ((block.kind == TextKind.HEADING && slug == target) || target in aliases || target in anchors)
-          return ArticleLocation(part, p.cursor(id, block.start), title)
+    return withContext(Dispatchers.Default) {
+      for ((part, section) in index.sections.withIndex()) {
+        val p = articles.section(id, part).projection
+        val canonical = db.documents().contentRange(id, section.startUtf16, section.endUtf16)
+        for (block in p.blocks) {
+          currentCoroutineContext().ensureActive()
+          val title = p.text.substring(block.bodyStart, block.bodyEnd)
+          val slug = if (block.kind == TextKind.HEADING)
+            title.lowercase().replace(slugPunctuation, "").trim().replace(slugSpaces, "-") else null
+          val source = block.canonical?.let { range ->
+            val start = (range.startUtf16 - section.startUtf16).coerceIn(0, canonical.length)
+            val end = (range.endUtf16 - section.startUtf16).coerceIn(start, minOf(start + 500, canonical.length))
+            canonical.substring(start, end)
+          }.orEmpty()
+          val footnote = footnotePattern.find(source)?.groupValues?.get(1)
+          val aliases = if (footnote == null) emptySet() else setOf("^$footnote", "fn-$footnote", "fn:$footnote", footnote)
+          val anchors = anchorPattern.findAll(source).map { it.groupValues[1] }.toList()
+          if ((block.kind == TextKind.HEADING && slug == target) || target in aliases || target in anchors)
+            return@withContext ArticleLocation(part, p.cursor(id, block.start), title)
+        }
       }
+      null
     }
-    return null
+  }
+
+  private companion object {
+    val slugPunctuation = Regex("""[^\p{L}\p{N} _-]""")
+    val slugSpaces = Regex("""\s+""")
+    val footnotePattern = Regex("""\[\^([^]]+)]:""")
+    val anchorPattern = Regex("""(?:id|name)=["']([^"']+)["']""")
   }
 }

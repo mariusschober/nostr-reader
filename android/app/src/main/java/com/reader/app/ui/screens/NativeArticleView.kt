@@ -49,6 +49,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private val body = SelectionText(context)
   private val swipeLabel = TextView(context)
   private var projection: RenderedProjection? = null
+  private var lastReadableOffset = 0
   private var documentId = ""
   private var actionMode: ActionMode? = null
   private var selectionSession: String? = null
@@ -67,8 +68,15 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var pendingCommittedContinuation = false
   private var pendingSelection: Runnable? = null
   private var pen = false
+  private var heldWord: IntRange? = null
   private var restoring = false
+  private var monoMarks: List<NativeMark> = emptyList()
   private var markRanges: List<NativeMark> = emptyList()
+    set(value) {
+      field = value
+      monoMarks = value.filter { it.edge != "none" }
+      monoRunLayout = null
+    }
   var onSelection: (String, Long, IntRange) -> Unit = { _, _, _ -> }
   /**
    * Final-commit bridge for a completed pen gesture. The UI persists the
@@ -77,7 +85,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    * ack) the recoverable range stays on screen for a retry.
    */
   var onSettle: (session: String, range: IntRange, ack: (Boolean) -> Unit) -> Unit = { _, _, ack -> ack(true) }
-  private var settledSession: String? = null
+  private val penSettlement = PenSettlementPolicy()
   /**
    * Set when a pen gesture is cancelled from outside (Back, navigation, Undo).
    * The pointer can still be down, so the platform may re-establish the native
@@ -88,6 +96,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onCursor: (SemanticCursor, Float) -> Unit = { _, _ -> }
   var onMark: (List<String>) -> Unit = {}
   var onLink: (String) -> Unit = {}
+  internal fun activateLink(target: String) { if (!pen) onLink(target) }
   var onTap: () -> Unit = {}
   var gestureActive = false
     private set
@@ -112,7 +121,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     set(value) {
       if (field != value) {
         field = value
-        if (markRanges.any { it.edge != "none" }) invalidate()
+        if (monoMarks.isNotEmpty()) invalidate()
       }
     }
   private var swipeX = 0f
@@ -143,8 +152,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     if (body.height <= 0) return false
     // TextView can stop before trailing blank lines and extra line spacing.
     // Completion follows the last visible text line, not that empty padding.
-    val last = body.text.indexOfLast { !it.isWhitespace() }.coerceAtLeast(0)
-    val line = layout.getLineForOffset(last)
+    val line = layout.getLineForOffset(lastReadableOffset)
     val textBottom = layout.getLineBaseline(line) + layout.getLineDescent(line) + body.totalPaddingTop
     return body.scrollY + body.height - body.totalPaddingBottom >= textBottom - dp(2)
   }
@@ -167,6 +175,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     val dy = event.y - swipeY
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
+        heldWord = null
+        penSettlement.beginGesture()
         gestureActive = true
         gestureAbandoned = false
         stopFling()
@@ -190,7 +200,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemGestures())
         val edge = maxOf(dp(24), insets?.left ?: 0, insets?.right ?: 0)
         val at = body.getOffsetForPosition(event.x - paddingLeft, event.y)
-        val link = projection?.styles?.any { it.style in setOf(TextStyle.LINK, TextStyle.FOOTNOTE_REF) && at >= it.start && at < it.end } == true
+        val link = projection?.styles?.any { (it.style == TextStyle.LINK || it.style == TextStyle.FOOTNOTE_REF) && at >= it.start && at < it.end } == true
         // A horizontal drag over code or a table is a content gesture, even
         // when this particular block fits the viewport without horizontal scroll.
         val horizontalContent = projection?.blocks?.any {
@@ -256,6 +266,12 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // Android's selectable TextView owns touch scrolling and native handles;
     // its movement method has no kinetic scroll. Add only post-release motion
     // to that same viewport, never a surrounding ScrollView or touch interceptor.
+    // UP can collapse or replace a held selection. Capture the last user-adjusted
+    // range before handing the release to TextView.
+    val releasingPen = event.actionMasked == MotionEvent.ACTION_UP && pen && gestureActive && !gestureAbandoned
+    val releaseRange = if (releasingPen && validSelection(body.selectionStart, body.selectionEnd)) {
+      body.selectionStart until body.selectionEnd
+    } else null
     val handled = super.dispatchTouchEvent(event)
     if (event.actionMasked == MotionEvent.ACTION_UP) {
       gestureActive = false
@@ -275,7 +291,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       // A completed continuous-highlighting gesture commits once, on release.
       // A gesture abandoned from outside (Back, navigation) commits nothing and
       // must not leave its range painted.
-      if (pen) { if (gestureAbandoned) abandonPenGesture() else settlePenGesture() }
+      if (pen) { if (gestureAbandoned) abandonPenGesture() else settlePenGesture(releaseRange) }
     } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
       gestureActive = false; stopFling(); recycleVelocity(); onViewport(body.scrollY, body.height)
       // Cancellation saves nothing from the cancelled gesture, and leaves no
@@ -316,12 +332,21 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         // Edge rules are drawn by this parent over the scrolling TextView;
         // invalidate it whenever the child viewport moves so cached runs are
         // translated with the glyphs on hardware and software canvases.
-        if (markRanges.any { it.edge != "none" }) invalidate()
+        if (monoMarks.isNotEmpty()) invalidate()
         onViewport(y, h)
         if (!restoring && h > 0) onAtEnd(isAtEnd())
       }
     }
     body.setOnLongClickListener {
+      // Android can select a word on DOWN after a previous save, then start a system
+      // text drag on long-press. The system cancels our gesture and consumes its UP.
+      // Keep this pen gesture inside the article, including when it overlaps an old quote.
+      if (pen && gestureActive && validSelection(body.selectionStart, body.selectionEnd)) {
+        val at = body.getOffsetForPosition(swipeX - paddingLeft, swipeY)
+        if (at in body.selectionStart until body.selectionEnd && claimSelectedWord(at)) {
+          return@setOnLongClickListener true
+        }
+      }
       // A second long-press is a new intentional selection even when Android
       // keeps the existing ActionMode alive. Flush the old pen/committed range
       // once, clear its owner, and return false so TextView retains its native
@@ -407,6 +432,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         return true
       }
       override fun onDestroyActionMode(mode: ActionMode) {
+        // A delayed teardown of a finished mode must not adopt a newer owner.
+        if (actionMode !== mode) return
         flushSelection()
         pendingSelection?.let { removeCallbacks(it) }
         pendingSelection = null
@@ -427,14 +454,27 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     }
     var downX = 0f; var downY = 0f
     body.setOnTouchListener { _, event ->
+      val seed = heldWord
+      if (seed != null && event.actionMasked == MotionEvent.ACTION_MOVE) {
+        val moved = kotlin.math.abs(event.x - downX) > touchConfig.scaledTouchSlop ||
+          kotlin.math.abs(event.y - downY) > touchConfig.scaledTouchSlop
+        if (moved) {
+          val line = body.lineHeight
+          if (event.y < line) body.scrollTo(0, (body.scrollY - line).coerceAtLeast(0))
+          if (event.y > body.height - line) body.scrollTo(0, (body.scrollY + line).coerceAtMost(maxScrollY()))
+          val hit = body.getOffsetForPosition(event.x, event.y).coerceIn(0, body.length())
+          android.text.Selection.setSelection(body.text as Spannable, minOf(seed.first, hit), maxOf(seed.last + 1, hit))
+        }
+        return@setOnTouchListener true
+      }
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> { downX = event.x; downY = event.y }
         MotionEvent.ACTION_UP -> if (actionMode == null && body.selectionStart == body.selectionEnd &&
           kotlin.math.abs(event.x - downX) < dp(8) && kotlin.math.abs(event.y - downY) < dp(8)) {
           val at = body.getOffsetForPosition(event.x, event.y)
           val hits = markRanges.filter { it.id != "search-hit" && at >= it.start && at < it.end }.sortedByDescending { it.createdAt }
-          val linkStyle = projection?.styles?.lastOrNull { it.style in setOf(TextStyle.LINK, TextStyle.FOOTNOTE_REF) && at >= it.start && at < it.end }
-          val link = linkStyle?.let { if (it.style == TextStyle.FOOTNOTE_REF) "#^" + projection!!.text.substring(it.start, it.end).removeSurrounding("[", "]") else it.value }
+          val linkStyle = projection?.styles?.lastOrNull { (it.style == TextStyle.LINK || it.style == TextStyle.FOOTNOTE_REF) && at >= it.start && at < it.end }
+          val link = linkStyle?.value
           val table = projection?.tables?.indexOfFirst { rows ->
             rows.rows.firstOrNull()?.firstOrNull()?.start?.let { first ->
               at >= first && at < (rows.rows.lastOrNull()?.lastOrNull()?.end ?: first)
@@ -442,7 +482,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           } ?: -1
           when {
             hits.isNotEmpty() -> onMark(hits.map { it.id })
-            !pen && link != null -> onLink(link)
+            link != null -> activateLink(link)
             !pen && table >= 0 -> onTable(table)
             // A stationary background tap toggles focus in either mode. A tap
             // on a link or table while highlighting stays inert instead of
@@ -456,7 +496,6 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     body.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
       if (right - left != oldRight - oldLeft) {
         monoRunLayout = null
-        monoRunMarks = null
         updateTableStyles()
       }
       val oldHeight = oldBottom - oldTop
@@ -495,12 +534,11 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var displayGeneration = 0L
 
   fun display(id: String, value: RenderedProjection, text: CharSequence, settings: ReaderSettings,
-              foreground: Int, background: Int, margin: Int, initial: SemanticCursor) {
+              foreground: Int, background: Int, margin: Int, initial: SemanticCursor, linkColor: Int = foreground) {
     stopFling()
     val changed = projection !== value || documentId != id
     if (changed) { flushSelection(); clearSelection() }
     monoRunLayout = null
-    monoRunMarks = null
     val saved = if (!changed) currentCursor() else initial
     documentId = id
     projection = value
@@ -523,6 +561,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     val base = ResourcesCompat.getFont(context, if (settings.bold && boldFont != null) boldFont else font)
     body.typeface = if (settings.bold && boldFont == null) android.graphics.Typeface.create(base, android.graphics.Typeface.BOLD) else base
     body.setTextColor(foreground)
+    body.setLinkTextColor(linkColor)
     setBackgroundColor(background)
     body.setBackgroundColor(background)
     swipeLabel.setTextColor(foreground)
@@ -548,11 +587,11 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     }
     if (changed) {
       restoring = true
+      lastReadableOffset = value.text.indexOfLast { !it.isWhitespace() }.coerceAtLeast(0)
       markRanges = emptyList()
-      val immutableText = SpannableString(text)
       // Use the same native layout for drawing and handle hit testing. On the TCL,
       // precomputed mixed heading/body spans reported incorrect horizontal positions.
-      body.setText(immutableText, TextView.BufferType.SPANNABLE)
+      body.setText(text, TextView.BufferType.SPANNABLE)
       clearIdleTextCursor()
       restore()
     } else restore()
@@ -581,6 +620,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   fun setPenMode(enabled: Boolean) {
     if (pen == enabled) return
     stopFling()
+    penSettlement.invalidate()
     if (!enabled) {
       // Leaving continuous highlighting flushes the final range under its
       // session id, then rotates the session so the next pen entry starts a
@@ -615,20 +655,13 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   fun setMarks(marks: List<NativeMark>) {
     if (marks == markRanges) return
     markRanges = marks
-    monoRunLayout = null
-    monoRunMarks = null
     val text = body.text as? Spannable ?: return
     text.getSpans(0, text.length, SavedBackground::class.java).forEach { text.removeSpan(it) }
     text.getSpans(0, text.length, SavedForeground::class.java).forEach { text.removeSpan(it) }
     // Split overlaps so each character has exactly one opaque foreground/background pair.
-    val valid = marks.filter { it.start >= 0 && it.end <= text.length && it.end > it.start }
-    val boundaries = valid.flatMap { listOf(it.start, it.end) }.distinct().sorted()
-    boundaries.zipWithNext().forEach { (start, end) ->
-      val top = valid.filter { it.start <= start && it.end >= end }.maxWithOrNull(compareBy<NativeMark> { it.createdAt }.thenBy { it.id })
-      if (top != null) {
-        text.setSpan(SavedBackground(top.background), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        text.setSpan(SavedForeground(top.foreground), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-      }
+    forEachVisibleMark(marks, text.length) { start, end, mark ->
+      text.setSpan(SavedBackground(mark.background), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      text.setSpan(SavedForeground(mark.foreground), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
   }
 
@@ -641,7 +674,24 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     selectionCommitted = true; emitSelection(); return true
   }
 
-  private fun resetSelectionOwner() {
+  private fun claimSelectedWord(offset: Int): Boolean {
+    val value = projection ?: return false
+    if (offset !in value.text.indices || value.text[offset].isWhitespace()) return false
+    val words = java.text.BreakIterator.getWordInstance(java.util.Locale.getDefault())
+    words.setText(value.text)
+    val start = words.preceding(offset + 1)
+    val end = words.following(offset)
+    if (start < 0 || end <= start) return false
+    val word = value.range(start, end) ?: return false
+    resetSelectionOwner()
+    heldWord = word
+    android.text.Selection.setSelection(body.text as Spannable, word.first, word.last + 1)
+    return true
+  }
+
+  private fun resetSelectionOwner(keepAcknowledgedRange: Boolean = false) {
+    heldWord = null
+    if (!keepAcknowledgedRange) penSettlement.invalidate()
     pendingSelection?.let { removeCallbacks(it) }
     pendingSelection = null
     pendingActionModeContinuation = false
@@ -652,12 +702,18 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     selectionCommitted = false
   }
 
-  fun clearSelection(): Boolean {
+  fun clearSelection(): Boolean = clearSelection(keepAcknowledgedRange = false)
+
+  private fun clearSelection(keepAcknowledgedRange: Boolean): Boolean {
+    // Preserve a committed ordinary handle adjustment before ending its mode.
+    flushSelection()
     val active = actionMode != null || body.selectionStart != body.selectionEnd
     pendingSelection?.let { removeCallbacks(it) }
-    actionMode?.finish()
+    val finishedMode = actionMode
+    actionMode = null
+    finishedMode?.finish()
     (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
-    resetSelectionOwner()
+    resetSelectionOwner(keepAcknowledgedRange)
     // Cancelling from outside the gesture (Back, dock, navigation, Undo) must
     // also abandon an in-flight pen selection: the pointer is still down, so
     // the platform can re-establish the native selection and the release would
@@ -691,6 +747,12 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // grabbed) does not end the session. The next ActionMode creation decides
     // whether a valid range is a handle continuation or a new gesture.
     if (!validSelection(start, end)) return
+    // ActionMode may restore the saved selection after its asynchronous teardown.
+    // Leave the TextView callback before clearing any spans and check ownership again.
+    if (pen && !gestureActive && penSettlement.ownsSavedRange(start, end)) {
+      pendingSelection = Runnable { clearSavedPenSelection() }.also { post(it) }
+      return
+    }
     // Before ActionMode is created, ordinary Android selection is intentionally
     // unsaved. Do not let a new long-press mutate a committed session while the
     // old mode is being dismissed.
@@ -723,28 +785,36 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   /**
    * Commit the final range of a completed continuous-highlighting gesture and
    * settle the selection. Called from ACTION_UP; a scroll (no valid selection)
-   * is a no-op. Clearing is scoped to the acknowledged session, so a stale ack
-   * from an older gesture never disturbs a newer selection.
+   * is a no-op. Acknowledgement owns the completed gesture and exact range,
+   * independently of Android recreating its ActionMode session owner.
    */
-  private fun settlePenGesture() {
+  private fun settlePenGesture(releaseRange: IntRange?) {
     if (!pen || gestureAbandoned) return
-    val start = body.selectionStart
-    val end = body.selectionEnd
-    if (!validSelection(start, end)) return
+    val settled = releaseRange ?: run {
+      if (!validSelection(body.selectionStart, body.selectionEnd)) return
+      body.selectionStart until body.selectionEnd
+    }
+    val start = settled.first
+    val end = settled.last + 1
     val value = projection ?: return
     val range = value.range(start, end) ?: return
     val session = selectionSession ?: UUID.randomUUID().toString().also { selectionSession = it }
-    if (settledSession == session) return
-    settledSession = session
+    val settlement = penSettlement.settle(session, start, end) ?: return
     pendingSelection?.let { removeCallbacks(it) }
     pendingSelection = null
     onSettle(session, range) { ok ->
       post {
-        if (settledSession != session) return@post
-        settledSession = null
-        if (ok && selectionSession == session) clearSelection()
+        if (penSettlement.acknowledge(settlement, ok, body.selectionStart, body.selectionEnd, gestureActive)) {
+          clearSavedPenSelection()
+        }
       }
     }
+  }
+
+  private fun clearSavedPenSelection() {
+    if (gestureActive || !penSettlement.ownsSavedRange(body.selectionStart, body.selectionEnd)) return
+    body.clearFocus()
+    clearSelection(keepAcknowledgedRange = true)
   }
 
   private var lastSelection: Pair<String, IntRange>? = null
@@ -761,9 +831,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     pendingCommittedContinuation = false
     selectionSession = null; sessionRange = null; lastSelection = null
     selectionCommitted = false
-    settledSession = null
-    actionMode?.finish()
+    penSettlement.invalidate()
+    val finishedMode = actionMode
     actionMode = null
+    finishedMode?.finish()
     (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
   }
 
@@ -786,7 +857,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
   private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
   private var monoRunLayout: Layout? = null
-  private var monoRunMarks: List<NativeMark>? = null
+  private var monoWindow: IntRange = IntRange.EMPTY
   private var monoRuns: List<NativeMonoVisualRun> = emptyList()
   private var monoEffectsDensity = 0f
   private var monoDashEffect: android.graphics.DashPathEffect? = null
@@ -807,15 +878,18 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    * projection offsets and quote anchors remain untouched.
    */
   private fun drawMonoEdges(canvas: android.graphics.Canvas) {
+    if (monoMarks.isEmpty()) return
     val layout = body.layout ?: return
-    if (body.text.isEmpty()) return
-    if (monoRunLayout !== layout || monoRunMarks != markRanges) {
+    if (body.text.isEmpty() || body.height <= 0 || layout.lineCount == 0) return
+    val viewportTop = body.scrollY - body.paddingTop
+    val first = layout.getLineForVertical(viewportTop.coerceAtLeast(0))
+    val last = layout.getLineForVertical((viewportTop + body.height).coerceAtLeast(0))
+    if (monoRunLayout !== layout || first !in monoWindow || last !in monoWindow) {
+      // Cache one screen above and below so ordinary scrolling reuses the same paths.
+      val margin = last - first + 1
+      monoWindow = (first - margin).coerceAtLeast(0)..(last + margin).coerceAtMost(layout.lineCount - 1)
       monoRunLayout = layout
-      monoRunMarks = markRanges
-      monoRuns = markRanges.asSequence()
-        .filter { it.edge != "none" && it.start >= 0 && it.end > it.start && it.end <= body.length() }
-        .flatMap { nativeMonoVisualRuns(body.text, it.start, it.end, layout, it.edge).asSequence() }
-        .toList()
+      monoRuns = nativeMonoViewportRuns(body.text, monoMarks, layout, monoWindow)
     }
     if (monoRuns.isEmpty()) return
     val density = resources.displayMetrics.density
@@ -978,6 +1052,22 @@ internal fun selectionRangesOverlap(owned: IntRange, candidateStart: Int, candid
 
 internal data class NativeMonoVisualRun(val line: Int, val left: Float, val right: Float, val edge: String)
 
+internal fun nativeMonoViewportRuns(
+  text: CharSequence, marks: List<NativeMark>, layout: Layout, lines: IntRange,
+): List<NativeMonoVisualRun> {
+  val windowStart = layout.getLineStart(lines.first)
+  val windowEnd = layout.getLineEnd(lines.last)
+  return buildList {
+    for (mark in marks) {
+      val start = maxOf(mark.start, windowStart)
+      val end = minOf(mark.end, windowEnd)
+      if (start < end && mark.start >= 0 && mark.end <= text.length) {
+        addAll(nativeMonoVisualRuns(text, start, end, layout, mark.edge))
+      }
+    }
+  }
+}
+
 /**
  * Extract disjoint horizontal pieces of one saved mark on each visual line.
  * The selection path is generated by the same Layout used for glyphs and then
@@ -1044,8 +1134,19 @@ data class NativeMark(val id: String, val start: Int, val end: Int, val createdA
 private class SavedBackground(color: Int) : BackgroundColorSpan(color)
 private class SavedForeground(color: Int) : ForegroundColorSpan(color)
 
+/** Android exposes ClickableSpan to accessibility services. All activations use the reader's link policy. */
+private class ArticleLink(private val target: String, private val underline: Boolean) : ClickableSpan() {
+  override fun onClick(widget: android.view.View) {
+    (widget.parent as? NativeArticleView)?.activateLink(target)
+  }
+  override fun updateDrawState(paint: android.text.TextPaint) {
+    paint.color = paint.linkColor
+    if (underline) paint.isUnderlineText = true
+  }
+}
+
 /** Build on Dispatchers.Default before assigning to the native surface. */
-fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableString {
+fun nativeArticleText(value: RenderedProjection): SpannableString {
   val out = SpannableString(value.text)
   fun span(style: Any, start: Int, end: Int) {
     if (end > start) out.setSpan(style, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -1056,8 +1157,11 @@ fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableStrin
       TextStyle.ITALIC -> span(StyleSpan(Typeface.ITALIC), it.start, it.end)
       TextStyle.STRIKE -> span(StrikethroughSpan(), it.start, it.end)
       TextStyle.CODE -> span(TypefaceSpan("monospace"), it.start, it.end)
-      TextStyle.LINK -> { span(ForegroundColorSpan(linkColor), it.start, it.end); span(UnderlineSpan(), it.start, it.end) }
-      TextStyle.FOOTNOTE_REF -> span(RelativeSizeSpan(0.75f), it.start, it.end)
+      TextStyle.LINK -> it.value?.let { target -> span(ArticleLink(target, underline = true), it.start, it.end) }
+      TextStyle.FOOTNOTE_REF -> {
+        it.value?.let { target -> span(ArticleLink(target, underline = false), it.start, it.end) }
+        span(RelativeSizeSpan(0.75f), it.start, it.end)
+      }
     }
   }
   value.blocks.forEach {
@@ -1069,4 +1173,34 @@ fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableStrin
     if (it.depth > 0) span(LeadingMarginSpan.Standard(it.depth * 16), it.start, it.end)
   }
   return out
+}
+
+
+/** Pure ownership gate used by the native completion callback; no Android session identity assumptions. */
+internal class PenSettlementPolicy {
+  class Completion internal constructor(val session: String, val start: Int, val end: Int, internal val generation: Long)
+  private var generation = 0L
+  private var pending: Completion? = null
+  private var saved: Completion? = null
+  private var settledGeneration: Long? = null
+
+  fun beginGesture() { generation++; saved = null }
+  fun invalidate() { beginGesture(); pending = null; settledGeneration = null }
+
+  fun ownsSavedRange(start: Int, end: Int): Boolean =
+    saved?.let { it.start == start && it.end == end } == true
+
+  fun settle(session: String, start: Int, end: Int): Completion? {
+    if (settledGeneration == generation) return null
+    settledGeneration = generation
+    return Completion(session, start, end, generation).also { pending = it }
+  }
+
+  fun acknowledge(completion: Completion, success: Boolean, start: Int, end: Int, gestureActive: Boolean): Boolean {
+    if (pending !== completion || completion.generation != generation) return false
+    pending = null
+    if (!success) { settledGeneration = null; return false }
+    saved = completion
+    return !gestureActive && ownsSavedRange(start, end)
+  }
 }

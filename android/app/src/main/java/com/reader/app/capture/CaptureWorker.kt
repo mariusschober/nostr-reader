@@ -37,15 +37,9 @@ class CaptureWorker(
     val requestId = inputData.getString(KEY_REQUEST_ID) ?: return Result.success()
     val db = ReaderDb.get(applicationContext)
     val repo = CaptureRepository(db)
-    // One-clock retry: the repo's nextAttemptAt gates fetching. A premature
-    // WorkManager wakeup burns no attempt — it just asks to be retried, and
-    // the exponential backoffs converge on the repo schedule.
-    if (db.captureRequests().dueById(requestId, System.currentTimeMillis()) == null) {
-      return if (db.captureRequests().byId(requestId) == null) Result.success() else Result.retry()
-    }
     val active = repo.markFetching(requestId) ?: run {
-      // Terminal/cancelled/missing: stale or duplicate work, no-op success.
-      return Result.success()
+      // Only pending work can be waiting for its backoff. Terminal rows stay terminal.
+      return if (db.captureRequests().byId(requestId)?.state == "pending") Result.retry() else Result.success()
     }
     val generation = active.generation
     val fetch = CaptureFetcher()
@@ -53,22 +47,22 @@ class CaptureWorker(
       val page = try {
         fetch.fetch(active.originalUrl)
       } catch (e: CaptureException) {
-        return onFetchFailure(repo, active.requestId, e)
+        return onFetchFailure(repo, active, e)
       } catch (e: java.io.InterruptedIOException) {
-        return onFetchFailure(repo, active.requestId, CaptureException("timeout_retryable", "Fetching timed out; Reader will retry", retryable = true))
+        return onFetchFailure(repo, active, CaptureException("timeout_retryable", "Fetching timed out; Reader will retry", retryable = true))
       } catch (e: java.net.UnknownHostException) {
-        return onFetchFailure(repo, active.requestId, CaptureException("dns_retryable", "You're offline or the host is unknown; Reader will retry", retryable = true))
+        return onFetchFailure(repo, active, CaptureException("dns_retryable", "You're offline or the host is unknown; Reader will retry", retryable = true))
       } catch (e: java.io.IOException) {
-        return onFetchFailure(repo, active.requestId, CaptureException("network_retryable", "Network error; Reader will retry", retryable = true))
+        return onFetchFailure(repo, active, CaptureException("network_retryable", "Network error; Reader will retry", retryable = true))
       }
       val extracted = try {
-        ArticleExtractor.extract(page.htmlBytes, page.finalUrl)
+        ArticleExtractor.extract(page.htmlBytes, page.finalUrl, page.charset)
       } catch (e: ArticleExtractor.ExtractionFailed) {
         repo.completeLinkOnly(
           id = active.requestId,
           generation = generation,
           resolvedUrl = page.finalUrl,
-          title = runCatching { ArticleExtractor.extractTitle(org.jsoup.Jsoup.parse(String(page.htmlBytes, Charsets.UTF_8), page.finalUrl), page.finalUrl) }.getOrNull(),
+          title = runCatching { page.htmlBytes.inputStream().use { ArticleExtractor.extractTitle(org.jsoup.Jsoup.parse(it, page.charset, page.finalUrl), page.finalUrl) } }.getOrNull(),
           reason = e.message?.substringAfter(": ") ?: "No confident article text was found",
           errorCode = e.errorCode,
         )
@@ -85,25 +79,20 @@ class CaptureWorker(
     } catch (e: kotlinx.coroutines.CancellationException) {
       throw e
     } catch (e: Exception) {
-      Log.w(TAG, "capture=${requestId.take(8)} worker_error=${e.message}")
+      Log.w(TAG, "capture=${requestId.take(8)} worker_error=${e.javaClass.simpleName}")
       // Unknown failure: retry while attempts remain, else honest link.
-      onFetchFailure(repo, requestId, CaptureException("worker_error", "Capture hit an unexpected error", retryable = true))
+      onFetchFailure(repo, active, CaptureException("worker_error", "Capture hit an unexpected error", retryable = true))
     }
   }
 
-  private suspend fun onFetchFailure(repo: CaptureRepository, requestId: String, e: CaptureException): Result {
+  private suspend fun onFetchFailure(repo: CaptureRepository, active: CaptureRequestEntity, e: CaptureException): Result {
     val human = humanMessage(e)
     if (!e.retryable) {
-      val current = ReaderDb.get(applicationContext).captureRequests().byId(requestId)
-      if (current != null) {
-        repo.completeLinkOnly(requestId, current.generation, current.resolvedUrl, current.subjectTitle, human, e.code)
-      }
+      repo.completeLinkOnly(active.requestId, active.generation, active.resolvedUrl, active.subjectTitle, human, e.code)
       return Result.success()
     }
-    val after = repo.markRetryable(requestId, e.code, human)
-    // markRetryable may have exhausted attempts and already committed a link.
-    if (after?.state == "link_only") return Result.success()
-    return Result.retry()
+    val after = repo.markRetryable(active, e.code, human)
+    return if (after?.state == "pending") Result.retry() else Result.success()
   }
 
   companion object {

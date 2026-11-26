@@ -36,7 +36,7 @@ async function boot() {
 }
 async function records(name: string): Promise<any[]> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open("reader-outbox", 3);
+    const open = indexedDB.open("reader-outbox");
     open.onsuccess = () => {
       const db = open.result;
       const request = db.transaction(name).objectStore(name).getAll();
@@ -65,6 +65,69 @@ describe("production worker persistence and request boundaries", () => {
     expect(await records("items")).toMatchObject([{ transferId: reply.transferId, attemptCount: 0 }]);
     expect(alarms.has("reader-pairing-recovery")).toBe(false);
   });
+  it("migrates a pending v3 article intact and keeps status and duplicate checks off the payload store", async () => {
+    const earlier = await boot();
+    const { transferId } = await earlier.queueCapture(doc, captureId);
+    const [item] = await records("items");
+    const [chunks] = await records("payloads");
+    const [capture] = await records("captureIds");
+    const old = new IDBFactory();
+    await new Promise<void>((resolve, reject) => {
+      const open = old.open("reader-outbox", 3);
+      open.onupgradeneeded = () => {
+        open.result.createObjectStore("items", { keyPath: "transferId" }).add({ ...item, chunks });
+        open.result.createObjectStore("captures", { keyPath: "captureId" });
+        open.result.createObjectStore("captureIds", { keyPath: "captureId" }).add(capture);
+      };
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => { open.result.close(); resolve(); };
+    });
+    vi.stubGlobal("indexedDB", old);
+    const worker = await boot();
+    await worker.queueCapture(doc, captureId);
+    expect(await records("items")).toEqual([item]);
+    expect(await records("payloads")).toEqual([chunks]);
+    const trusted = { ...sender, url: `chrome-extension://${sender.id}/src/ui/options.html` };
+    const reads: string[] = [];
+    const get = IDBObjectStore.prototype.get;
+    vi.spyOn(IDBObjectStore.prototype, "get").mockImplementation(function (this: IDBObjectStore, key: IDBValidKey | IDBKeyRange) {
+      reads.push(this.name);
+      return get.call(this, key);
+    });
+    expect((await message({ kind: "reader-status" }, trusted)).ok).toBe(true);
+    expect((await worker.queueCapture(doc, captureId)).transferId).toBe(transferId);
+    expect(reads).not.toContain("payloads");
+    expect(await message({ kind: "reader-transfer-action", action: "export", transferId }, trusted)).toMatchObject({ ok: true, markdown: doc.markdown });
+    expect(reads.filter(name => name === "payloads")).toHaveLength(1);
+    await message({ kind: "reader-transfer-action", action: "discard", transferId }, trusted);
+    expect(await records("payloads")).toHaveLength(0);
+  });
+
+  it("rolls back metadata and dedupe together when the payload write fails", async () => {
+    const worker = await boot();
+    const add = IDBObjectStore.prototype.add;
+    const fault = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function (this: IDBObjectStore, ...args: Parameters<typeof add>) {
+      if (this.name === "payloads") throw new DOMException("Storage full", "QuotaExceededError");
+      return add.apply(this, args);
+    });
+    await expect(worker.queueCapture(doc, captureId)).rejects.toThrow();
+    expect(await records("items")).toHaveLength(0);
+    expect(await records("captureIds")).toHaveLength(0);
+    fault.mockRestore();
+    expect((await worker.queueCapture(doc, captureId)).queued).toBe(true);
+    expect(await records("payloads")).toHaveLength(1);
+  });
+
+  it("removes source URLs from older receipts and drops expired ones on startup", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    storage.recentDeliveryReceipts = [
+      { transferId: "a".repeat(32), deliveredAt: now, title: "Local title", sourceUrl: "https://example.org/private" },
+      { transferId: "b".repeat(32), deliveredAt: now - 8 * 86400 },
+    ];
+    await boot();
+    await vi.waitFor(() => expect(storage.recentDeliveryReceipts).toEqual([{ transferId: "a".repeat(32), deliveredAt: now, title: "Local title" }]));
+  });
+
   it("migrates legacy plaintext without loss; ACK cleanup and discard leave the separate library accessible", async () => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("reader-outbox", 2);
@@ -105,7 +168,13 @@ describe("production worker persistence and request boundaries", () => {
     expect(await records("items")).toHaveLength(0);
     expect(await message({ kind: "reader-retained-action", action: "delete", captureId }, trusted)).toMatchObject({ ok: true });
     expect(await records("captures")).toHaveLength(0);
-    expect((await worker.queueCapture(doc, captureId)).transferId).toBe("c".repeat(32));
+    const resumed = await boot();
+    expect(await resumed.queueCapture(doc, captureId)).toEqual({
+      transferId: "c".repeat(32), queued: false, settled: "discarded",
+    });
+    storage.recentDeliveryReceipts = [{ transferId: "c".repeat(32), deliveredAt: Math.floor(Date.now() / 1000) }];
+    expect((await resumed.queueCapture(doc, captureId)).settled).toBe("delivered");
+    expect(await records("items")).toHaveLength(0);
   });
   it("migration skips malformed legacy rows without aborting the upgrade", async () => {
     await new Promise<void>((resolve, reject) => {
@@ -314,6 +383,8 @@ describe("production publication and ACK interleavings", () => {
     expect(await message({ kind: "reader-check-acks" }, trusted)).toMatchObject({ ok: true });
     expect(await records("items")).toHaveLength(0);
     expect(storage.recentDeliveryReceipts).toMatchObject([{ transferId: item.transferId }]);
+    expect(storage.recentDeliveryReceipts[0]).not.toHaveProperty("sourceUrl");
+    expect(await records("payloads")).toHaveLength(0);
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ kind: "reader-capture-feedback", captureId, state: "delivered" }), { documentId: "document-1" });
     expect(await message({ kind: "reader-delivery-receipt", transferId: item.transferId })).toEqual({ ok: true, delivered: true });
     release();

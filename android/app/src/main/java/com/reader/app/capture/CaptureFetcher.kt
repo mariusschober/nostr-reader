@@ -2,6 +2,9 @@ package com.reader.app.capture
 
 import java.io.ByteArrayOutputStream
 import java.net.URI
+import java.net.Proxy
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import com.reader.app.nostr.PublicNetworkRoute
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import okhttp3.Dispatcher
@@ -25,6 +28,7 @@ class CaptureFetcher(
     val mime: String,
     val htmlBytes: ByteArray,
     val redirectCount: Int,
+    val charset: String? = null,
   )
 
   companion object {
@@ -40,12 +44,14 @@ class CaptureFetcher(
     val ALLOWED_MIME = setOf("text/html", "application/xhtml+xml")
   }
 
-  suspend fun fetch(originalUrl: String): FetchedPage {    val startUri = try {
+  suspend fun fetch(originalUrl: String): FetchedPage {
+    val startUri = try {
       CaptureUrlPolicy.validateStructure(originalUrl)
     } catch (e: IllegalArgumentException) {
       throw CaptureException("invalid_url", e.message ?: "This link is not supported")
     }
     try {
+      http.checkRoute(startUri)
       CaptureUrlPolicy.validateResolvedHost(requireNotNull(startUri.host), resolver)
     } catch (e: IllegalArgumentException) {
       throw CaptureException("prohibited_destination", e.message ?: "This link destination is not supported")
@@ -66,7 +72,9 @@ class CaptureFetcher(
         val location = response.header("Location")
           ?: throw CaptureException("bad_redirect", "This page has a broken redirect")
         current = try {
-          CaptureUrlPolicy.validateRedirect(current, location, resolver)
+          CaptureUrlPolicy.validateRedirect(current, location, resolver) { target ->
+            http.checkRoute(target)
+          }
         } catch (e: IllegalArgumentException) {
           throw CaptureException("prohibited_destination", e.message ?: "This redirect is not supported")
         }
@@ -103,7 +111,7 @@ class CaptureFetcher(
       } catch (e: IllegalArgumentException) {
         throw CaptureException("prohibited_destination", e.message ?: "This link destination is not supported")
       }
-      return FetchedPage(current.toString(), mime, expanded, redirects)
+      return FetchedPage(current.toString(), mime, expanded, redirects, contentType.toMediaTypeOrNull()?.charset()?.name())
     }
   }
 }
@@ -152,13 +160,22 @@ interface CaptureHttp {
       catch (_: Exception) { throw CaptureException("bad_encoding", "This page could not be decoded") }
     }
   }
+  fun checkRoute(uri: URI) {}
   suspend fun get(url: String, totalTimeoutSecs: Long): Response
 }
 
 class OkHttpCaptureHttp(
   dns: Dns = CaptureDns(),
 ) : CaptureHttp {
+  override fun checkRoute(uri: URI) {
+    try { PublicNetworkRoute.requireDirect(uri) }
+    catch (_: java.net.UnknownServiceException) {
+      throw CaptureException("proxy_required", "Open the original in your browser to use this network’s proxy")
+    }
+  }
+
   private val client: OkHttpClient = OkHttpClient.Builder()
+    .proxy(Proxy.NO_PROXY)
     .dns(dns)
     .followRedirects(false)
     .followSslRedirects(false)
@@ -172,12 +189,12 @@ class OkHttpCaptureHttp(
 
   override suspend fun get(url: String, totalTimeoutSecs: Long): CaptureHttp.Response =
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+      checkRoute(URI(url))
       val request = Request.Builder()
         .url(url)
-        .header("User-Agent", "Reader/0.9 (Android article capture; +https://example.invalid)")
+        .header("User-Agent", "Reader/0.9 (Android article capture)")
         .header("Accept", "text/html,application/xhtml+xml")
         .header("Accept-Encoding", "gzip")
-        .header("Accept-Language", "en-US,en;q=0.9,de;q=0.8")
         .get()
         .build()
       try {

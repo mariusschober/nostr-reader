@@ -10,7 +10,7 @@ describe("supplementary worker boundary checks", () => {
   });
   it("uses short guarded progress commits and durable receipt before cleanup", () => {
     expect(source).toContain("checkpoint: (index, relay, outcome) => transferOperations.run");
-    expect(source.indexOf("await recordDelivered(item.transferId, now)")).toBeLessThan(source.indexOf("await outboxDelete(item.transferId); // Only"));
+    expect(source.indexOf("await recordDelivered(item.transferId, now)")).toBeLessThan(source.indexOf('await settleTransfer(item.transferId, "delivered"); // Only'));
     expect(source).toContain("if (!await current()) return false;");
   });
   it("validates identity and limits before publication", () => {

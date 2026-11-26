@@ -53,6 +53,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -77,6 +78,7 @@ class MainActivity : ComponentActivity() {
   private lateinit var keys: KeystoreWrap
   private var ttsClient: TtsPlaybackClient? = null
   private var refreshTick = androidx.compose.runtime.mutableStateOf(0)
+  private var pendingShare by mutableStateOf<Ingest.SharedContent?>(null)
   private val reviewMutex = kotlinx.coroutines.sync.Mutex()
   private val exportMutex = kotlinx.coroutines.sync.Mutex()
 
@@ -94,18 +96,40 @@ class MainActivity : ComponentActivity() {
     lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
       repeatOnLifecycle(Lifecycle.State.STARTED) {
         val receiving = ReaderSyncSession(applicationContext)
-        while (true) {
-          receiving.runOnce()
-          kotlinx.coroutines.delay(1000)
+        db.channels().observeSyncable().distinctUntilChanged().collectLatest { syncable ->
+          if (!syncable) return@collectLatest
+          var retryDelay = 2_000L
+          while (true) {
+            val retry = receiving.runOnce()
+            if (!retry) retryDelay = 2_000L
+            delay(if (retry) retryDelay else 1_000L)
+            if (retry) retryDelay = (retryDelay * 2).coerceAtMost(60_000L)
+          }
         }
       }
     }
-    handleIncomingIntent(intent)
+    if (savedInstanceState == null || savedInstanceState.getBoolean("shareAwaitingConfirmation")) handleIncomingIntent(intent)
     window.setBackgroundDrawableResource(android.R.color.black)
     setContent {
       val loadedSettings by remember { prefs.flow }.collectAsState(initial = null)
       val settings = loadedSettings ?: return@setContent
       com.reader.app.ui.theme.ReaderTheme(settings.themeMode, settings.display) {
+      pendingShare?.let { share ->
+        androidx.compose.material3.AlertDialog(
+          onDismissRequest = { pendingShare = null },
+          title = { androidx.compose.material3.Text("Add to Reader?") },
+          text = { androidx.compose.material3.Text(listOfNotNull(
+            share.subject?.takeIf { it.isNotBlank() }?.take(120),
+            if (share.isHtml) "Shared HTML article" else share.text.trimStart().take(240),
+          ).distinct().joinToString("\n"),
+            maxLines = 5, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+          confirmButton = { androidx.compose.material3.TextButton(onClick = {
+            pendingShare = null
+            importShared(share)
+          }) { androidx.compose.material3.Text("Add to Inbox") } },
+          dismissButton = { androidx.compose.material3.TextButton(onClick = { pendingShare = null }) { androidx.compose.material3.Text("Cancel") } },
+        )
+      }
       var savedRoutes by rememberSaveable { mutableStateOf("[]") }
       val stack = remember { RouteStack(runCatching { Json.decodeFromString<List<Route>>(savedRoutes) }.getOrDefault(emptyList())) }
       var tick by remember { mutableIntStateOf(0) }
@@ -692,12 +716,13 @@ class MainActivity : ComponentActivity() {
           onPauseAudio = { ttsClient?.pause() },
           onResumeAudio = { ttsClient?.play() },
           speechPlaying = ttsPlayback.documentId == r.id && ttsPlayback.playing,
+          speechPlayWhenReady = ttsPlayback.documentId == r.id && ttsPlayback.playWhenReady,
           playerVisible = ttsPlayback.documentId == r.id && !ttsPlayback.ended,
           player = {
             if (ttsPlayback.documentId == r.id && !ttsPlayback.ended) {
               TtsBar(ttsPlayback, com.reader.app.ui.theme.readerColors(settings.background),
                 onPrev = { ttsClient?.prev() },
-                onToggle = { if (ttsPlayback.playing) ttsClient?.pause() else ttsClient?.play() },
+                onToggle = { if (ttsPlayback.playWhenReady) ttsClient?.pause() else ttsClient?.play() },
                 onNext = { ttsClient?.next() },
                 onSpeed = { speed ->
                   ttsClient?.setSpeed(speed)
@@ -882,7 +907,7 @@ class MainActivity : ComponentActivity() {
           onOpen = { ttsPlayback.documentId?.let { target ->
             go(Route.Reader(target, at = ttsPlayback.cursor?.takeIf { it.documentId == target }))
           } },
-          onToggle = { if (ttsPlayback.playing) ttsClient?.pause() else ttsClient?.play() },
+          onToggle = { if (ttsPlayback.playWhenReady) ttsClient?.pause() else ttsClient?.play() },
           onStop = { ttsClient?.stop() },
         )
       }
@@ -905,6 +930,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
+    setIntent(intent)
     handleIncomingIntent(intent)
   }
 
@@ -916,18 +942,27 @@ class MainActivity : ComponentActivity() {
 
 
   private fun handleIncomingIntent(intent: Intent) {
-    if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_PROCESS_TEXT) return
-    val sourceType = if (intent.action == Intent.ACTION_PROCESS_TEXT) "android-process-text" else "android-share"
+    pendingShare = try { Ingest.handleIntentText(intent) } catch (_: RuntimeException) { null }
+  }
+
+  override fun onSaveInstanceState(outState: Bundle) {
+    super.onSaveInstanceState(outState)
+    outState.putBoolean("shareAwaitingConfirmation", pendingShare != null)
+  }
+
+  private fun importShared(shared: Ingest.SharedContent) {
+    val (text, subject, isHtml, sourceType) = shared
     lifecycleScope.launch {
       try {
-        val (text, subject) = Ingest.handleIntentText(intent) ?: return@launch
-        if (text.startsWith("__HTML__")) {
-          val id = Ingest.importHtml(this@MainActivity, text.removePrefix("__HTML__"), "android-share")
+        if (isHtml) {
+          Ingest.importHtml(this@MainActivity, text, sourceType)
           Toast.makeText(this@MainActivity, "Saved. Find it in Inbox.", Toast.LENGTH_SHORT).show()
           refreshTick.value++
           return@launch
         }
-        when (val kind = com.reader.app.capture.ShareIntentClassifier.classify(text, subject, Ingest::looksLikeMarkdown)) {
+        when (val kind = withContext(Dispatchers.Default) {
+          com.reader.app.capture.ShareIntentClassifier.classify(text, subject, Ingest::looksLikeMarkdown)
+        }) {
           is com.reader.app.capture.ShareClassification.SingleUrl,
           is com.reader.app.capture.ShareClassification.SubjectPlusUrl -> {
             val url = when (kind) {
@@ -947,7 +982,7 @@ class MainActivity : ComponentActivity() {
             } catch (e: IllegalArgumentException) {
               // Structurally invalid URL: fall back to existing text import,
               // and say so — the link was kept as text, not fetched.
-              val id = Ingest.importSharedText(this@MainActivity, text, sourceType, subject)
+              Ingest.importSharedText(this@MainActivity, text, sourceType, subject)
               Toast.makeText(this@MainActivity, "Link not valid — saved as text instead", Toast.LENGTH_LONG).show()
               refreshTick.value++
               return@launch
@@ -958,12 +993,13 @@ class MainActivity : ComponentActivity() {
             observeCaptureForTruthfulToast(request.requestId)
           }
           else -> {
-            val id = Ingest.importSharedText(this@MainActivity, text, sourceType, subject)
+            Ingest.importSharedText(this@MainActivity, text, sourceType, subject)
             Toast.makeText(this@MainActivity, "Added to Reader", Toast.LENGTH_SHORT).show()
             refreshTick.value++
           }
         }
-      } catch (e: Exception) {
+      } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+      catch (e: Exception) {
         Toast.makeText(this@MainActivity, "Import failed", Toast.LENGTH_LONG).show()
       }
     }
@@ -973,33 +1009,17 @@ class MainActivity : ComponentActivity() {
   private fun observeCaptureForTruthfulToast(requestId: String) {
     lifecycleScope.launch {
       try {
-        val db = com.reader.app.data.ReaderDb.get(this@MainActivity)
-        // Poll briefly while foreground; background completions surface as new library rows.
-        repeat(60) {
-          kotlinx.coroutines.delay(2000)
-          val row = withContext(Dispatchers.IO) { db.captureRequests().byId(requestId) } ?: return@launch
-          when (row.state) {
-            "completed" -> {
-              notices.show("Ready to read.")
-              refreshTick.value++
-              return@launch
-            }
-            "link_only" -> {
-              val detail = row.errorMessage?.take(120) ?: "article text unavailable"
-              notices.show("Link saved — $detail")
-              refreshTick.value++
-              return@launch
-            }
-            "failed" -> {
-              val detail = row.errorMessage?.take(120) ?: row.errorCode ?: "fetch failed"
-              notices.show("Link saved — $detail")
-              refreshTick.value++
-              return@launch
-            }
-            "cancelled" -> return@launch
-            else -> { /* keep waiting while pending/fetching */ }
-          }
+        val row = kotlinx.coroutines.withTimeoutOrNull(120_000) {
+          db.captureRequests().observeById(requestId).first { it == null || it.state !in setOf("pending", "fetching") }
+        } ?: return@launch
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@launch
+        when (row.state) {
+          "completed" -> notices.show("Ready to read.")
+          "link_only" -> notices.show("Link saved — ${row.errorMessage?.take(120) ?: "article text unavailable"}")
+          "failed" -> notices.show(row.errorMessage?.take(120) ?: "Couldn’t fetch this article.")
+          else -> return@launch
         }
+        refreshTick.value++
       } catch (_: Exception) { /* best-effort toast only */ }
     }
   }

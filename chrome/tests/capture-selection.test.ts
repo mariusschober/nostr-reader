@@ -9,7 +9,11 @@ vi.mock("../src/content/capture-feedback.js", () => ({
     isPending() { return false; }
   },
 }));
-vi.mock("../src/providers/adapters.js", () => ({ adapterFor: () => null, pickResponse: () => null }));
+vi.mock("../src/providers/adapters.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../src/providers/adapters.js")>(),
+  adapterFor: () => null,
+  pickResponse: () => null,
+}));
 
 afterEach(() => {
   delete (globalThis as any).readerCaptureInstalled;

@@ -106,17 +106,55 @@ object PairingProtocol {
       address.isSiteLocalAddress || address.isMulticastAddress
     ) return true
     val bytes = address.address
-    if (address is Inet4Address && bytes.size == 4) {
+    if (address is Inet4Address && bytes.size == 4) return isProhibitedIpv4(bytes)
+    if (address is Inet6Address && bytes.size == 16) {
+      // IPv4-mapped/compatible forms (::ffff:10.0.0.1, ::127.0.0.1) must be
+      // classified by their embedded IPv4 address, not by IPv6 platform helpers.
+      val mapped = bytes.sliceArray(0..9).all { it == 0.toByte() } && bytes[10] == 0xff.toByte() && bytes[11] == 0xff.toByte()
+      if (mapped) return isProhibitedIpv4(bytes.copyOfRange(12, 16))
+      val compatible = bytes.sliceArray(0..11).all { it == 0.toByte() }
+      if (compatible) return isProhibitedIpv4(bytes.copyOfRange(12, 16))
       val first = bytes[0].toInt() and 0xff
       val second = bytes[1].toInt() and 0xff
-      // Carrier-grade NAT is not covered by InetAddress.isSiteLocalAddress.
-      if (first == 100 && second in 64..127) return true
-    }
-    if (address is Inet6Address && bytes.size == 16) {
-      // fc00::/7 unique-local addresses.
-      if ((bytes[0].toInt() and 0xfe) == 0xfc) return true
+      val third = bytes[2].toInt() and 0xff
+      val fourth = bytes[3].toInt() and 0xff
+      // fc00::/7 unique-local
+      if ((first and 0xfe) == 0xfc) return true
+      // fe80::/10 link-local and ff00::/8 multicast (platform helpers cover
+      // most targets, but keep the wire-format check explicit).
+      if (first == 0xfe && (second and 0xc0) == 0x80) return true
+      if (first == 0xff) return true
+      // 2001:db8::/32 documentation
+      if (first == 0x20 && second == 0x01 && third == 0x0d && fourth == 0xb8) return true
+      // 2001:0000::/32 Teredo and 2002::/16 6to4 embed/tunnel arbitrary IPv4.
+      if (first == 0x20 && second == 0x01 && third == 0x00 && fourth == 0x00) return true
+      if (first == 0x20 && second == 0x02) return true
+      // 64:ff9b::/96 NAT64 can translate to private IPv4.
+      if (first == 0 && second == 0x64 && third == 0xff && fourth == 0x9b) return true
     }
     return false
+  }
+
+  private fun isProhibitedIpv4(bytes: ByteArray): Boolean {
+    if (bytes.size != 4) return true
+    val first = bytes[0].toInt() and 0xff
+    val second = bytes[1].toInt() and 0xff
+    val third = bytes[2].toInt() and 0xff
+    return when {
+      first == 0 || first == 10 || first == 127 -> true // 0/8, private, loopback
+      first == 100 && second in 64..127 -> true // carrier-grade NAT 100.64/10
+      first == 169 && second == 254 -> true // link-local
+      first == 172 && second in 16..31 -> true // private 172.16/12
+      first == 192 && second == 0 && third == 0 -> true // 192.0.0/24
+      first == 192 && second == 0 && third == 2 -> true // TEST-NET-1
+      first == 192 && second == 88 && third == 99 -> true // 6to4 relay anycast
+      first == 192 && second == 168 -> true // private 192.168/16
+      first == 198 && (second == 18 || second == 19) -> true // benchmark 198.18/15
+      first == 198 && second == 51 && third == 100 -> true // TEST-NET-2
+      first == 203 && second == 0 && third == 113 -> true // TEST-NET-3
+      first >= 224 -> true // multicast 224/4 and reserved 240/4
+      else -> false
+    }
   }
 
   /** Resolve before WebSocket creation and reject if any answer is non-public. */

@@ -58,28 +58,34 @@ object ReaderCore {
   /** Rolling sync window. NEVER last-sync (NIP-59 randomized past timestamps). */
   fun syncSince(nowSecs: Long): Long = nowSecs - SYNC_WINDOW_DAYS * 86400L
 
-  private val wordSeparator = Regex("\\s+")
-  private val listMarker = Regex("^[-*+>]+$")
-  private val numberedMarker = Regex("^\\d+[.)]$")
+  private val wordToken = java.util.regex.Pattern.compile("\\S+")
+  private val numberedMarker = java.util.regex.Pattern.compile("\\d+[.)]")
 
+  /** Count protocol words without copying the tokens or allocating matchers per word. */
   fun wordCount(canonical: String): Int {
+    val words = wordToken.matcher("")
+    val numbered = numberedMarker.matcher("")
     var inFence = false
-    var n = 0
+    var count = 0
     for (line in canonical.lineSequence()) {
-      val t = line.trim()
-      if (t.startsWith("```")) {
+      val text = line.trim()
+      if (text.startsWith("```")) {
         inFence = !inFence
         continue
       }
-      if (inFence) continue
-      for (w in t.split(wordSeparator)) {
-        if (w.isEmpty()) continue
-        if (w.startsWith("http://") || w.startsWith("https://")) continue
-        if (listMarker.matches(w) || numberedMarker.matches(w)) continue
-        n++
+      if (inFence || text.isEmpty()) continue
+      words.reset(text)
+      while (words.find()) {
+        val start = words.start()
+        val end = words.end()
+        val first = text[start]
+        if (first == 'h' && (text.startsWith("http://", start) || text.startsWith("https://", start))) continue
+        if (first in "-*+>" && (start until end).all { text[it] in "-*+>" }) continue
+        if ((text[end - 1] == '.' || text[end - 1] == ')') && numbered.reset(text).region(start, end).matches()) continue
+        count++
       }
     }
-    return n
+    return count
   }
 
   /**

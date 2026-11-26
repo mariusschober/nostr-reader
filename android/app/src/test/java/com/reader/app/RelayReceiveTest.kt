@@ -3,7 +3,6 @@ package com.reader.app
 import com.reader.app.nostr.*
 import okhttp3.Response
 import okhttp3.WebSocket
-import okhttp3.WebSocketListener
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import kotlinx.serialization.json.*
@@ -20,7 +19,7 @@ class RelayReceiveTest {
     val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(key))
     val events = (1L..33L).map { NostrCodec.signEvent(pubkey, it, 1059, emptyList(), "synthetic-$it", key) }
     repeat(2) {
-      server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+      server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
         override fun onMessage(socket: WebSocket, text: String) {
           val frame = StrictJson.parse(text).jsonArray
           if (frame[0].jsonPrimitive.content == "REQ") {
@@ -50,7 +49,7 @@ class RelayReceiveTest {
     val key = Secp256k1.randomPrivateKey()
     val pubkey = Secp256k1.bytesToHex(Secp256k1.getPublicKey(key))
     val event = NostrCodec.signEvent(pubkey, 1, 1059, emptyList(), "synthetic", key)
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onMessage(socket: WebSocket, text: String) {
         val frame = StrictJson.parse(text).jsonArray
         if (frame[0].jsonPrimitive.content == "REQ") {
@@ -79,7 +78,7 @@ class RelayReceiveTest {
 
   @Test fun closedSubscriptionIsNotHealthyEmptySuccess() {
     val server = MockWebServer()
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onMessage(socket: WebSocket, text: String) {
         val frame = StrictJson.parse(text).jsonArray
         if (frame[0].jsonPrimitive.content == "REQ") socket.send("[\"CLOSED\",${frame[1]},\"restricted\"]")
@@ -103,7 +102,7 @@ class RelayReceiveTest {
     val opened = CountDownLatch(1)
     val closed = CountDownLatch(1)
     val server = MockWebServer()
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onMessage(socket: WebSocket, text: String) { opened.countDown() }
       override fun onClosing(socket: WebSocket, code: Int, reason: String) { closed.countDown(); socket.close(code, reason) }
       override fun onFailure(socket: WebSocket, t: Throwable, response: Response?) { closed.countDown() }
@@ -122,7 +121,7 @@ class RelayReceiveTest {
 
   @Test fun earlySocketCloseAfterEoseIsDegradedNotHealthy() {
     val server = MockWebServer()
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onMessage(socket: WebSocket, text: String) {
         val frame = StrictJson.parse(text).jsonArray
         if (frame[0].jsonPrimitive.content == "REQ") {

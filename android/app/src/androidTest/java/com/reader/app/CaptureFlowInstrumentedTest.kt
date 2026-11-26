@@ -13,6 +13,9 @@ import com.reader.app.core.ArticleParser
 import com.reader.app.core.ReaderCore
 import com.reader.app.data.ReaderDb
 import java.net.InetAddress
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -45,6 +48,22 @@ class CaptureFlowInstrumentedTest {
   }
 
   @After fun tearDown() { db.close() }
+
+  @Test fun concurrentCapturesShareOneRequestAndStaleFailuresCannotParkItsReplacement() = runBlocking {
+    val ids = (1..12).map {
+      async(Dispatchers.IO) { repo.getOrCreate("https://example.com/story#part", null, "share").requestId }
+    }.awaitAll().distinct()
+    val id = ids.single()
+    val old = requireNotNull(repo.markFetching(id))
+    val replacement = requireNotNull(repo.markFetching(id))
+    assertTrue(replacement.generation > old.generation)
+    repo.markRetryable(old, "offline", "Retry later")
+    assertEquals(replacement, db.captureRequests().byId(id))
+    assertNull(repo.completeLinkOnly(id, old.generation, null, null, "stale"))
+    repo.markRetryable(replacement, "offline", "Retry later")
+    assertNull(repo.markFetching(id))
+    assertEquals("pending", db.captureRequests().byId(id)?.state)
+  }
 
   @Test fun unpairedShareAndPasteBothCreateDurableRequestsWithoutPairing() = runBlocking {
     // No channels, no pairing: capture must not require transport state.
@@ -88,7 +107,7 @@ class CaptureFlowInstrumentedTest {
       // Offline: first fetch attempt fails retryable, request persists.
       val fetching = fileRepo.markFetching(req.requestId)!!
       assertEquals(1, fetching.attemptCount)
-      fileRepo.markRetryable(req.requestId, "dns_retryable", "You're offline; Reader will retry")
+      fileRepo.markRetryable(fetching, "dns_retryable", "You're offline; Reader will retry")
       val persisted = fileDb.captureRequests().byId(req.requestId)!!
       assertEquals("pending", persisted.state)
       assertNotNull(persisted.nextAttemptAt)
@@ -105,7 +124,7 @@ class CaptureFlowInstrumentedTest {
       try {
         val survivor = reopened.captureRequests().byId(req.requestId)!!
         assertEquals("pending", survivor.state)
-        val repo2 = CaptureRepository(reopened)
+        val repo2 = CaptureRepository(reopened) { requireNotNull(survivor.nextAttemptAt) }
         val run2 = repo2.markFetching(survivor.requestId)!!
         val extracted = ArticleExtractor.extract(articleHtml("Offline"), "https://example.com/offline")
         val docId = repo2.completeWithArticle(survivor.requestId, run2.generation, extracted, "https://example.com/offline")!!

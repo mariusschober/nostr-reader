@@ -76,11 +76,23 @@ function worker(all) {
 
 const all = await targets();
 const page = extensionPage(all);
-if (!page && action !== "content-storage-static") {
+if (!page && action !== "content-storage-static" && action !== "open-options") {
   throw new Error("Reader settings target not found");
 }
 
-if (action === "status") {
+if (action === "open-options") {
+  let opened = false;
+  for (let attempt = 0; attempt < 100 && !opened; attempt++) {
+    for (const candidate of (await targets()).filter(target => target.type === "service_worker")) {
+      if (await evaluate(candidate, "globalThis.chrome?.runtime?.getManifest?.().name").catch(() => null) !== "Reader") continue;
+      await evaluate(candidate, "chrome.runtime.openOptionsPage()");
+      opened = true;
+      break;
+    }
+    if (!opened) await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!opened) throw new Error("The Reader extension did not install");
+} else if (action === "status") {
   const status = await evaluate(page, `chrome.runtime.sendMessage({kind:"reader-status"}).then(s => ({
     ok: s.ok,
     paired: s.paired,
@@ -92,6 +104,44 @@ if (action === "status") {
     delivery: s.delivery
   }))`);
   console.log(JSON.stringify(status, null, 2));
+} else if (action === "outbox-smoke") {
+  const { default: assert } = await import("node:assert/strict");
+  const send = value => evaluate(page, "chrome.runtime.sendMessage(" + JSON.stringify(value) + ")");
+  let ready;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      ready = await evaluate(page, `({
+        url:location.href, state:document.readyState, hasOptions:!!document.querySelector("#checkDelivery"),
+        hasRuntime:typeof chrome?.runtime?.sendMessage === "function"
+      })`);
+    } catch { /* Chrome is switching execution contexts during navigation. */ }
+    if (ready?.hasOptions && ready.hasRuntime) break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.ok(ready?.hasOptions && ready.hasRuntime, "Reader settings did not initialize: " + JSON.stringify(ready));
+  const initial = await send({kind:"reader-status"});
+  assert.equal(initial.paired, false);
+  assert.equal(initial.delivery.queued, 0);
+  const doc = {title:"Installed build check", sourceType:"selection", markdown:"Ordinary offline article text.\n"};
+  const capture = {kind:"reader-capture", captureId:crypto.randomUUID(), doc};
+  const saved = await send(capture);
+  assert.equal(saved.queued, true);
+  assert.equal((await send(capture)).transferId, saved.transferId);
+  const action = value => send({kind:"reader-transfer-action", action:value, transferId:saved.transferId});
+  assert.equal((await action("export")).markdown, doc.markdown);
+  const client = await connect(page);
+  try { await client.call("Page.reload"); } finally { client.close(); }
+  let queued;
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try { queued = (await send({kind:"reader-status"})).delivery.queued; } catch { /* page is reloading */ }
+    if (queued === 1) break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.equal(queued, 1);
+  assert.equal((await action("discard")).ok, true);
+  assert.equal((await send(capture)).settled, "discarded");
+  assert.equal((await send({kind:"reader-status"})).delivery.queued, 0);
+  console.log("Installed extension passed capture, duplicate, export, reload, discard and terminal replay.");
 } else if (action === "send") {
   const doc = {
     title: "Reader seven-relay ACK verification - 2026-09-05",

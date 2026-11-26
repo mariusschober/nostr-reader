@@ -302,6 +302,9 @@ abstract class DocumentDao {
 
 @Dao
 interface ChannelDao {
+  @Query("SELECT EXISTS(SELECT 1 FROM channels WHERE revokedAt IS NULL AND protocolVersion = 2 AND state IN ('active','pending_response','awaiting_ack','ack_validated','completion_pending'))")
+  fun observeSyncable(): kotlinx.coroutines.flow.Flow<Boolean>
+
   @Query("SELECT * FROM channels WHERE revokedAt IS NULL AND protocolVersion = 2 AND state = 'active'")
   suspend fun active(): List<ChannelEntity>
 

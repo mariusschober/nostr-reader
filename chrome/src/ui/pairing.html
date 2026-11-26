@@ -1,13 +1,13 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pair Reader</title><style>
 body{font-family:system-ui;background:#FFFCF0;color:#100F0F;max-width:560px;margin:40px auto;padding:20px;text-align:center}
-#qr canvas,#qr img{margin:16px auto}
+#qr canvas,#qr img{margin:16px auto;max-width:100%;height:auto!important}
 .ok{color:#66800B;font-size:22px}
 button{font:inherit;padding:9px 14px;margin:12px 4px;border:1px solid #b7b5ac;border-radius:8px;background:#fff}
 </style></head><body>
 <h2>Scan with Reader on Android</h2>
 <div id="qr"></div>
 <details id="manual" hidden><summary>Enter a code instead of scanning</summary><p>On your phone, paste this code in Pair Chrome. It expires with the QR code.</p><textarea id="manual-code" readonly aria-label="Pairing code" rows="4" style="width:100%;box-sizing:border-box"></textarea></details>
-<div id="state">Preparing…</div>
+<div id="state" role="status" aria-live="polite">Preparing…</div>
 <button id="cancel" hidden>Cancel pairing</button>
 <button id="restart" hidden>Create a new code</button>
 <script type="module">
@@ -16,72 +16,93 @@ const state = document.getElementById("state");
 const cancel = document.getElementById("cancel");
 const restart = document.getElementById("restart");
 let sessionId = null;
-let stopped = false;
+let revision = 0;
+let timer;
 
-async function begin() {
-  stopped = false;
-  cancel.hidden = true;
-  restart.hidden = true;
+function clearCode() {
   document.getElementById("qr").replaceChildren();
   document.getElementById("manual").hidden = true;
   document.getElementById("manual-code").value = "";
-  state.className = "";
-  state.textContent = "Checking the pairing relays…";
-  const r = await chrome.runtime.sendMessage({kind:"reader-start-pairing"});
-  if (!r.ok) {
-    state.textContent = "Could not create a pairing code: " + r.error;
-    restart.hidden = false;
-    return;
-  }
-  sessionId = r.sessionId;
-  const c = document.createElement("canvas");
-  document.getElementById("qr").appendChild(c);
-  await QRCode.toCanvas(c, JSON.stringify(r.qr), {width: 280, errorCorrectionLevel:"M"});
-  document.getElementById("manual-code").value = JSON.stringify(r.qr);
-  document.getElementById("manual").hidden = false;
-  state.textContent = "Ready to scan. This code expires in five minutes.";
-  cancel.hidden = false;
-  await poll();
 }
 
-async function poll() {
-  if (stopped || !sessionId) return;
-  const r = await chrome.runtime.sendMessage({kind:"reader-pairing-status", sessionId});
-  if (!r.ok) {
-    state.textContent = "Pairing status could not be checked: " + r.error;
-  } else {
-    state.textContent = r.message;
-    if (r.state === "complete") {
-      state.className = "ok";
-      document.getElementById("qr").replaceChildren();
-      document.getElementById("manual").hidden = true;
-      document.getElementById("manual-code").value = "";
-      cancel.hidden = true;
-      stopped = true;
-      return;
+async function begin() {
+  const active = ++revision;
+  clearTimeout(timer);
+  sessionId = null;
+  cancel.hidden = true;
+  restart.hidden = true;
+  clearCode();
+  state.className = "";
+  state.textContent = "Checking the pairing relays…";
+  try {
+    const r = await chrome.runtime.sendMessage({kind:"reader-start-pairing"});
+    if (active !== revision) return;
+    if (!r?.ok) throw new Error(r?.error || "Try again.");
+    sessionId = r.sessionId;
+    const code = JSON.stringify(r.qr);
+    document.getElementById("manual-code").value = code;
+    document.getElementById("manual").hidden = false;
+    cancel.hidden = false;
+    const canvas = document.createElement("canvas");
+    try {
+      await QRCode.toCanvas(canvas, code, {width:280, errorCorrectionLevel:"M"});
+      if (active !== revision) return;
+      document.getElementById("qr").appendChild(canvas);
+      state.textContent = "Ready to scan. This code expires in five minutes.";
+    } catch {
+      if (active !== revision) return;
+      document.getElementById("manual").open = true;
+      state.textContent = "Paste the pairing code into Reader on your phone.";
     }
-    if (["expired", "cancelled", "superseded", "missing"].includes(r.state)) {
-      document.getElementById("qr").replaceChildren();
-      document.getElementById("manual").hidden = true;
-      document.getElementById("manual-code").value = "";
-      cancel.hidden = true;
-      restart.hidden = false;
-      stopped = true;
-      return;
-    }
+    timer = setTimeout(() => poll(active), 2500);
+  } catch (error) {
+    if (active !== revision) return;
+    state.textContent = "Couldn’t start pairing. " + error.message;
+    restart.hidden = false;
   }
-  setTimeout(poll, 2500);
+}
+
+async function poll(active) {
+  if (active !== revision || !sessionId) return;
+  try {
+    const r = await chrome.runtime.sendMessage({kind:"reader-pairing-status", sessionId});
+    if (active !== revision) return;
+    if (!r?.ok) throw new Error();
+    state.textContent = r.message;
+    if (r.state === "complete" || ["expired", "cancelled", "superseded", "missing"].includes(r.state)) {
+      clearCode();
+      cancel.hidden = true;
+      restart.hidden = r.state === "complete";
+      if (r.state === "complete") state.className = "ok";
+      sessionId = null;
+      return;
+    }
+  } catch {
+    if (active !== revision) return;
+    state.textContent = "Couldn’t check pairing. Retrying…";
+  }
+  timer = setTimeout(() => poll(active), 2500);
 }
 
 cancel.addEventListener("click", async () => {
-  stopped = true;
-  if (sessionId) await chrome.runtime.sendMessage({kind:"reader-cancel-pairing", sessionId});
-  document.getElementById("qr").replaceChildren();
-  document.getElementById("manual").hidden = true;
-  document.getElementById("manual-code").value = "";
-  state.textContent = "Pairing cancelled.";
-  cancel.hidden = true;
-  restart.hidden = false;
+  const active = ++revision;
+  clearTimeout(timer);
+  clearCode();
+  cancel.disabled = true;
+  try {
+    const r = await chrome.runtime.sendMessage({kind:"reader-cancel-pairing", sessionId});
+    if (!r?.ok) throw new Error();
+    if (!r.cancelled) { await poll(active); return; }
+    sessionId = null;
+    state.textContent = "Pairing cancelled.";
+    cancel.hidden = true;
+    restart.hidden = false;
+  } catch {
+    state.textContent = "Couldn’t confirm cancellation. Try cancelling again.";
+    timer = setTimeout(() => poll(active), 2500);
+  } finally {
+    cancel.disabled = false;
+  }
 });
 restart.addEventListener("click", begin);
 await begin();

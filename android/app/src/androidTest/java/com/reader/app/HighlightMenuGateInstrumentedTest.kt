@@ -50,7 +50,7 @@ class HighlightMenuGateInstrumentedTest {
         AndroidView(modifier = Modifier.fillMaxSize().padding(bottom = 64.dp), factory = { context ->
           com.reader.app.ui.screens.NativeArticleView(context).apply {
             val projection = com.reader.app.core.RenderedText.project(com.reader.app.core.ArticleParser.parseWithSources(text))
-            display("menu-gate-fixture", projection, com.reader.app.ui.screens.nativeArticleText(projection, Color.BLUE),
+            display("menu-gate-fixture", projection, com.reader.app.ui.screens.nativeArticleText(projection),
               com.reader.app.prefs.ReaderSettings(), Color.rgb(16, 15, 15), Color.rgb(255, 252, 240), 24,
               com.reader.app.cursor.SemanticCursor.start("menu-gate-fixture"))
             setPenMode(true)
