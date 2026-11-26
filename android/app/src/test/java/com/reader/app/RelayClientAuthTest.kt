@@ -10,7 +10,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Response
 import okhttp3.WebSocket
-import okhttp3.WebSocketListener
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.*
@@ -23,7 +22,7 @@ class RelayClientAuthTest {
   @Test
   fun socketCloseBeforeMatchingOkIsClosedNotTimeoutOrRejection() {
     val server = MockWebServer()
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onMessage(webSocket: WebSocket, text: String) {
         webSocket.close(1000, "test close")
       }
@@ -52,7 +51,7 @@ class RelayClientAuthTest {
     val authenticationEvents = AtomicInteger(0)
     val authEvent = AtomicReference<NostrEvent?>()
     val callbackError = AtomicReference<Throwable?>()
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onOpen(webSocket: WebSocket, response: Response) {
         webSocket.send("[\"AUTH\",\"$challenge\"]")
       }
@@ -118,7 +117,7 @@ class RelayClientAuthTest {
     val changedChallenge = "changed-secret-challenge"
     val authenticated = AtomicBoolean(false)
     val authenticationEvents = AtomicInteger(0)
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onOpen(webSocket: WebSocket, response: Response) {
         webSocket.send("[\"AUTH\",\"$firstChallenge\"]")
       }
@@ -176,7 +175,7 @@ class RelayClientAuthTest {
   @Test
   fun authenticationRejectionIsNotMisreportedAsOriginalEventRejection() {
     val server = MockWebServer()
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onOpen(webSocket: WebSocket, response: Response) {
         webSocket.send("[\"AUTH\",\"reject-auth\"]")
       }
@@ -220,7 +219,7 @@ class RelayClientAuthTest {
     val server = MockWebServer()
     val challenge = "short-auth-secret"
     val authenticated = AtomicBoolean(false)
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onOpen(webSocket: WebSocket, response: Response) {
         webSocket.send("[\"AUTH\",\"$challenge\"]")
       }
@@ -275,7 +274,7 @@ class RelayClientAuthTest {
   @Test
   fun oversizedAuthenticationChallengeIsAProtocolError() {
     val server = MockWebServer()
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onOpen(webSocket: WebSocket, response: Response) {
         // 129 emoji are only 258 UTF-16 code units, but 516 UTF-8 bytes.
         webSocket.send("[\"AUTH\",\"${"🔥".repeat(129)}\"]")
@@ -324,7 +323,7 @@ class RelayClientAuthTest {
       "opaque",
       eventKey,
     )
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onOpen(webSocket: WebSocket, response: Response) {
         webSocket.send("[\"AUTH\",\"$challenge\"]")
       }

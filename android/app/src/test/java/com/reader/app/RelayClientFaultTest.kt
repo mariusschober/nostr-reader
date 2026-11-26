@@ -10,7 +10,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Response
 import okhttp3.WebSocket
-import okhttp3.WebSocketListener
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
@@ -30,7 +29,7 @@ class RelayClientFaultTest {
     response: (WebSocket, NostrEvent) -> Unit,
   ): RelayClient.PublishResult {
     val server = MockWebServer()
-    server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+    server.enqueue(MockResponse().withWebSocketUpgrade(object : MockRelaySocket() {
       override fun onMessage(webSocket: WebSocket, text: String) {
         val frame = runCatching { StrictJson.parse(text).jsonArray }.getOrNull() ?: return
         if (frame.firstOrNull()?.jsonPrimitive?.content == "EVENT") {
