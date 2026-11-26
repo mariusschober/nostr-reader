@@ -246,15 +246,25 @@ export async function captureRecord(captureId: string) {
   const db = await idb();
   try {
     type CaptureId = { transferId: string; status?: CaptureIdStatus };
-    return await new Promise<{ id: CaptureId; active: boolean } | undefined>((resolve, reject) => {
-      const tx = db.transaction(["items", "captureIds"]);
-      let match: { id: CaptureId; active: boolean } | undefined;
+    type Match = { id: CaptureId; active: boolean; retainedCopy: boolean };
+    return await new Promise<Match | undefined>((resolve, reject) => {
+      const tx = db.transaction(["items", "captureIds", "captures"]);
+      let match: Match | undefined;
       const key = tx.objectStore("captureIds").get(captureId);
       key.onsuccess = () => {
         const id: CaptureId | undefined = key.result;
         if (!id) return;
         const pending = tx.objectStore("items").getKey(id.transferId);
-        pending.onsuccess = () => { match = { id, active: pending.result !== undefined }; };
+        pending.onsuccess = () => {
+          const active = pending.result !== undefined;
+          match = { id, active, retainedCopy: false };
+          if (!active && id.status === "retained") {
+            // Older versions kept the dedupe ID after deleting the recovery copy.
+            // Check its key without loading the article.
+            const copy = tx.objectStore("captures").getKey(captureId);
+            copy.onsuccess = () => { match = { id, active, retainedCopy: copy.result !== undefined }; };
+          }
+        };
       };
       tx.oncomplete = () => resolve(match);
       tx.onerror = tx.onabort = () => reject(tx.error);

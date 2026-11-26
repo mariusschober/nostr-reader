@@ -284,12 +284,13 @@ async function existingCapture(captureId: string): Promise<CaptureResult | undef
   if (!found) return undefined;
   const { transferId, status } = found.id;
   if (found.active) return { transferId, queued: !await loadPairedChannelState() };
-  if (status === "delivered" || status === "discarded" || status === "retained") {
+  if (status === "delivered" || status === "discarded" || (status === "retained" && found.retainedCopy)) {
     return { transferId, queued: false, settled: status };
   }
   if ((await loadDeliveryReceipts()).some(receipt => receipt.transferId === transferId)) {
     return { transferId, queued: false, settled: "delivered" };
   }
+  if (status === "retained") return { transferId, queued: false, settled: "discarded" };
   throw new Error("Capture history is incomplete. Check Recent sends before saving again.");
 }
 

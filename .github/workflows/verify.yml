@@ -28,6 +28,13 @@ jobs:
         working-directory: chrome
         env:
           CHROME_BIN: ${{ steps.browser.outputs.chrome-path }}
+      - name: Keep the tested Chrome extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: reader-chrome
+          path: chrome/dist/
+          if-no-files-found: error
+          retention-days: 14
   android:
     runs-on: ubuntu-latest
     steps:

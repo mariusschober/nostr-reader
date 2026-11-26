@@ -168,7 +168,13 @@ describe("production worker persistence and request boundaries", () => {
     expect(await records("items")).toHaveLength(0);
     expect(await message({ kind: "reader-retained-action", action: "delete", captureId }, trusted)).toMatchObject({ ok: true });
     expect(await records("captures")).toHaveLength(0);
-    expect((await worker.queueCapture(doc, captureId)).transferId).toBe("c".repeat(32));
+    const resumed = await boot();
+    expect(await resumed.queueCapture(doc, captureId)).toEqual({
+      transferId: "c".repeat(32), queued: false, settled: "discarded",
+    });
+    storage.recentDeliveryReceipts = [{ transferId: "c".repeat(32), deliveredAt: Math.floor(Date.now() / 1000) }];
+    expect((await resumed.queueCapture(doc, captureId)).settled).toBe("delivered");
+    expect(await records("items")).toHaveLength(0);
   });
   it("migration skips malformed legacy rows without aborting the upgrade", async () => {
     await new Promise<void>((resolve, reject) => {
