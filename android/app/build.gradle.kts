@@ -65,6 +65,11 @@ dependencies {
   ksp("androidx.room:room-compiler:2.6.1")
   implementation("androidx.datastore:datastore-preferences:1.1.7")
   implementation("androidx.work:work-runtime-ktx:2.9.0")
+  constraints {
+    implementation("com.google.guava:guava:33.7.2-android") {
+      because("Media3 pulls in a version affected by GHSA-xxph-c9ww-hj94")
+    }
+  }
   // Media / images
   implementation("androidx.media3:media3-session:1.4.1")
   implementation("androidx.media3:media3-ui:1.4.1")

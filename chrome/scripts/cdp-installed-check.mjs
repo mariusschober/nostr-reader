@@ -92,6 +92,32 @@ if (action === "status") {
     delivery: s.delivery
   }))`);
   console.log(JSON.stringify(status, null, 2));
+} else if (action === "outbox-smoke") {
+  const { default: assert } = await import("node:assert/strict");
+  const send = value => evaluate(page, "chrome.runtime.sendMessage(" + JSON.stringify(value) + ")");
+  const initial = await send({kind:"reader-status"});
+  assert.equal(initial.paired, false);
+  assert.equal(initial.delivery.queued, 0);
+  const doc = {title:"Installed build check", sourceType:"selection", markdown:"Ordinary offline article text.\n"};
+  const capture = {kind:"reader-capture", captureId:crypto.randomUUID(), doc};
+  const saved = await send(capture);
+  assert.equal(saved.queued, true);
+  assert.equal((await send(capture)).transferId, saved.transferId);
+  const action = value => send({kind:"reader-transfer-action", action:value, transferId:saved.transferId});
+  assert.equal((await action("export")).markdown, doc.markdown);
+  const client = await connect(page);
+  try { await client.call("Page.reload"); } finally { client.close(); }
+  let queued;
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try { queued = (await send({kind:"reader-status"})).delivery.queued; } catch { /* page is reloading */ }
+    if (queued === 1) break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.equal(queued, 1);
+  assert.equal((await action("discard")).ok, true);
+  assert.equal((await send(capture)).settled, "discarded");
+  assert.equal((await send({kind:"reader-status"})).delivery.queued, 0);
+  console.log("Installed extension passed capture, duplicate, export, reload, discard and terminal replay.");
 } else if (action === "send") {
   const doc = {
     title: "Reader seven-relay ACK verification - 2026-09-05",
