@@ -754,7 +754,12 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     pendingSelection = null
     onSettle(session, range) { ok ->
       post {
-        if (penSettlement.acknowledge(settlement, ok, body.selectionStart, body.selectionEnd, gestureActive)) clearSelection()
+        if (penSettlement.acknowledge(settlement, ok, body.selectionStart, body.selectionEnd, gestureActive)) {
+          // Focus loss also ends TextView's private selection controller if Android
+          // replaced its ActionMode. A new long-press must start a fresh selection.
+          body.clearFocus()
+          clearSelection()
+        }
       }
     }
   }
