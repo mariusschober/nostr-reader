@@ -141,14 +141,10 @@ object ArticleExtractor {
     RegexOption.IGNORE_CASE,
   )
 
-  fun extract(htmlBytes: ByteArray, pageUrl: String): ExtractedArticle {
-    val html = try {
-      String(htmlBytes, Charsets.UTF_8)
-    } catch (_: Exception) {
-      throw ExtractionFailed("bad_encoding", "This page could not be decoded")
-    }
-    if (html.isBlank()) throw ExtractionFailed("empty_page", "This page has no readable content")
-    val doc = Jsoup.parse(html, pageUrl)
+  fun extract(htmlBytes: ByteArray, pageUrl: String, charset: String? = null): ExtractedArticle {
+    if (htmlBytes.isEmpty()) throw ExtractionFailed("empty_page", "This page has no readable content")
+    // A null HTTP charset lets Jsoup detect a BOM or an HTML charset declaration.
+    val doc = htmlBytes.inputStream().use { Jsoup.parse(it, charset, pageUrl) }
     val elements = doc.allElements.size
     if (elements > MAX_ELEMENTS) throw ExtractionFailed("page_too_complex", "This page is too complex to capture; open the original instead")
     // JS-shell signals must be captured before noise stripping removes scripts.

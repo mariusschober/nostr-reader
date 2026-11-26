@@ -15,6 +15,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.reader.app.ReaderApp
 import com.reader.app.cursor.SemanticCursor
 import com.reader.app.ui.MainActivity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +37,7 @@ class TtsPlaybackService : MediaSessionService() {
   private var player: TtsMediaPlayer? = null
   private var engine: AndroidTtsEngine? = null
   private var narrator: TtsNarrator? = null
+  private var pendingStart: PendingTtsStart? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -52,19 +56,45 @@ class TtsPlaybackService : MediaSessionService() {
       }.getOrNull()
     }
 
+    val starts = PendingTtsStart(
+      scope = scope,
+      loadMetadata = { id ->
+        com.reader.app.data.ReaderDb.get(app).documents().metadataById(id)?.let { TtsSourceMetadata(it.title, it.sourceUrl) }
+      },
+      onPending = { request, wantsPlayback ->
+        val state = TtsPlaybackState(
+          documentId = request.documentId, sourceTitle = "Article", loading = true,
+          playWhenReady = wantsPlayback, speed = request.speed, cursor = request.cursor,
+        )
+        TtsPlaybackBus.publish(state)
+        mediaPlayer.update(state)
+      },
+      onReady = { request, metadata, wantsPlayback ->
+        narration.start(request.documentId, request.cursor, request.speed, metadata.title, metadata.url, wantsPlayback)
+      },
+      onMissing = { narration.stop() },
+    )
+    pendingStart = starts
+    fun pause() {
+      if (!starts.pause()) narration.pause()
+      flushProgress()
+    }
+
     speechEngine.onReady = { narration.refreshVoice() }
-    speechEngine.onFocusLost = { narration.pause() }
+    speechEngine.onFocusLost = { pause() }
     narration.onState = { state ->
-      TtsPlaybackBus.publish(state)
-      mediaPlayer.update(state)
+      if (!starts.isPending) {
+        TtsPlaybackBus.publish(state)
+        mediaPlayer.update(state)
+      }
     }
     narration.onProgress = { documentId, cursor, fraction -> app.progress.offer(cursor, fraction) }
     narration.onSectionBoundary = { flushProgress() }
 
-    mediaPlayer.onPlay = { narration.play() }
-    mediaPlayer.onPause = { narration.pause(); flushProgress() }
-    mediaPlayer.onStop = { narration.stop(); flushProgress() }
-    mediaPlayer.onSpeed = { narration.setSpeed(it) }
+    mediaPlayer.onPlay = { if (!starts.play()) narration.play() }
+    mediaPlayer.onPause = { pause() }
+    mediaPlayer.onStop = { starts.cancel(); narration.stop(); flushProgress() }
+    mediaPlayer.onSpeed = { if (!starts.setSpeed(it)) narration.setSpeed(it) }
 
     val sessionActivity = PendingIntent.getActivity(
       this, 0, Intent(this, MainActivity::class.java),
@@ -100,7 +130,7 @@ class TtsPlaybackService : MediaSessionService() {
    */
   override fun onTaskRemoved(rootIntent: Intent?) {
     val current = player
-    if (current == null || !current.isPlaying) {
+    if (current == null || !current.playWhenReady) {
       stopSelf()
     }
     super.onTaskRemoved(rootIntent)
@@ -109,7 +139,9 @@ class TtsPlaybackService : MediaSessionService() {
   override fun onDestroy() {
     session?.release()
     session = null
+    pendingStart?.cancel()
     narrator?.stop()
+    scope.cancel()
     engine?.shutdown()
     player = null
     engine = null
@@ -161,18 +193,69 @@ class TtsPlaybackService : MediaSessionService() {
     val blockId = args.getString(TtsSessionCommands.ARG_BLOCK_ID) ?: "b0"
     val charOffset = args.getInt(TtsSessionCommands.ARG_CHAR_OFFSET)
     val speed = args.getFloat(TtsSessionCommands.ARG_SPEED, 1f)
-    val app = application as ReaderApp
-    scope.launch {
-      val metadata = runCatching { com.reader.app.data.ReaderDb.get(app).documents().metadataById(documentId) }.getOrNull()
-      // A stale START for a deleted article must not resurrect narration.
-      if (metadata == null) { narrator?.stop(); return@launch }
-      narrator?.start(
-        documentId = documentId,
-        cursor = SemanticCursor(documentId, blockId, charOffset),
-        speed = speed,
-        title = metadata.title,
-        url = metadata.sourceUrl,
-      )
+    // Replacement owns the command immediately, before Room metadata returns.
+    narrator?.stop()
+    flushProgress()
+    pendingStart?.start(TtsStartRequest(documentId, SemanticCursor(documentId, blockId, charOffset), speed))
+  }
+}
+
+internal data class TtsStartRequest(val documentId: String, val cursor: SemanticCursor, val speed: Float)
+internal data class TtsSourceMetadata(val title: String, val url: String?)
+
+/** The service's actual START boundary: pending metadata obeys later transport commands. */
+internal class PendingTtsStart(
+  private val scope: CoroutineScope,
+  private val loadMetadata: suspend (String) -> TtsSourceMetadata?,
+  private val onPending: (TtsStartRequest, Boolean) -> Unit,
+  private val onReady: (TtsStartRequest, TtsSourceMetadata, Boolean) -> Unit,
+  private val onMissing: () -> Unit,
+) {
+  private var generation = 0L
+  private var pending: TtsStartRequest? = null
+  private var playWhenReady = true
+  private var job: Job? = null
+  val isPending: Boolean get() = pending != null
+
+  fun start(request: TtsStartRequest) {
+    cancel()
+    val own = generation
+    pending = request
+    playWhenReady = true
+    onPending(request, playWhenReady)
+    job = scope.launch {
+      val metadata = try { loadMetadata(request.documentId) }
+      catch (error: CancellationException) { throw error }
+      catch (_: Exception) { null }
+      if (own != generation) return@launch
+      val current = pending ?: return@launch
+      pending = null
+      if (metadata == null) onMissing() else onReady(current, metadata, playWhenReady)
     }
+  }
+
+  fun setSpeed(speed: Float): Boolean {
+    val request = pending ?: return false
+    val updated = request.copy(speed = speed.coerceIn(.75f, 2.5f))
+    pending = updated
+    onPending(updated, playWhenReady)
+    return true
+  }
+
+  fun play(): Boolean = setIntent(true)
+  fun pause(): Boolean = setIntent(false)
+
+  private fun setIntent(value: Boolean): Boolean {
+    val request = pending ?: return false
+    playWhenReady = value
+    onPending(request, value)
+    return true
+  }
+
+  fun cancel() {
+    generation++
+    pending = null
+    job?.cancel()
+    job = null
   }
 }

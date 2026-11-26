@@ -45,7 +45,7 @@ class NativeScrollMeasurementInstrumentedTest {
       }
       scenario.onActivity { activity ->
         native = NativeArticleView(activity)
-        native.display("scroll-fixture", projection, nativeArticleText(projection, Color.BLUE), ReaderSettings(),
+        native.display("scroll-fixture", projection, nativeArticleText(projection), ReaderSettings(),
           Color.BLACK, Color.WHITE, 24, SemanticCursor.start("scroll-fixture"))
         activity.setContent { AndroidView(modifier = Modifier.fillMaxSize(), factory = { native }) }
         body = (0 until native.childCount).map { native.getChildAt(it) }.filterIsInstance<TextView>().first { it.isTextSelectable }
@@ -117,7 +117,7 @@ class NativeScrollMeasurementInstrumentedTest {
       lateinit var body: TextView
       scenario.onActivity { activity ->
         native = NativeArticleView(activity)
-        native.display("stop-fixture", projection, nativeArticleText(projection, Color.BLUE), ReaderSettings(),
+        native.display("stop-fixture", projection, nativeArticleText(projection), ReaderSettings(),
           Color.BLACK, Color.WHITE, 24, SemanticCursor.start("stop-fixture"))
         activity.setContent { AndroidView(modifier = Modifier.fillMaxSize(), factory = { native }) }
         body = (0 until native.childCount).map { native.getChildAt(it) }.filterIsInstance<TextView>().first { it.isTextSelectable }

@@ -2,14 +2,14 @@ import "./site-access.js";
 // Service worker: key ownership, outbox, pairing, quorum send, E2E ACK listen.
 // Private keys never leave this scope. State is durable (storage.local +
 // IndexedDB) because MV3 workers are suspended at will.
-import { publishFragments, type FragmentOutcome } from "./resumable-publisher.js";
+import { publishFragments } from "./resumable-publisher.js";
 import { scanHistory, type ScanState } from "../nostr/history-scan.js";
 import { DurableAlarms } from "./durable-alarms.js";
 import { CAPTURE_FEEDBACK_TEXT, type CaptureFeedbackRoute, type CaptureFeedbackState } from "../protocol/capture-feedback.js";
 import { SimplePool } from "nostr-tools/pool";
 import { getPublicKey } from "nostr-tools/pure";
 import {
-  READER_PROTOCOL, escapePlainText, canonicalize, documentId, wordCount, syncSince, checkLimits,
+  READER_PROTOCOL, escapePlainText, canonicalize, documentId, sha256HexBytes, MAX_EXPANDED_BYTES, wordCount, syncSince, checkLimits,
 } from "../protocol/core.js";
 import { deterministicGzip, decodeReaderGzip } from "../protocol/codec.js";
 import {
@@ -52,7 +52,6 @@ import {
 import {
   deliveryCeilingReason,
   summarizeDeliveryStates,
-  type DeliveryStatus,
 } from "../protocol/delivery-state.js";
 import { KeyedSerialExecutor, SerialExecutor } from "../protocol/serial-executor.js";
 import {
@@ -61,24 +60,10 @@ import {
   isValidXOnlyPubkey,
 } from "../protocol/device-binding.js";
 
-interface OutboxItem {
-  transferId: string;
-  documentId: string;
-  title: string;
-  manifest: Record<string, unknown>;
-  chunks: string[]; // base64 gzip slices
-  relays: string[];
-  createdAt: number;
-  expiresAt: number;
-  status: DeliveryStatus;
-  attemptCount: number;
-  nextAttemptAt: number;
-  lastError?: string;
-  fragmentProgress?: Record<string, Record<string, FragmentOutcome>>;
-  feedbackRoute?: CaptureFeedbackRoute;
-}
-
-type OutboxSummary = Omit<OutboxItem, "chunks" | "fragmentProgress">;
+import {
+  STRICT_CAPTURE_ID, captureRecord, insertCapture, outboxAll, outboxChunks, outboxGet, outboxPut,
+  pruneCaptureIds, retainedCaptures, settleTransfer, type CaptureIdStatus, type OutboxItem,
+} from "./outbox.js";
 
 interface PairingSession {
   request: PairingRequestV2;
@@ -103,6 +88,7 @@ const captureOperations = new SerialExecutor();
 const publicationOwner = new SerialExecutor();
 const activePublicationStops = new Map<string, () => void>();
 const transferOperations = new KeyedSerialExecutor<string>();
+const identityOperations = new SerialExecutor();
 const receiptOperations = new SerialExecutor();
 const pairingOperations = new SerialExecutor();
 let pairingRecovery: Promise<void> | null = null;
@@ -201,7 +187,11 @@ async function loadPairedChannelState(): Promise<PairedChannelState | undefined>
   return pairedChannelState(st as Record<string, unknown>);
 }
 
-async function getDeviceKey(): Promise<{ seckey: Uint8Array; pubkey: string }> {
+function getDeviceKey(): Promise<{ seckey: Uint8Array; pubkey: string }> {
+  return identityOperations.run(loadOrCreateDeviceKey);
+}
+
+async function loadOrCreateDeviceKey(): Promise<{ seckey: Uint8Array; pubkey: string }> {
   await lockDownKeyStorage();
   const st = await chrome.storage.local.get(["deviceSeckey", ...PAIRED_CHANNEL_STORAGE_KEYS]);
   const hasChannelBinding = PAIRED_CHANNEL_STORAGE_KEYS.some((key) => st[key] !== undefined);
@@ -232,224 +222,13 @@ async function lockDownKeyStorage(): Promise<void> {
 // Chrome persists this access level, while this closes upgrade/reload windows.
 void lockDownKeyStorage().catch(() => undefined);
 
-// Strict capture identity: 32 lowercase hex (randomHex) or canonical UUID.
-// The older permissive pattern allowed arbitrary hyphen placement; new writes
-// require one of these two exact shapes. Reads remain tolerant of legacy rows
-// via migration-time validation that skips (never aborts on) malformed rows.
-const STRICT_CAPTURE_ID = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
-const STRICT_TRANSFER_ID = /^[0-9a-f]{32}$/;
-
-// captureIds rows are deduplication tombstones, not transport payload:
-// { captureId, transferId, createdAt, status: 'pending'|'delivered'|'discarded'|'retained' }.
-// Repeating a capture ID returns its original terminal result even after the
-// transport payload is gone. A deliberate new capture must use a new ID.
-// Tombstones are bounded separately (see pruneCaptureIds); pending rows are
-// never pruned while their transport item still exists.
-type CaptureIdStatus = "pending" | "delivered" | "discarded" | "retained";
-
-// ---- Outbox (IndexedDB, durable across worker restarts) ----
-function idb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const r = indexedDB.open("reader-outbox", 3);
-    r.onupgradeneeded = (event) => {
-      const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
-      if (!r.result.objectStoreNames.contains("items")) r.result.createObjectStore("items", { keyPath: "transferId" });
-      if (!r.result.objectStoreNames.contains("captures")) r.result.createObjectStore("captures", { keyPath: "captureId" });
-      if (!r.result.objectStoreNames.contains("captureIds")) r.result.createObjectStore("captureIds", { keyPath: "captureId" });
-      // Migrate only once, from v2 rows that predate lightweight dedupe.
-      // Preserve every legacy plaintext row as an explicitly accessible recovery
-      // library. Migration is one versionchange transaction: quota failure
-      // aborts and leaves version 2 intact for a later retry. Malformed rows
-      // are skipped (never abort the whole upgrade on one bad row).
-      if (oldVersion >= 2 && oldVersion < 3) {
-        try {
-          const tx = r.transaction!;
-          const capturesStore = tx.objectStore("captures");
-          const idsStore = tx.objectStore("captureIds");
-          const cursorReq = capturesStore.openCursor();
-          cursorReq.onsuccess = () => {
-            try {
-              const cur = cursorReq.result as IDBCursorWithValue | null;
-              if (!cur) return;
-              const v = cur.value as { captureId?: unknown; transferId?: unknown; createdAt?: unknown };
-              if (typeof v?.captureId === "string" && typeof v?.transferId === "string" &&
-                STRICT_CAPTURE_ID.test(v.captureId) && STRICT_TRANSFER_ID.test(v.transferId) &&
-                Number.isSafeInteger(v.createdAt)) {
-                try { idsStore.put({ captureId: v.captureId, transferId: v.transferId, createdAt: v.createdAt, status: "retained" }); } catch { /* per-row put setup failure: skip row, keep transaction alive */ }
-              }
-              // Skip invalid rows silently: the legacy library row stays for
-              // explicit Settings export/delete; only the dedupe index skips it.
-              try { cur.continue(); } catch { /* transaction will complete */ }
-            } catch {
-              try { (cursorReq.result as IDBCursorWithValue | null)?.continue(); } catch { /* complete */ }
-            }
-          };
-          cursorReq.onerror = () => { try { tx.abort(); } catch { /* leaves v2 intact */ } };
-        } catch {
-          try { r.transaction!.abort(); } catch { /* leaves v2 intact */ }
-        }
-      }
-    };
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-  });
-}
-async function outboxPut(item: OutboxItem): Promise<void> {
-  const db = await idb();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("items", "readwrite");
-      tx.oncomplete = () => resolve();
-      tx.onerror = tx.onabort = () => reject(tx.error);
-      try { tx.objectStore("items").put(item); }
-      catch (error) { tx.abort(); reject(error); }
-    });
-  } finally { db.close(); }
-}
-async function outboxAll(): Promise<OutboxSummary[]> {
-  const db = await idb();
-  try {
-    return await new Promise<OutboxSummary[]>((resolve, reject) => {
-      const summaries: OutboxSummary[] = [];
-      const request = db.transaction("items").objectStore("items").openCursor();
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) { resolve(summaries); return; }
-        const { chunks: _chunks, fragmentProgress: _progress, ...summary } = cursor.value as OutboxItem;
-        summaries.push(summary);
-        cursor.continue();
-      };
-    });
-  } finally { db.close(); }
-}
-async function outboxGet(transferId: string): Promise<OutboxItem | undefined> {
-  const db = await idb();
-  try {
-    return await new Promise<OutboxItem | undefined>((resolve, reject) => {
-      const request = db.transaction("items").objectStore("items").get(transferId);
-      request.onsuccess = () => resolve(request.result as OutboxItem | undefined);
-      request.onerror = () => reject(request.error);
-    });
-  } finally { db.close(); }
-}
-async function outboxDelete(transferId: string): Promise<void> {
-  const db = await idb();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("items", "readwrite");
-      tx.oncomplete = () => resolve();
-      tx.onerror = tx.onabort = () => reject(tx.error);
-      try { tx.objectStore("items").delete(transferId); }
-      catch (error) { tx.abort(); reject(error); }
-    });
-  } finally { db.close(); }
-}
-
-/** Mark the dedupe tombstone for a transport payload that settled. Never deletes the ID. */
-async function markCaptureSettledByTransfer(transferId: string, status: Extract<CaptureIdStatus, "delivered" | "discarded">): Promise<void> {
-  const db = await idb();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("captureIds", "readwrite");
-      tx.oncomplete = () => resolve();
-      // A missing index or cursor error must not fail ACK/discard cleanup.
-      tx.onerror = tx.onabort = () => resolve();
-      try {
-        const store = tx.objectStore("captureIds");
-        const cursorReq = store.openCursor();
-        cursorReq.onsuccess = () => {
-          try {
-            const cur = cursorReq.result as IDBCursorWithValue | null;
-            if (!cur) return;
-            const v = cur.value as { captureId: string; transferId: string; createdAt: number; status?: CaptureIdStatus };
-            if (v?.transferId === transferId && v?.status !== status) {
-              try { cur.update({ ...v, status }); } catch { /* keep original tombstone */ }
-            }
-            try { cur.continue(); } catch { /* done */ }
-          } catch { /* keep transaction alive for remaining rows */ }
-        };
-      } catch { /* resolve via oncomplete */ }
-    });
-  } finally { db.close(); }
-}
-
-/** Bound tombstone growth: keep at most 2000 newest IDs, never prune pending transport. */
-async function pruneCaptureIds(): Promise<void> {
-  try {
-    const db = await idb();
-    try {
-      const tombstones = await new Promise<{ captureId: string; createdAt: number; status?: CaptureIdStatus; transferId: string }[]>((resolve, reject) => {
-        const rows: { captureId: string; createdAt: number; status?: CaptureIdStatus; transferId: string }[] = [];
-        const tx = db.transaction("captureIds", "readonly");
-        tx.onerror = tx.onabort = () => reject(tx.error);
-        const req = tx.objectStore("captureIds").openCursor();
-        req.onsuccess = () => {
-          const cur = req.result as IDBCursorWithValue | null;
-          if (!cur) { resolve(rows); return; }
-          rows.push(cur.value);
-          try { cur.continue(); } catch { resolve(rows); }
-        };
-        req.onerror = () => reject(req.error);
-      });
-      if (tombstones.length <= 2000) return;
-      // Only prune settled tombstones whose transport is already gone.
-      const settled = tombstones
-        .filter((r) => r.status === "delivered" || r.status === "discarded" || r.status === "retained")
-        .sort((a, b) => a.createdAt - b.createdAt);
-      const excess = tombstones.length - 2000;
-      const victims = settled.slice(0, Math.min(excess, settled.length));
-      if (!victims.length) return;
-      await new Promise<void>((resolve) => {
-        const tx = db.transaction("captureIds", "readwrite");
-        tx.oncomplete = () => resolve();
-        tx.onerror = tx.onabort = () => resolve();
-        try {
-          const store = tx.objectStore("captureIds");
-          for (const v of victims) { try { store.delete(v.captureId); } catch { /* continue */ } }
-        } catch { /* resolve */ }
-      });
-    } finally { db.close(); }
-  } catch { /* pruning is best-effort, never fails capture */ }
-}
-
-/** Legacy library owns its plaintext independently of transport and ACK cleanup. */
-async function retainedCaptures(action: "list" | "export" | "delete", captureId?: string): Promise<any> {
-  const db = await idb();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction("captures", action === "delete" ? "readwrite" : "readonly");
-      const store = tx.objectStore("captures");
-      let result: unknown;
-      if (action === "list") {
-        const rows: unknown[] = [];
-        result = rows;
-        const cursor = store.openCursor();
-        cursor.onsuccess = () => {
-          const row = cursor.result;
-          if (!row) return;
-          rows.push({ captureId: row.value.captureId, title: row.value.title, createdAt: row.value.createdAt });
-          row.continue();
-        };
-      } else {
-        const request = action === "delete" ? store.delete(captureId!) : store.get(captureId!);
-        request.onsuccess = () => { result = request.result; };
-      }
-      tx.oncomplete = () => resolve(result);
-      tx.onerror = tx.onabort = () => reject(tx.error);
-    });
-  } finally { db.close(); }
-}
-
 interface DeliveryReceipt {
   transferId: string;
   title?: string;
-  sourceUrl?: string;
   deliveredAt: number;
 }
 
-async function loadDeliveryReceipts(nowSecs = Math.floor(Date.now() / 1000)): Promise<DeliveryReceipt[]> {
-  const raw = (await chrome.storage.local.get([DELIVERY_RECEIPTS_KEY]))[DELIVERY_RECEIPTS_KEY];
+function normalizeReceipts(raw: unknown, nowSecs: number): DeliveryReceipt[] {
   if (!Array.isArray(raw)) return [];
   const cutoff = nowSecs - 7 * 86400;
   return raw.filter((item): item is DeliveryReceipt => (
@@ -457,18 +236,34 @@ async function loadDeliveryReceipts(nowSecs = Math.floor(Date.now() / 1000)): Pr
     typeof (item as DeliveryReceipt).transferId === "string" &&
     Number.isSafeInteger((item as DeliveryReceipt).deliveredAt) &&
     (item as DeliveryReceipt).deliveredAt >= cutoff
-  )).slice(-1000);
+  )).slice(-1000).map(({ transferId, deliveredAt, title }) => ({
+    transferId, deliveredAt, ...(typeof title === "string" ? { title: title.slice(0, 500) } : {}),
+  }));
+}
+
+async function loadDeliveryReceipts(nowSecs = Math.floor(Date.now() / 1000)): Promise<DeliveryReceipt[]> {
+  return normalizeReceipts((await chrome.storage.local.get([DELIVERY_RECEIPTS_KEY]))[DELIVERY_RECEIPTS_KEY], nowSecs);
+}
+
+function trimStoredReceipts(): Promise<void> {
+  return receiptOperations.run(async () => {
+    const raw = (await chrome.storage.local.get([DELIVERY_RECEIPTS_KEY]))[DELIVERY_RECEIPTS_KEY];
+    if (!Array.isArray(raw)) return;
+    const receipts = normalizeReceipts(raw, Math.floor(Date.now() / 1000));
+    if (raw.length !== receipts.length || raw.some(item => item && "sourceUrl" in Object(item))) {
+      await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts });
+    }
+  });
 }
 
 async function recordDelivered(transferId: string, deliveredAt: number): Promise<void> {
   await receiptOperations.run(async () => {
     const receipts = (await loadDeliveryReceipts(deliveredAt)).filter((item) => item.transferId !== transferId);
     const deliveredItem = await outboxGet(transferId);
-    receipts.push({ transferId, deliveredAt, title: deliveredItem?.title.slice(0, 500), sourceUrl: String(deliveredItem?.manifest.sourceUrl ?? "").slice(0, 2000) });
+    receipts.push({ transferId, deliveredAt, title: deliveredItem?.title.slice(0, 500) });
     await chrome.storage.local.set({ [DELIVERY_RECEIPTS_KEY]: receipts.slice(-1000) });
   });
-  // Tombstone the dedupe ID as delivered (best-effort; receipt is the truth).
-  await markCaptureSettledByTransfer(transferId, "delivered").catch(() => undefined);
+
 }
 
 async function cleanupDelivered(): Promise<void> {
@@ -477,52 +272,45 @@ async function cleanupDelivered(): Promise<void> {
   for (const item of await outboxAll()) if (delivered.has(item.transferId)) {
     await transferOperations.run(item.transferId, async () => {
       activePublicationStops.get(item.transferId)?.();
-      await outboxDelete(item.transferId);
-      await markCaptureSettledByTransfer(item.transferId, "delivered").catch(() => undefined);
+      await settleTransfer(item.transferId, "delivered");
     });
   }
 }
 
+type CaptureResult = { transferId: string; queued: boolean; settled?: CaptureIdStatus };
+
+async function existingCapture(captureId: string): Promise<CaptureResult | undefined> {
+  const found = await captureRecord(captureId);
+  if (!found) return undefined;
+  const { transferId, status } = found.id;
+  if (found.active) return { transferId, queued: !await loadPairedChannelState() };
+  if (status === "delivered" || status === "discarded" || status === "retained") {
+    return { transferId, queued: false, settled: status };
+  }
+  if ((await loadDeliveryReceipts()).some(receipt => receipt.transferId === transferId)) {
+    return { transferId, queued: false, settled: "delivered" };
+  }
+  throw new Error("Capture history is incomplete. Check Recent sends before saving again.");
+}
+
 // ---- Send pipeline ----
-export async function queueCapture(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId = randomHex(16), feedbackRoute?: CaptureFeedbackRoute): Promise<{ transferId: string; queued: boolean; settled?: CaptureIdStatus }> {
+export async function queueCapture(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId = randomHex(16), feedbackRoute?: CaptureFeedbackRoute): Promise<CaptureResult> {
   if (!raw || typeof raw.title !== "string" || typeof raw.markdown !== "string" || !raw.markdown.trim() ||
       raw.markdown.length > 20 * 1024 * 1024 || raw.title.length > 500 ||
       (raw.sourceUrl !== undefined && (typeof raw.sourceUrl !== "string" || raw.sourceUrl.length > 2000)) ||
       !STRICT_CAPTURE_ID.test(captureId)) throw new Error("Invalid capture or content too large.");
   return captureOperations.run(async () => {
-    const db = await idb();
-    try {
-      const existing = await new Promise<any>((resolve, reject) => {
-        const request = db.transaction("captureIds").objectStore("captureIds").get(captureId);
-        request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-      });
-      if (existing) {
-        // Truthful terminal status: if the transport payload is gone the
-        // capture is already settled (delivered/discarded/retained library).
-        // Never pretend a settled capture is newly queued and never recreate
-        // transport for the same ID — a deliberate new capture needs a new ID.
-        const item = await new Promise<any>((resolve) => {
-          try {
-            const req = db.transaction("items").objectStore("items").get(existing.transferId);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => resolve(undefined);
-          } catch { resolve(undefined); }
-        });
-        if (!item) {
-          const status = (existing.status ?? "delivered") as CaptureIdStatus;
-          return { transferId: existing.transferId, queued: false, settled: status };
-        }
-        return { transferId: existing.transferId, queued: !await loadPairedChannelState() };
-      }
-      return await queueCaptureInternal(raw, captureId, feedbackRoute);
-    } finally { db.close(); }
+    const existing = await existingCapture(captureId);
+    return existing ?? queueCaptureInternal(raw, captureId, feedbackRoute);
   });
 }
 
-async function queueCaptureInternal(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId: string, feedbackRoute?: CaptureFeedbackRoute): Promise<{ transferId: string; queued: boolean; settled?: CaptureIdStatus }> {  const { seckey, pubkey } = await getDeviceKey();
+async function queueCaptureInternal(raw: { title: string; markdown: string; sourceUrl?: string; sourceType?: string }, captureId: string, feedbackRoute?: CaptureFeedbackRoute): Promise<CaptureResult> {
+  const { seckey, pubkey } = await getDeviceKey();
   const canonical = canonicalize(raw.markdown);
   const canonicalBytes = new TextEncoder().encode(canonical);
-  const docId = await documentId(canonical);
+  if (canonicalBytes.length > MAX_EXPANDED_BYTES) throw new Error("Article exceeds 20 MiB");
+  const docId = await sha256HexBytes(canonicalBytes);
   const gz = deterministicGzip(canonicalBytes);
   const paired = await loadPairedChannelState();
   const channelPubkey = paired?.channelPubkey;
@@ -535,10 +323,10 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
   // Adaptive chunk target: size real frames later; start 24 KiB of gzip.
   const SLICE = 24 * 1024;
   const chunks: string[] = [];
-  for (let i = 0; i < gz.length; i += SLICE) chunks.push(b64(gz.slice(i, i + SLICE)));
+  for (let i = 0; i < gz.length; i += SLICE) chunks.push(b64(gz.subarray(i, i + SLICE)));
   checkLimits({ compressedBytes: gz.length, expandedBytes: canonicalBytes.length, titleLen: raw.title.length, urlLen: (raw.sourceUrl ?? "").length, chunkCount: chunks.length });
   const transferId = randomHex(16);
-  const compressedSha256 = await shaHex(gz);
+  const compressedSha256 = await sha256HexBytes(gz);
   const allowedSourceTypes = new Set(["web", "chatgpt", "claude", "gemini", "perplexity", "notebook", "grok", "substack", "x", "selection"]);
   const sourceType = allowedSourceTypes.has(raw.sourceType ?? "") ? raw.sourceType! : "web";
   const manifest = {
@@ -569,7 +357,6 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
     documentId: docId,
     title: raw.title,
     manifest,
-    chunks,
     relays,
     createdAt: now,
     expiresAt,
@@ -578,65 +365,18 @@ async function queueCaptureInternal(raw: { title: string; markdown: string; sour
     nextAttemptAt: now,
     feedbackRoute,
   };
-  const captureDb = await idb();
   try {
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = captureDb.transaction(["items", "captureIds"], "readwrite");
-        tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
-        try {
-          // add (not put) for the dedupe index: an overlapping worker restart
-          // that raced us must fail here instead of silently overwriting the
-          // winner's mapping and orphaning its transport item.
-          tx.objectStore("items").add(item);
-          tx.objectStore("captureIds").add({ captureId, transferId, createdAt: now, status: "pending" });
-        } catch (error) {
-          // Synchronous request setup failures do not automatically roll back
-          // earlier queued writes. Never leave a send without its deduplication record.
-          try { tx.abort(); } catch { /* ignore */ }
-          reject(error);
-        }
-      });
-    } catch (error) {
-      // Lost the add race (or async ConstraintError abort): another owner won
-      // this captureId. Remove our orphan transport item if it committed, then
-      // return the winner. This keeps check+put effectively single-winner
-      // across worker restarts; within one realm captureOperations already
-      // serializes callers.
-      const winner = await new Promise<any>((resolve) => {
-        try {
-          const req = captureDb.transaction("captureIds").objectStore("captureIds").get(captureId);
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(undefined);
-        } catch { resolve(undefined); }
-      }).catch(() => undefined);
-      if (winner && typeof winner.transferId === "string" && winner.transferId !== transferId) {
-        await new Promise<void>((resolve) => {
-          try {
-            const tx = captureDb.transaction("items", "readwrite");
-            tx.oncomplete = () => resolve(); tx.onerror = tx.onabort = () => resolve();
-            try { tx.objectStore("items").delete(transferId); } catch { /* resolve */ }
-          } catch { resolve(); }
-        });
-        // Return the winner with the same truthful settled/pending semantics
-        // as the fast path above.
-        const winnerItem = await outboxGet(winner.transferId).catch(() => undefined);
-        if (!winnerItem) return { transferId: winner.transferId, queued: false, settled: (winner.status ?? "delivered") as CaptureIdStatus };
-        return { transferId: winner.transferId, queued: !await loadPairedChannelState() };
-      }
-      throw error;
-    }
-  } finally { captureDb.close(); }
+    await insertCapture(item, chunks, captureId);
+  } catch (error) {
+    const winner = await existingCapture(captureId);
+    if (winner) return winner;
+    throw error;
+  }
   void pruneCaptureIds().catch(() => undefined);
   void restoreWorkAlarms().catch(() => undefined);
   if (!channelPubkey) return { transferId, queued: true }; // unpaired: stays queued
   void publishTransfer(item.transferId, seckey, channelPubkey).catch(() => { /* alarm retries */ });
   return { transferId, queued: false };
-}
-
-async function shaHex(bytes: Uint8Array): Promise<string> {
-  const d = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
-  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function retryAt(attemptCount: number, nowSecs: number): number {
@@ -700,7 +440,7 @@ async function publishTransfer(
       // Recover the receipt-before-cleanup crash without republishing.
       if ((await loadDeliveryReceipts()).some(receipt => receipt.transferId === transferId)) {
         void notifyCapture(durable.feedbackRoute, "delivered", durable.transferId);
-        await outboxDelete(transferId);
+        await settleTransfer(transferId, "delivered");
         return;
       }
       const now = Math.floor(Date.now() / 1000);
@@ -719,7 +459,7 @@ async function publishTransfer(
       durable.attemptCount++;
       durable.nextAttemptAt = retryAt(durable.attemptCount, now);
       await outboxPut(durable); // attempt reservation survives interruption
-      return durable;
+      return { ...durable, chunks: await outboxChunks(transferId) };
     });
     if (!snapshot) return;
     scheduleAckCheck();
@@ -825,7 +565,7 @@ async function pollForAcksInternal(): Promise<void> {
           // from leaking into a different page that later occupies the tab.
           void notifyCapture(item.feedbackRoute, "delivered", item.transferId);
           activePublicationStops.get(item.transferId)?.();
-          await outboxDelete(item.transferId); // Only this strict E2E ACK clears captured content.
+          await settleTransfer(item.transferId, "delivered"); // Only this strict E2E ACK clears captured content.
         } else {
           item.status = "failed";
           item.lastError = ack.reasonCode ?? "device-rejected";
@@ -1275,7 +1015,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ ok: true, ...(msg.action === "export" ? { title: result.title, markdown: result.markdown } : {}) });
     } else if (msg?.kind === "reader-status") {
       const paired = await loadPairedChannelState();
-      const items = await outboxAll().catch(() => []);
+      const items = await outboxAll();
       const customRelays = await loadCustomRelays();
       const receipts = await loadDeliveryReceipts();
       const nextRelays = configuredRelays(customRelays);
@@ -1283,14 +1023,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const delivery = summarizeDeliveryStates(items, receipts.length);
       sendResponse({
         ok: true,
-        retained: await retainedCaptures("list").catch(() => []),
+        retained: await retainedCaptures("list"),
         paired: !!paired,
         relays: pairedRelays,
         pending: delivery.queued + delivery.relayAccepted + delivery.awaitingDevice,
         delivery,
         recent: [
           ...items.map(item => ({ transferId: item.transferId, title: item.title, sourceUrl: item.manifest.sourceUrl, state: item.status, time: item.createdAt, error: item.lastError })),
-          ...receipts.map(item => ({ transferId: item.transferId, title: item.title ?? "Delivered capture", sourceUrl: item.sourceUrl, state: "delivered", time: item.deliveredAt })),
+          ...receipts.map(item => ({ transferId: item.transferId, title: item.title ?? "Delivered capture", state: "delivered", time: item.deliveredAt })),
         ].sort((a, b) => b.time - a.time).slice(0, 100),
         defaultRelays: [...DEFAULT_RELAYS],
         customRelays,
@@ -1304,8 +1044,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (!item) throw new Error("This transfer is no longer pending");
       if (msg.action === "discard") {
         await transferOperations.run(id, async () => {
-          await outboxDelete(id);
-          await markCaptureSettledByTransfer(id, "discarded").catch(() => undefined);
+          await settleTransfer(id, "discarded");
         });
         sendResponse({ ok: true });
       } else if (msg.action === "retry") {
@@ -1317,7 +1056,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         await publishTransfer(id, seckey, paired.channelPubkey, true);
         sendResponse({ ok: true });
       } else if (msg.action === "export" || msg.action === "resend") {
-        const pieces = item.chunks.map(chunk => Uint8Array.from(atob(chunk), c => c.charCodeAt(0)));
+        const pieces = (await outboxChunks(id)).map(chunk => Uint8Array.from(atob(chunk), c => c.charCodeAt(0)));
         const size = pieces.reduce((sum, piece) => sum + piece.length, 0);
         if (size > 5 * 1024 * 1024) throw new Error("Stored transfer exceeds its size limit");
         const compressed = new Uint8Array(size);
@@ -1334,8 +1073,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // row) — safe duplication is preferred over losing the resend.
           const result = await queueCapture({ title: item.title, markdown, sourceUrl: String(item.manifest.sourceUrl ?? ""), sourceType: String(item.manifest.sourceType ?? "web") });
           await transferOperations.run(id, async () => {
-            await outboxDelete(id);
-            await markCaptureSettledByTransfer(id, "discarded").catch(() => undefined);
+            await settleTransfer(id, "discarded");
           });
           sendResponse({ ok: true, ...result });
         }
@@ -1368,8 +1106,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const discarded = (await Promise.all(failed.map((item) => transferOperations.run(item.transferId, async () => {
         const durable = await outboxGet(item.transferId);
         if (durable?.status !== "failed") return false;
-        await outboxDelete(item.transferId);
-        await markCaptureSettledByTransfer(item.transferId, "discarded").catch(() => undefined);
+        await settleTransfer(item.transferId, "discarded");
         return true;
       })))).filter(Boolean).length;
       sendResponse({ ok: true, discarded });
@@ -1460,7 +1197,7 @@ chrome.alarms.onAlarm.addListener(async (a) => {
 });
 // Evaluation/reload restores missing alarms from persisted work, without moving
 // existing deadlines. Startup also executes due work even with all UI closed.
-void cleanupDelivered().then(() => restoreWorkAlarms()).catch(() => undefined);
+void trimStoredReceipts().then(cleanupDelivered).then(() => restoreWorkAlarms()).catch(() => undefined);
 
 chrome.runtime.onInstalled.addListener(() => {
   void lockDownKeyStorage()

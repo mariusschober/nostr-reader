@@ -35,7 +35,7 @@ class NativeGestureSafetyInstrumentedTest {
       val actions = mutableListOf<ArticleAction>()
       scenario.onActivity { activity ->
         native = NativeArticleView(activity)
-        native.display("gesture-fixture", projection, nativeArticleText(projection, Color.BLUE), ReaderSettings(),
+        native.display("gesture-fixture", projection, nativeArticleText(projection), ReaderSettings(),
           Color.BLACK, Color.WHITE, 24, SemanticCursor.start("gesture-fixture"))
         native.articleList = Triage.INBOX
         native.onArticleSwipe = { actions += it }

@@ -45,13 +45,13 @@ class CaptureRepository(
     }
   }
 
-  suspend fun getOrCreate(originalUrl: String, titleHint: String?, sourceType: String): CaptureRequestEntity {
+  suspend fun getOrCreate(originalUrl: String, titleHint: String?, sourceType: String): CaptureRequestEntity = db.withTransaction {
     val trimmed = originalUrl.trim()
     CaptureUrlPolicy.validateStructure(trimmed)
     // DNS is validated in the worker (offline shares must persist first).
     // Here we only enforce structure so the durable commit never stores junk.
     val normalized = CaptureUrlPolicy.normalizeForDedup(trimmed)
-    db.captureRequests().pendingByNormalized(normalized)?.let { return it }
+    db.captureRequests().pendingByNormalized(normalized)?.let { return@withTransaction it }
     val now = nowMillis()
     val request = CaptureRequestEntity(
       requestId = newRequestId(),
@@ -71,43 +71,27 @@ class CaptureRepository(
       createdAt = now,
       updatedAt = now,
     )
-    try {
-      db.captureRequests().insert(request)
-    } catch (_: android.database.SQLException) {
-      // Lost a creation race: return the winner.
-      db.captureRequests().pendingByNormalized(normalized)?.let { return it }
-      throw IllegalStateException("capture request unavailable")
-    }
-    return request
+    db.captureRequests().insert(request)
+    request
   }
 
-  suspend fun markFetching(id: String): CaptureRequestEntity? {
-    if (db.captureRequests().claimForFetch(id, nowMillis()) != 1) return null
-    return db.captureRequests().byId(id)
+  /** A restarted worker takes a new generation. Late callbacks belong to its predecessor. */
+  suspend fun markFetching(id: String): CaptureRequestEntity? = db.withTransaction {
+    if (db.captureRequests().claimForFetch(id, nowMillis()) == 1) db.captureRequests().byId(id) else null
   }
 
-  suspend fun markRetryable(id: String, code: String, message: String): CaptureRequestEntity? {
+  suspend fun markRetryable(active: CaptureRequestEntity, code: String, message: String): CaptureRequestEntity? = db.withTransaction {
     val now = nowMillis()
-    val current = db.captureRequests().byId(id) ?: return null
-    if (current.state != "pending" && current.state != "fetching") return null
-    val attempt = current.attemptCount.coerceAtLeast(1)
-    val parked = db.captureRequests().parkForRetry(
-      id, code, message.take(500), now + backoffMillis(attempt, current.requestId), now, MAX_ATTEMPTS,
+    val dao = db.captureRequests()
+    val parked = dao.parkForRetry(
+      active.requestId, active.generation, code, message.take(500),
+      now + backoffMillis(active.attemptCount, active.requestId), now, MAX_ATTEMPTS,
     )
-    if (parked == 1) return db.captureRequests().byId(id)
-    // Not parked: attempts exhausted (or a concurrent cancel won). On
-    // exhaustion preserve a useful link; on cancel do nothing.
-    val latest = db.captureRequests().byId(id) ?: return null
-    if (latest.state != "pending" && latest.state != "fetching") return latest
-    completeLinkOnly(
-      id = id,
-      generation = latest.generation,
-      resolvedUrl = latest.resolvedUrl,
-      title = latest.title ?: fallbackTitle(latest),
-      reason = message,
-      errorCode = code,
-    )
-    return db.captureRequests().byId(id)
+    if (parked == 0 && active.attemptCount >= MAX_ATTEMPTS) {
+      completeLinkOnly(active.requestId, active.generation, active.resolvedUrl,
+        active.title ?: fallbackTitle(active), message, code)
+    }
+    dao.byId(active.requestId)
   }
 
   suspend fun cancel(id: String) {
@@ -257,15 +241,6 @@ class CaptureRepository(
       }
     } else return@withTransaction null
     documentId
-  }
-
-  suspend fun markFailed(id: String, generation: Int, code: String, message: String) {
-    val current = db.captureRequests().byId(id) ?: return
-    if (current.generation != generation) return
-    if (current.state != "pending" && current.state != "fetching") return
-    db.captureRequests().update(
-      current.copy(state = "failed", errorCode = code.take(64), errorMessage = message.take(500), updatedAt = nowMillis()),
-    )
   }
 
   /**

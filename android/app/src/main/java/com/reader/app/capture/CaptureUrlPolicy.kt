@@ -98,9 +98,11 @@ object CaptureUrlPolicy {
       resolver.lookup(host)
     } catch (e: InterruptedException) {
       Thread.currentThread().interrupt()
-      throw IllegalArgumentException("Could not resolve this link (interrupted)")
-    } catch (_: Exception) { throw IllegalArgumentException("Could not resolve this link (offline or unknown host)") }
-    require(addresses.isNotEmpty()) { "Could not resolve this link (offline or unknown host)" }
+      throw java.io.InterruptedIOException("Link lookup interrupted")
+    } catch (_: java.net.UnknownHostException) {
+      throw CaptureException("dns_retryable", "Could not resolve this host; Reader will retry", retryable = true)
+    }
+    if (addresses.isEmpty()) throw CaptureException("dns_retryable", "The host has no addresses; Reader will retry", retryable = true)
     require(addresses.none(PairingProtocol::isProhibitedAddress)) {
       "This link points to a private or local address"
     }
@@ -130,7 +132,8 @@ object CaptureUrlPolicy {
    * - unsupported target scheme / credentials
    * - prohibited resolved destination
    */
-  fun validateRedirect(from: URI, location: String, resolver: AddressResolver = productionResolver): URI {
+  fun validateRedirect(from: URI, location: String, resolver: AddressResolver = productionResolver,
+                       checkRoute: (URI) -> Unit = {}): URI {
     val next = runCatching { from.resolve(location) }
       .getOrElse { throw IllegalArgumentException("This page redirects to an invalid link") }
     validateStructure(next.toString())
@@ -140,6 +143,7 @@ object CaptureUrlPolicy {
       "This page redirects to an insecure address"
     }
     val host = next.host ?: throw IllegalArgumentException("This page redirects to an invalid link")
+    checkRoute(next)
     validateResolvedHost(host, resolver)
     return next
   }

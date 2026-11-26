@@ -48,6 +48,7 @@ import com.reader.app.ui.ArticleAction
 import com.reader.app.ui.ReaderSearchField
 import com.reader.app.ReaderApp
 import com.reader.app.core.RenderedProjection
+import com.reader.app.core.ArticleParser
 import com.reader.app.core.RENDERED_PROJECTION_VERSION
 import com.reader.app.cursor.SemanticCursor
 import com.reader.app.data.*
@@ -213,6 +214,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                          onResumeAudio: () -> Unit = {},
                          onHighlightRemoved: ((HighlightMutation) -> Unit)? = null,
                          speechPlaying: Boolean = false,
+                         speechPlayWhenReady: Boolean = speechPlaying,
                          playerVisible: Boolean = false,
                          // Search landing: open at this cursor with a fading
                          // match tint; null means normal (quote/progress) entry.
@@ -246,6 +248,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var part by rememberSaveable(id) { mutableIntStateOf(-1) }
   var prepared by remember(id) { mutableStateOf<PreparedSection?>(null) }
   var content by remember { mutableStateOf<CharSequence?>(null) }
+  var loadAttempt by remember(id) { mutableIntStateOf(0) }
   var failure by remember(id) { mutableStateOf<String?>(null) }
   var initial by rememberSaveable(id, stateSaver = androidx.compose.runtime.saveable.Saver<SemanticCursor, List<Any>>(
     save = { listOf(it.documentId, it.blockId, it.charOffset) },
@@ -270,7 +273,13 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   var navigationSheet by remember { mutableStateOf<String?>(null) }
   var findText by rememberSaveable(id) { mutableStateOf("") }
   var findResults by remember(id) { mutableStateOf<List<ArticleMatch>>(emptyList()) }
-  var findBusy by remember { mutableStateOf(false) }
+  val findPageStarts = remember(id, findText) { mutableStateListOf(MatchPosition()) }
+  var findPage by remember(id, findText) { mutableIntStateOf(0) }
+  var findNext by remember(id, findText) { mutableStateOf<MatchPosition?>(null) }
+  var findRetry by remember(id) { mutableIntStateOf(0) }
+  var jumpOnLoad by remember(id, findText) { mutableStateOf<Int?>(null) }
+  var findError by remember(id, findText) { mutableStateOf<String?>(null) }
+  var findBusy by remember(id) { mutableStateOf(false) }
   var findIndex by rememberSaveable(id) { mutableIntStateOf(0) }
   var inspectionOrigin by rememberSaveable(id, stateSaver = androidx.compose.runtime.saveable.Saver<SemanticCursor?, List<Any>>(
     save = { if (it == null) emptyList() else listOf(it.documentId, it.blockId, it.charOffset) },
@@ -285,16 +294,6 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     try { contents = navigation.contents(id); navigationError = null }
     catch (e: CancellationException) { throw e }
     catch (_: Exception) { navigationError = "Contents couldn’t load. Try again." }
-  }
-  LaunchedEffect(id, findText) {
-    findResults = emptyList(); findIndex = 0; navigationError = null
-    if (findText.isBlank()) { findBusy = false; return@LaunchedEffect }
-    findBusy = true
-    delay(150)
-    try { findResults = navigation.matches(id, findText); navigationError = null }
-    catch (e: CancellationException) { throw e }
-    catch (_: Exception) { findResults = emptyList(); navigationError = "Search couldn’t load. Try again." }
-    finally { findBusy = false }
   }
   // Search-landing bookkeeping: re-entry into the same article with a new
   // match must re-resolve even when the part is already loaded, and force a
@@ -325,7 +324,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   val sessions = remember(id) { mutableMapOf<String, Pair<Long, HighlightMutation>>() }
   val snackbar = remember { SnackbarHostState() }
 
-  LaunchedEffect(id, doc?.documentId, at) {
+  LaunchedEffect(id, doc?.documentId, at, loadAttempt) {
     val source = doc ?: return@LaunchedEffect
     if (part >= 0 && at == lastAt) return@LaunchedEffect
     val hadPart = part >= 0
@@ -341,9 +340,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       val newPart = if (at != null) index.sectionFor(at.blockId, 0f) else index.sectionFor(initial.blockId, source.progressFraction)
       if (hadPart && newPart == part) displayRequest++
       part = newPart
-    } catch (e: Exception) { failure = e.message ?: "Couldn’t open article" }
+    } catch (e: CancellationException) { throw e }
+    catch (_: Exception) { failure = "Couldn’t open this article." }
   }
-  LaunchedEffect(id, part) {
+  LaunchedEffect(id, part, loadAttempt) {
     if (part < 0) return@LaunchedEffect
     prepared = null
     content = null
@@ -362,11 +362,11 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       prepared = ready
     }
     catch (e: CancellationException) { throw e }
-    catch (e: Exception) { failure = e.message ?: "Couldn’t load article" }
+    catch (_: Exception) { failure = "Couldn’t load this section." }
   }
-  LaunchedEffect(prepared, colors.link) {
+  LaunchedEffect(prepared) {
     val value = prepared ?: return@LaunchedEffect
-    content = withContext(Dispatchers.Default) { nativeArticleText(value.projection, colors.link.toArgb()) }
+    content = withContext(Dispatchers.Default) { nativeArticleText(value.projection) }
   }
   LaunchedEffect(actions) { activeQuote = actions.firstOrNull()?.let { db.highlights().byId(it) } }
 
@@ -374,16 +374,16 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
   // Survives rotation: a transition in-flight across recreation stays guarded
   // so its action() cannot run twice. UI is disabled while true.
   var transitioning by remember(id) { mutableStateOf(false) }
-  fun transition(action: suspend () -> Unit) {
+  fun transition(pauseAudio: Boolean = false, action: suspend () -> Unit) {
     if (transitioning) {
       scope.launch { snackbar.showSnackbar("Saving… please wait.") }
       return
     }
     view?.flushSelection()
-    onPauseAudio()
+    if (pauseAudio) onPauseAudio()
     val cursor = inspectionOrigin ?: liveCursor ?: view?.currentCursor() ?: initial
     if (inspectionOrigin == null) initial = cursor
-    prepared?.let {
+    prepared?.takeIf { !speechPlayWhenReady }?.let {
       try { app.progress.offer(cursor, if (inspectionOrigin != null) inspectionFraction else it.fraction(it.projection.offset(cursor.blockId, cursor.charOffset))) }
       catch (_: Exception) { /* offer is coalesced; flush below surfaces failures */ }
     }
@@ -414,7 +414,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     // then leaves the article.
     if (immersed) { immersed = false; return }
     if (pen) { paletteOpen = false; pen = false; return }
-    transition(onBack)
+    transition(action = onBack)
   }
   BackHandler(enabled = !transitioning) { leave() }
   // Fullscreen focus reports its state to the Activity-owned window coordinator,
@@ -475,6 +475,46 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       if (part == location.part) view?.jumpTo(location.cursor) else part = location.part
     }
   }
+  LaunchedEffect(id, findText, findPage, findRetry) {
+    findResults = emptyList()
+    findNext = null
+    findError = null
+    findIndex = 0
+    if (findText.isBlank()) { findBusy = false; return@LaunchedEffect }
+    findBusy = true
+    try {
+      if (findPage == 0 && jumpOnLoad == null) delay(150)
+      val page = navigation.matchPage(id, findText, findPageStarts[findPage])
+      findResults = page.matches
+      findNext = page.next
+      jumpOnLoad?.let { index ->
+        findIndex = index.coerceAtMost(page.matches.lastIndex).coerceAtLeast(0)
+        page.matches.getOrNull(findIndex)?.let { jump(it.toLocation()) }
+        jumpOnLoad = null
+      }
+    } catch (e: CancellationException) { throw e }
+    catch (_: Exception) { findError = "Search couldn’t load. Try again."; navigationSheet = "find" }
+    finally { findBusy = false }
+  }
+
+  fun moveMatch(step: Int) {
+    val target = findIndex + step
+    if (target in findResults.indices) {
+      findIndex = target
+      jump(findResults[target].toLocation())
+    } else if (step > 0 && findNext != null) {
+      if (findPageStarts.size == findPage + 1) findPageStarts.add(requireNotNull(findNext))
+      jumpOnLoad = 0
+      findPage++
+    } else if (step < 0 && findPage > 0) {
+      jumpOnLoad = FIND_PAGE_SIZE - 1
+      findPage--
+    }
+  }
+  val matchNumber = findPage * FIND_PAGE_SIZE + findIndex + 1
+  val matchCount = findPage * FIND_PAGE_SIZE + findResults.size
+  val matchLabel = if (findNext == null) "$matchNumber of $matchCount" else "Match $matchNumber"
+
   fun returnToReading() {
     val origin = inspectionOrigin ?: return
     transition {
@@ -486,7 +526,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       if (part == destination) view?.jumpTo(origin) else part = destination
     }
   }
-  fun finish() { transition { finishReceipt = completion.finish(id) } }
+  fun finish() { transition(pauseAudio = true) { finishReceipt = completion.finish(id) } }
   fun undoFinish() {
     val receipt = finishReceipt ?: return
     transition {
@@ -500,12 +540,14 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
     val sameSourceFragment = uri.fragment != null && resolved.substringBefore('#') == doc?.sourceUrl?.substringBefore('#')
     if (raw.startsWith("#") || sameSourceFragment) {
       scope.launch {
-        val target = navigation.fragment(id, if (raw.startsWith("#")) raw else "#${uri.fragment}")
+        val target = try { navigation.fragment(id, if (raw.startsWith("#")) raw else "#${uri.encodedFragment}") }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { snackbar.showSnackbar("Couldn’t open this section."); return@launch }
         if (target != null) jump(target) else snackbar.showSnackbar("That section wasn’t captured. Open the original to follow this link.")
       }
       return
     }
-    if (uri.scheme?.lowercase() !in setOf("http", "https")) { scope.launch { snackbar.showSnackbar("This link can’t be opened here.") }; return }
+    if (ArticleParser.sanitizeUrl(resolved) == null) { scope.launch { snackbar.showSnackbar("This link can’t be opened here.") }; return }
     runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) }
       .onFailure { scope.launch { snackbar.showSnackbar("No browser is available to open this link.") } }
   }
@@ -525,9 +567,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           DropdownMenuItem(text = { Text("Find in article") }, onClick = { menu = false; navigationSheet = "find" })
           DropdownMenuItem(text = { Text("Contents") }, onClick = { menu = false; navigationSheet = "contents" })
           DropdownMenuItem(text = { Text("Listen") }, enabled = prepared != null && !playerVisible,
-            onClick = { menu = false; prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onListen(it.projection, cursor) } } })
+            onClick = { menu = false; prepared?.let { val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition(pauseAudio = true) { onListen(it.projection, cursor) } } })
           DropdownMenuItem(text = { Text("Speed") }, enabled = prepared != null,
-            onClick = { menu = false; val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition { onSpeedRead(cursor) } })
+            onClick = { menu = false; val cursor = liveCursor ?: view?.currentCursor() ?: initial; transition(pauseAudio = true) { onSpeedRead(cursor) } })
           DropdownMenuItem(text = { Text("Labels") }, onClick = { menu = false; showLabels = true })
           DropdownMenuItem(text = { Text("Article highlights · ${marks.size}") }, onClick = { menu = false; onOpenArticleHighlights() })
           if (!doc?.sourceUrl.isNullOrBlank()) DropdownMenuItem(text = { Text("Open original") }, onClick = { menu = false; openWeb(doc!!.sourceUrl!!) })
@@ -552,9 +594,9 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
       if (inspectionOrigin != null) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = ::returnToReading, modifier = Modifier.weight(1f)) { Text("Return to reading position") }
         if (findResults.isNotEmpty()) {
-          IconButton(enabled = findIndex > 0, onClick = { findIndex--; jump(findResults[findIndex].toLocation()) }) { Icon(Icons.Default.ChevronLeft, "Previous match") }
-          Text("${findIndex+1} of ${findResults.size}", style = MaterialTheme.typography.labelSmall)
-          IconButton(enabled = findIndex < findResults.lastIndex, onClick = { findIndex++; jump(findResults[findIndex].toLocation()) }) { Icon(Icons.Default.ChevronRight, "Next match") }
+          IconButton(enabled = findIndex > 0 || findPage > 0, onClick = { moveMatch(-1) }) { Icon(Icons.Default.ChevronLeft, "Previous match") }
+          Text(matchLabel, style = MaterialTheme.typography.labelSmall)
+          IconButton(enabled = findIndex < findResults.lastIndex || findNext != null, onClick = { moveMatch(1) }) { Icon(Icons.Default.ChevronRight, "Next match") }
         }
       }
       if (finishReceipt != null) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -615,14 +657,14 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             ReadingActionItem("Contents", Icons.AutoMirrored.Filled.FormatListBulleted, false, ready != null) {
               navigationSheet = "contents"
             },
-            ReadingActionItem(if (speechPlaying) "Pause" else "Listen",
-              if (speechPlaying) Icons.Default.Pause else Icons.AutoMirrored.Filled.VolumeUp, speechPlaying, ready != null) {
-              if (speechPlaying) onPauseAudio()
+            ReadingActionItem(if (speechPlayWhenReady) "Pause" else "Listen",
+              if (speechPlayWhenReady) Icons.Default.Pause else Icons.AutoMirrored.Filled.VolumeUp, speechPlayWhenReady, ready != null) {
+              if (speechPlayWhenReady) onPauseAudio()
               else if (playerVisible) onResumeAudio()
-              else prepared?.let { transition { onListen(it.projection, cursorNow) } }
+              else prepared?.let { transition(pauseAudio = true) { onListen(it.projection, cursorNow) } }
             },
             ReadingActionItem("Speed", Icons.Default.Speed, false, ready != null) {
-              transition { onSpeedRead(cursorNow) }
+              transition(pauseAudio = true) { onSpeedRead(cursorNow) }
             },
           )
           if (LocalDensity.current.fontScale > 1.3f) Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
@@ -672,7 +714,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             Text("Article text is unavailable for this link.", style = MaterialTheme.typography.bodySmall)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
               TextButton(onClick = {
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(doc!!.sourceUrl))) }
+                doc?.sourceUrl?.let(::openWeb)
               }) { Text("Open original") }
               TextButton(onClick = {
                 val sourceUrl = doc!!.sourceUrl ?: return@TextButton
@@ -711,8 +753,18 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           Spacer(Modifier.height(4.dp))
         }
       }
-      if (saveError != null) TextButton(onClick = { transition { } }) { Text("Save failed — Retry", color = colors.error) }
-      if (failure != null) Text(failure!!, modifier = Modifier.padding(24.dp), color = colors.error)
+      saveError?.let { issue ->
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+          Text(issue.message, color = colors.error, style = MaterialTheme.typography.bodySmall)
+          if (issue.retryable) TextButton(onClick = { transition { } }) {
+            Text("Retry", color = colors.error)
+          }
+        }
+      }
+      if (failure != null) Column(Modifier.padding(24.dp)) {
+        Text(failure!!, color = colors.error)
+        TextButton(onClick = { failure = null; loadAttempt++ }) { Text("Retry") }
+      }
       else if (ready == null || text == null) {
         if (com.reader.app.ui.theme.LocalDisplayPolicy.current.monochrome) Text("Opening article…", Modifier.padding(24.dp), color = colors.text)
         else CircularProgressIndicator(Modifier.padding(24.dp))
@@ -789,7 +841,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
               modifier = Modifier.widthIn(max = capWidth).fillMaxHeight().clipToBounds(),
               update = { native ->
           if (native.tag != styleKey) {
-            native.display(id, ready.projection, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, wide), initial)
+            native.display(id, ready.projection, text, settings, colors.text.toArgb(), colors.background.toArgb(), marginDp(settings.margin, wide), initial, linkColor = colors.link.toArgb())
             native.tag = styleKey
           }
           native.deleteTint = colors.error.toArgb()
@@ -811,7 +863,7 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
             if (native.tag == styleKey) {
               val whole = ready.fraction(ready.projection.offset(cursor.blockId, cursor.charOffset))
               liveFraction = whole
-              if (!speechPlaying && inspectionOrigin == null) app.progress.offer(cursor, whole)
+              if (!speechPlayWhenReady && inspectionOrigin == null) app.progress.offer(cursor, whole)
             }
             // The match tint survives the landing settle (cursor == hit) and
             // clears on the first real scroll away from it.
@@ -878,7 +930,10 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
                   undo = aggregate.takeIf { it.before != null || it.after != null }
                   ack(true)
                 }
-              } catch (_: Exception) { ack(false) }
+              } catch (error: Exception) {
+                ack(false)
+                scope.launch { snackbar.showSnackbar(error.message ?: "Couldn’t prepare highlight. Try the selection again.") }
+              }
             }
           }
         })
@@ -972,6 +1027,8 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
           onValueChange = { findText = it },
           placeholder = "Word or phrase",
           clearLabel = "Clear search",
+          focusRequester = remember { androidx.compose.ui.focus.FocusRequester() },
+          autoFocus = findText.isEmpty(),
           modifier = Modifier.fillMaxWidth(),
           surfaceColor = colors.divider.copy(alpha = .4f),
           textColor = colors.text,
@@ -984,17 +1041,17 @@ fun PreparedReaderScreen(id: String, highlightId: String?, settings: ReaderSetti
         )
         when {
           findText.isBlank() -> Text("Search the article text stored on this device.", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
-          navigationError != null -> {
-            Text(navigationError!!, color = colors.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-            TextButton(onClick = { val q = findText; findText = ""; findText = q }) { Text("Retry") }
+          findError != null -> {
+            Text(findError!!, color = colors.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            TextButton(onClick = { findRetry++ }) { Text("Retry") }
           }
           findBusy -> Text("Searching all parts…", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
           findResults.isEmpty() -> Text("No matches for “$findText”.", style = MaterialTheme.typography.bodySmall, color = colors.secondary, modifier = Modifier.padding(top = 8.dp))
           else -> {
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-              Text("${findIndex + 1} of ${findResults.size}", style = MaterialTheme.typography.labelLarge, color = colors.secondary, modifier = Modifier.weight(1f))
-              IconButton(enabled = findIndex > 0, onClick = { findIndex--; jump(findResults[findIndex].toLocation()) }) { Icon(Icons.Default.ChevronLeft, "Previous match") }
-              IconButton(enabled = findIndex < findResults.lastIndex, onClick = { findIndex++; jump(findResults[findIndex].toLocation()) }) { Icon(Icons.Default.ChevronRight, "Next match") }
+              Text(matchLabel, style = MaterialTheme.typography.labelLarge, color = colors.secondary, modifier = Modifier.weight(1f))
+              IconButton(enabled = findIndex > 0 || findPage > 0, onClick = { moveMatch(-1) }) { Icon(Icons.Default.ChevronLeft, "Previous match") }
+              IconButton(enabled = findIndex < findResults.lastIndex || findNext != null, onClick = { moveMatch(1) }) { Icon(Icons.Default.ChevronRight, "Next match") }
             }
             androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f)) {
               items(findResults.size) { i ->

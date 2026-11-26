@@ -117,7 +117,9 @@ class ReaderDbMigrationInstrumentedTest {
         assertEquals(5, db.readingStats().minutesSince("2026-09-10"))
         assertEquals(1, db.readingStats().finishedSince("2026-09-10"))
         db.documents().deleteById("doc-a")
-        assertTrue(db.labels().observeLabels().first().isEmpty())
+        assertTrue(db.labels().observePairs().first().isEmpty())
+        assertEquals("Climate", db.labels().observeLabels().first().single().name)
+        assertEquals(0, db.labels().observeLabels().first().single().count)
       }
     } finally {
       db.close()

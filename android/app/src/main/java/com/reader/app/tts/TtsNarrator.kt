@@ -36,9 +36,13 @@ class TtsNarrator(
   private var error: String? = null
   private var failedSection: Int? = null
   private var session = 0L
+  private var playWhenReady = false
 
   init {
-    controller.onState = { publish() }
+    controller.onState = { state ->
+      if (state.error != null) playWhenReady = false
+      publish()
+    }
     controller.onPosition = { blockId, offset ->
       val doc = documentId
       val section = loaded
@@ -55,8 +59,11 @@ class TtsNarrator(
   fun refreshVoice() = controller.refreshVoice()
 
   /** Begin narration at [cursor]. Any earlier narration is replaced. */
-  fun start(documentId: String, cursor: SemanticCursor, speed: Float, title: String, url: String?) {
+  fun start(documentId: String, cursor: SemanticCursor, speed: Float, title: String, url: String?, playWhenReady: Boolean = true) {
     val own = ++session
+    this.playWhenReady = playWhenReady
+    // Replace ownership before a suspended load can leave old callbacks alive.
+    controller.load(emptyList(), null, speed)
     this.documentId = documentId
     this.sourceTitle = title
     this.sourceUrl = url
@@ -72,7 +79,7 @@ class TtsNarrator(
       if (own != session) return@launch
       if (first == null) { fail("Couldn’t load this article for listening."); return@launch }
       adopt(first, cursor.blockId, cursor.charOffset)
-      controller.play()
+      if (this@TtsNarrator.playWhenReady) controller.play()
     }
   }
 
@@ -80,15 +87,18 @@ class TtsNarrator(
     // After the final section there is nothing left to resume; a fresh Listen
     // is required to hear the article again.
     if (ended) return
+    playWhenReady = true
+    if (loading) { publish(); return }
     val retry = failedSection
     if (retry != null) { retrySection(retry); return }
-    if (loading || loaded == null) return
+    if (loaded == null) return
     error = null
     controller.play()
     publish()
   }
 
   fun pause() {
+    playWhenReady = false
     controller.pause()
     publish()
   }
@@ -96,7 +106,8 @@ class TtsNarrator(
   /** Full stop: forgets the document so no now-playing row remains. */
   fun stop() {
     session++
-    controller.pause()
+    playWhenReady = false
+    controller.load(emptyList(), null, speed)
     documentId = null
     loaded = null
     ended = false
@@ -140,6 +151,7 @@ class TtsNarrator(
    * silently restarts from the beginning of the article.
    */
   private fun retrySection(target: Int) {
+    if (loading) return
     val doc = documentId ?: return
     val own = session
     loading = true
@@ -151,12 +163,13 @@ class TtsNarrator(
       if (own != session) return@launch
       if (section == null) { fail("Couldn’t load the next part. Try Play to retry."); return@launch }
       adopt(section, null, 0)
-      controller.play()
+      if (this@TtsNarrator.playWhenReady) controller.play()
     }
   }
 
   private fun finish() {
     ended = true
+    playWhenReady = false
     loading = false
     error = null
     failedSection = null
@@ -166,6 +179,7 @@ class TtsNarrator(
 
   private fun fail(message: String) {
     loading = false
+    playWhenReady = false
     error = message
     publish()
   }
@@ -178,6 +192,7 @@ class TtsNarrator(
         sourceTitle = sourceTitle,
         sourceUrl = sourceUrl,
         playing = state.playing,
+        playWhenReady = playWhenReady,
         loading = loading,
         ended = ended,
         error = error ?: state.error,

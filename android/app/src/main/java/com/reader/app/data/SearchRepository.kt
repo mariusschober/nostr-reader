@@ -171,8 +171,8 @@ class SearchRepository(
   suspend fun matchOffset(documentId: String, queryText: String): SearchHit? {
     val terms = com.reader.app.core.SearchTerms.parse(queryText)
     for (term in terms) {
-      val hit = ArticleNavigation(articles, db).find(documentId, term).firstOrNull() ?: continue
-      return SearchHit(documentId, hit.part, hit.cursor, hit.end ?: 0, term)
+      val hit = ArticleNavigation(articles, db).matchPage(documentId, term, firstOnly = true).matches.firstOrNull() ?: continue
+      return SearchHit(documentId, hit.part, hit.cursor, hit.textEnd ?: 0, term)
     }
     return null
   }

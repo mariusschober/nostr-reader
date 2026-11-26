@@ -77,7 +77,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    * ack) the recoverable range stays on screen for a retry.
    */
   var onSettle: (session: String, range: IntRange, ack: (Boolean) -> Unit) -> Unit = { _, _, ack -> ack(true) }
-  private var settledSession: String? = null
+  private val penSettlement = PenSettlementPolicy()
   /**
    * Set when a pen gesture is cancelled from outside (Back, navigation, Undo).
    * The pointer can still be down, so the platform may re-establish the native
@@ -167,6 +167,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     val dy = event.y - swipeY
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
+        penSettlement.beginGesture()
         gestureActive = true
         gestureAbandoned = false
         stopFling()
@@ -407,6 +408,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         return true
       }
       override fun onDestroyActionMode(mode: ActionMode) {
+        // A delayed teardown of a finished mode must not adopt a newer owner.
+        if (actionMode !== mode) return
         flushSelection()
         pendingSelection?.let { removeCallbacks(it) }
         pendingSelection = null
@@ -495,7 +498,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var displayGeneration = 0L
 
   fun display(id: String, value: RenderedProjection, text: CharSequence, settings: ReaderSettings,
-              foreground: Int, background: Int, margin: Int, initial: SemanticCursor) {
+              foreground: Int, background: Int, margin: Int, initial: SemanticCursor, linkColor: Int = foreground) {
     stopFling()
     val changed = projection !== value || documentId != id
     if (changed) { flushSelection(); clearSelection() }
@@ -523,6 +526,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     val base = ResourcesCompat.getFont(context, if (settings.bold && boldFont != null) boldFont else font)
     body.typeface = if (settings.bold && boldFont == null) android.graphics.Typeface.create(base, android.graphics.Typeface.BOLD) else base
     body.setTextColor(foreground)
+    body.setLinkTextColor(linkColor)
     setBackgroundColor(background)
     body.setBackgroundColor(background)
     swipeLabel.setTextColor(foreground)
@@ -549,10 +553,9 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     if (changed) {
       restoring = true
       markRanges = emptyList()
-      val immutableText = SpannableString(text)
       // Use the same native layout for drawing and handle hit testing. On the TCL,
       // precomputed mixed heading/body spans reported incorrect horizontal positions.
-      body.setText(immutableText, TextView.BufferType.SPANNABLE)
+      body.setText(text, TextView.BufferType.SPANNABLE)
       clearIdleTextCursor()
       restore()
     } else restore()
@@ -581,6 +584,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   fun setPenMode(enabled: Boolean) {
     if (pen == enabled) return
     stopFling()
+    penSettlement.invalidate()
     if (!enabled) {
       // Leaving continuous highlighting flushes the final range under its
       // session id, then rotates the session so the next pen entry starts a
@@ -621,14 +625,9 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     text.getSpans(0, text.length, SavedBackground::class.java).forEach { text.removeSpan(it) }
     text.getSpans(0, text.length, SavedForeground::class.java).forEach { text.removeSpan(it) }
     // Split overlaps so each character has exactly one opaque foreground/background pair.
-    val valid = marks.filter { it.start >= 0 && it.end <= text.length && it.end > it.start }
-    val boundaries = valid.flatMap { listOf(it.start, it.end) }.distinct().sorted()
-    boundaries.zipWithNext().forEach { (start, end) ->
-      val top = valid.filter { it.start <= start && it.end >= end }.maxWithOrNull(compareBy<NativeMark> { it.createdAt }.thenBy { it.id })
-      if (top != null) {
-        text.setSpan(SavedBackground(top.background), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        text.setSpan(SavedForeground(top.foreground), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-      }
+    forEachVisibleMark(marks, text.length) { start, end, mark ->
+      text.setSpan(SavedBackground(mark.background), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      text.setSpan(SavedForeground(mark.foreground), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
   }
 
@@ -642,6 +641,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   private fun resetSelectionOwner() {
+    penSettlement.invalidate()
     pendingSelection?.let { removeCallbacks(it) }
     pendingSelection = null
     pendingActionModeContinuation = false
@@ -653,9 +653,13 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
 
   fun clearSelection(): Boolean {
+    // Preserve a committed ordinary handle adjustment before ending its mode.
+    flushSelection()
     val active = actionMode != null || body.selectionStart != body.selectionEnd
     pendingSelection?.let { removeCallbacks(it) }
-    actionMode?.finish()
+    val finishedMode = actionMode
+    actionMode = null
+    finishedMode?.finish()
     (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
     resetSelectionOwner()
     // Cancelling from outside the gesture (Back, dock, navigation, Undo) must
@@ -723,8 +727,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   /**
    * Commit the final range of a completed continuous-highlighting gesture and
    * settle the selection. Called from ACTION_UP; a scroll (no valid selection)
-   * is a no-op. Clearing is scoped to the acknowledged session, so a stale ack
-   * from an older gesture never disturbs a newer selection.
+   * is a no-op. Acknowledgement owns the completed gesture and exact range,
+   * independently of Android recreating its ActionMode session owner.
    */
   private fun settlePenGesture() {
     if (!pen || gestureAbandoned) return
@@ -734,15 +738,12 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     val value = projection ?: return
     val range = value.range(start, end) ?: return
     val session = selectionSession ?: UUID.randomUUID().toString().also { selectionSession = it }
-    if (settledSession == session) return
-    settledSession = session
+    val settlement = penSettlement.settle(session, start, end) ?: return
     pendingSelection?.let { removeCallbacks(it) }
     pendingSelection = null
     onSettle(session, range) { ok ->
       post {
-        if (settledSession != session) return@post
-        settledSession = null
-        if (ok && selectionSession == session) clearSelection()
+        if (penSettlement.acknowledge(settlement, ok, body.selectionStart, body.selectionEnd, gestureActive)) clearSelection()
       }
     }
   }
@@ -761,9 +762,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     pendingCommittedContinuation = false
     selectionSession = null; sessionRange = null; lastSelection = null
     selectionCommitted = false
-    settledSession = null
-    actionMode?.finish()
+    penSettlement.invalidate()
+    val finishedMode = actionMode
     actionMode = null
+    finishedMode?.finish()
     (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
   }
 
@@ -1044,8 +1046,12 @@ data class NativeMark(val id: String, val start: Int, val end: Int, val createdA
 private class SavedBackground(color: Int) : BackgroundColorSpan(color)
 private class SavedForeground(color: Int) : ForegroundColorSpan(color)
 
+private class ArticleLinkInk : CharacterStyle(), UpdateAppearance {
+  override fun updateDrawState(paint: android.text.TextPaint) { paint.color = paint.linkColor }
+}
+
 /** Build on Dispatchers.Default before assigning to the native surface. */
-fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableString {
+fun nativeArticleText(value: RenderedProjection): SpannableString {
   val out = SpannableString(value.text)
   fun span(style: Any, start: Int, end: Int) {
     if (end > start) out.setSpan(style, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -1056,7 +1062,7 @@ fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableStrin
       TextStyle.ITALIC -> span(StyleSpan(Typeface.ITALIC), it.start, it.end)
       TextStyle.STRIKE -> span(StrikethroughSpan(), it.start, it.end)
       TextStyle.CODE -> span(TypefaceSpan("monospace"), it.start, it.end)
-      TextStyle.LINK -> { span(ForegroundColorSpan(linkColor), it.start, it.end); span(UnderlineSpan(), it.start, it.end) }
+      TextStyle.LINK -> { span(ArticleLinkInk(), it.start, it.end); span(UnderlineSpan(), it.start, it.end) }
       TextStyle.FOOTNOTE_REF -> span(RelativeSizeSpan(0.75f), it.start, it.end)
     }
   }
@@ -1069,4 +1075,29 @@ fun nativeArticleText(value: RenderedProjection, linkColor: Int): SpannableStrin
     if (it.depth > 0) span(LeadingMarginSpan.Standard(it.depth * 16), it.start, it.end)
   }
   return out
+}
+
+
+/** Pure ownership gate used by the native completion callback; no Android session identity assumptions. */
+internal class PenSettlementPolicy {
+  class Completion internal constructor(val session: String, val start: Int, val end: Int, internal val generation: Long)
+  private var generation = 0L
+  private var pending: Completion? = null
+  private var settledGeneration: Long? = null
+
+  fun beginGesture() { generation++ }
+  fun invalidate() { generation++; pending = null; settledGeneration = null }
+
+  fun settle(session: String, start: Int, end: Int): Completion? {
+    if (settledGeneration == generation) return null
+    settledGeneration = generation
+    return Completion(session, start, end, generation).also { pending = it }
+  }
+
+  fun acknowledge(completion: Completion, success: Boolean, start: Int, end: Int, gestureActive: Boolean): Boolean {
+    if (pending !== completion) return false
+    pending = null
+    if (!success) { settledGeneration = null; return false }
+    return completion.generation == generation && !gestureActive && start == completion.start && end == completion.end
+  }
 }

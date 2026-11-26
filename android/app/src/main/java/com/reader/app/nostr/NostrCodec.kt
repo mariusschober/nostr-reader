@@ -232,7 +232,14 @@ class RelayClient internal constructor(private val http: OkHttpClient) {
   constructor() : this(sharedHttp)
 
   companion object {
-    private val sharedHttp = OkHttpClient.Builder().dns(object : Dns {
+    private val sharedHttp = OkHttpClient.Builder()
+      .proxy(java.net.Proxy.NO_PROXY)
+      .followRedirects(false)
+      .followSslRedirects(false)
+      .addInterceptor { chain ->
+        PublicNetworkRoute.requireDirect(chain.request().url.toUri())
+        chain.proceed(chain.request())
+      }.dns(object : Dns {
       override fun lookup(hostname: String): List<InetAddress> {
         val addresses = RelayDns.lookup(hostname).toList()
         if (addresses.isEmpty() || addresses.any(PairingProtocol::isProhibitedAddress)) {
@@ -248,6 +255,7 @@ class RelayClient internal constructor(private val http: OkHttpClient) {
   fun validateRelayAddresses(relays: List<String>) {
     relays.forEach { relay ->
       require(PairingProtocol.normalizeRelayUrl(relay) == relay)
+      if (http === sharedHttp) PublicNetworkRoute.requireDirect(URI("https" + relay.removePrefix("wss")))
       require(http.dns.lookup(URI(relay).host).isNotEmpty()) { "relay DNS lookup failed" }
     }
   }

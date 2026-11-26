@@ -90,14 +90,17 @@ object Ingest {
     }
   }
 
-  fun handleIntentText(intent: Intent): Pair<String, String?>? {
-    val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
-    val html = intent.getStringExtra(Intent.EXTRA_HTML_TEXT)
-    if (!html.isNullOrBlank()) return "__HTML__$html" to subject
-    val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-      ?: intent.getCharSequenceExtra("android.intent.extra.PROCESS_TEXT")?.toString()
-      ?: return null
-    return text.takeIf { it.isNotBlank() }?.let { it to subject }
+  data class SharedContent(val text: String, val subject: String?, val isHtml: Boolean, val sourceType: String)
+
+  fun handleIntentText(intent: Intent): SharedContent? {
+    val selection = intent.action == Intent.ACTION_PROCESS_TEXT
+    if (!selection && intent.action != Intent.ACTION_SEND) return null
+    val plain = intent.getCharSequenceExtra(if (selection) Intent.EXTRA_PROCESS_TEXT else Intent.EXTRA_TEXT)
+    val html = if (selection) null else intent.getStringExtra(Intent.EXTRA_HTML_TEXT)?.takeIf { it.isNotBlank() }
+    val useHtml = !selection && (intent.type?.substringBefore(';')?.trim().equals("text/html", true) || (html != null && plain.isNullOrBlank()))
+    val text = (if (useHtml) html ?: plain else plain)?.takeIf { it.isNotBlank() } ?: return null
+    return SharedContent(text.toString(), intent.getStringExtra(Intent.EXTRA_SUBJECT)?.take(500),
+      useHtml, if (selection) "android-process-text" else "android-share")
   }
 
   private suspend fun commit(ctx: Context, markdown: String, sourceType: String, title: String?): String = withContext(Dispatchers.Default) {

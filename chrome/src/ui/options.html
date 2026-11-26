@@ -121,6 +121,7 @@
     const relayInput = document.getElementById("customRelay");
     const relayMessage = document.getElementById("relayMessage");
     const addRelay = document.getElementById("addRelay");
+    addRelay.disabled = true;
     const disconnect = document.getElementById("disconnect");
     const pairDevice = document.getElementById("pairDevice");
     const repairNotice = document.getElementById("repairNotice");
@@ -244,16 +245,18 @@
     async function saveCustom(relays) {
       addRelay.disabled = true;
       message("Saving…");
-      const result = await chrome.runtime.sendMessage({kind:"reader-save-custom-relays", relays});
-      if (!result.ok) {
-        message(result.error || "The relay could not be saved.", true);
-        addRelay.disabled = readerStatus.customRelays.length >= 2;
-        return;
+      try {
+        const result = await chrome.runtime.sendMessage({kind:"reader-save-custom-relays", relays});
+        if (!result?.ok) throw new Error(result?.error || "The relay could not be saved.");
+        readerStatus = {...readerStatus, ...result};
+        relayInput.value = "";
+        renderRelays();
+        message(result.relayChangePending ? "Saved. Re-pair to apply this relay set." : "Saved.");
+      } catch (error) {
+        message(error.message || "The relay could not be saved.", true);
+      } finally {
+        addRelay.disabled = !readerStatus || readerStatus.customRelays.length >= 2;
       }
-      readerStatus = {...readerStatus, ...result};
-      relayInput.value = "";
-      renderRelays();
-      message(result.relayChangePending ? "Saved. Re-pair to apply this relay set." : "Saved.");
     }
 
     addRelay.addEventListener("click", () => {
@@ -287,11 +290,16 @@
     checkDelivery.addEventListener("click", async () => {
       checkDelivery.disabled = true;
       deliveryMessage("Checking authenticated device acknowledgements…");
-      const result = await chrome.runtime.sendMessage({kind:"reader-check-acks"});
-      if (!result.ok) deliveryMessage(result.error || "Delivery status could not be checked.", true);
-      else deliveryMessage("Delivery status updated.");
-      await refresh();
-      checkDelivery.disabled = false;
+      try {
+        const result = await chrome.runtime.sendMessage({kind:"reader-check-acks"});
+        if (!result?.ok) throw new Error(result?.error || "Delivery status could not be checked.");
+        await refresh();
+        deliveryMessage("Delivery status updated.");
+      } catch (error) {
+        deliveryMessage(error.message || "Delivery status could not be checked.", true);
+      } finally {
+        checkDelivery.disabled = false;
+      }
     });
 
     const refreshVisible = () => {

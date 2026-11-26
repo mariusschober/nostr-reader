@@ -51,7 +51,7 @@ data class RenderedProjection(
   fun range(start: Int, end: Int): IntRange? {
     val a = graphemes.floor(minOf(start, end).coerceIn(0, text.length))
     val b = graphemes.ceil(maxOf(start, end).coerceIn(0, text.length))
-    return if (a < b && text.substring(a, b).isNotBlank()) a until b else null
+    return if (a < b && (a until b).any { !text[it].isWhitespace() }) a until b else null
   }
 }
 
@@ -143,11 +143,16 @@ object RenderedText {
 
 /** Platform character boundaries plus emoji sequences older BreakIterators split. */
 class Graphemes(private val text: String) {
-  private val boundaries: IntArray
-  init {
+  // Plain ASCII (apart from CRLF) needs no boundary table. A Unicode section
+  // uses one bit per UTF-16 offset and a single forward pass over the iterator.
+  private val boundaries: java.util.BitSet? = if (text.all { it.code < 128 } && !text.contains("\r\n")) null else buildBoundaries()
+
+  private fun buildBoundaries(): java.util.BitSet {
     val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
     iterator.setText(text)
-    val out = ArrayList<Int>(); out += 0
+    val out = java.util.BitSet(text.length + 1)
+    out.set(0)
+    var boundary = iterator.next()
     var at = 0; var regionalRun = 0
     while (at < text.length) {
       val cp = text.codePointAt(at)
@@ -161,17 +166,20 @@ class Graphemes(private val text: String) {
         next in 0xE0020..0xE007F || type == Character.NON_SPACING_MARK.toInt() ||
         type == Character.COMBINING_SPACING_MARK.toInt() || type == Character.ENCLOSING_MARK.toInt() ||
         (regionalRun % 2 == 1 && next in 0x1F1E6..0x1F1FF) || (cp == 13 && next == 10)
-      if (!joins && iterator.isBoundary(at)) out += at
+      while (boundary != BreakIterator.DONE && boundary < at) boundary = iterator.next()
+      if (!joins && boundary == at) out.set(at)
     }
-    if (out.last() != text.length) out += text.length
-    boundaries = out.toIntArray()
+    out.set(text.length)
+    return out
   }
+
   fun floor(offset: Int): Int {
-    val x = offset.coerceIn(0, text.length); val i = boundaries.binarySearch(x)
-    return if (i >= 0) x else boundaries[(-i - 2).coerceAtLeast(0)]
+    val at = offset.coerceIn(0, text.length)
+    return boundaries?.previousSetBit(at) ?: at
   }
+
   fun ceil(offset: Int): Int {
-    val x = offset.coerceIn(0, text.length); val i = boundaries.binarySearch(x)
-    return if (i >= 0) x else boundaries[(-i - 1).coerceAtMost(boundaries.lastIndex)]
+    val at = offset.coerceIn(0, text.length)
+    return boundaries?.nextSetBit(at) ?: at
   }
 }

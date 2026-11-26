@@ -12,6 +12,8 @@ data class TtsPlaybackState(
   val sourceTitle: String = "",
   val sourceUrl: String? = null,
   val playing: Boolean = false,
+  /** User intent survives section loading; [playing] reports active speech. */
+  val playWhenReady: Boolean = playing,
   val loading: Boolean = false,
   val ended: Boolean = false,
   val error: String? = null,

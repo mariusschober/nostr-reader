@@ -68,7 +68,7 @@ class TtsPlaybackClient(context: Context) {
    * running session; never bind the service just to issue a no-op.
    */
   private fun commandIfActive(action: (MediaController) -> Unit) {
-    if (controller == null && !TtsPlaybackBus.state.value.active) return
+    if (controller == null && !connecting && queued.isEmpty() && !TtsPlaybackBus.state.value.active) return
     whenConnected(action)
   }
 
