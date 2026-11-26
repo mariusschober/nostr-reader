@@ -76,11 +76,23 @@ function worker(all) {
 
 const all = await targets();
 const page = extensionPage(all);
-if (!page && action !== "content-storage-static") {
+if (!page && action !== "content-storage-static" && action !== "open-options") {
   throw new Error("Reader settings target not found");
 }
 
-if (action === "status") {
+if (action === "open-options") {
+  let opened = false;
+  for (let attempt = 0; attempt < 100 && !opened; attempt++) {
+    for (const candidate of (await targets()).filter(target => target.type === "service_worker")) {
+      if (await evaluate(candidate, "globalThis.chrome?.runtime?.getManifest?.().name").catch(() => null) !== "Reader") continue;
+      await evaluate(candidate, "chrome.runtime.openOptionsPage()");
+      opened = true;
+      break;
+    }
+    if (!opened) await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!opened) throw new Error("The Reader extension did not install");
+} else if (action === "status") {
   const status = await evaluate(page, `chrome.runtime.sendMessage({kind:"reader-status"}).then(s => ({
     ok: s.ok,
     paired: s.paired,

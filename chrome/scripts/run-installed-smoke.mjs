@@ -35,14 +35,12 @@ try {
   const port = portFile.split("\n")[0];
   const endpoint = "http://127.0.0.1:" + port;
   async function targets() { return (await fetch(endpoint + "/json/list")).json(); }
-  const worker = await waitFor("Reader installation", async () => (await targets()).find(
-    target => target.type === "service_worker" && target.url.endsWith("/background.js"),
-  ));
-  const settings = new URL("src/ui/options.html", worker.url).href;
-  const opened = await fetch(endpoint + "/json/new?" + encodeURIComponent(settings), { method: "PUT" });
-  if (!opened.ok) throw new Error("Could not open Reader settings");
-  await waitFor("Reader settings", async () => (await targets()).some(target => target.url === settings));
-  const { stdout } = await promisify(execFile)(process.execPath, [join(import.meta.dirname, "cdp-installed-check.mjs"), port, "outbox-smoke"], { timeout: 45_000 });
+  const check = action => promisify(execFile)(process.execPath, [
+    join(import.meta.dirname, "cdp-installed-check.mjs"), port, action,
+  ], { timeout: 45_000 });
+  await check("open-options");
+  await waitFor("Reader settings", async () => (await targets()).some(target => target.type === "page" && target.url.endsWith("/src/ui/options.html")));
+  const { stdout } = await check("outbox-smoke");
   process.stdout.write(stdout);
 } finally {
   browser.kill("SIGTERM");
