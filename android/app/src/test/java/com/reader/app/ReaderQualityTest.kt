@@ -17,6 +17,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReaderQualityTest {
+  @Test fun protocolWordCountMatchesLegacyRulesForMixedScriptsAndMarkdown() {
+    val rng = Random(1840)
+    val tokens = listOf("plain", "123.", "٤)", "1..", ">", "*-+", "-word", "http://x", "https://y", "https", "👩🏿‍🔬", "読書", "```code", ".")
+    val spaces = listOf(" ", "\t", "\n", "\r\n", "\u000b", "\u00a0", "\u2003")
+    val text = buildString { repeat(4000) { append(tokens.random(rng)); append(spaces.random(rng)) } }
+    val separator = Regex("\\s+")
+    val marker = Regex("^[-*+>]+$|^\\d+[.)]$")
+    var fenced = false
+    var expected = 0
+    for (line in text.lineSequence()) {
+      val trimmed = line.trim()
+      if (trimmed.startsWith("```")) { fenced = !fenced; continue }
+      if (!fenced) expected += trimmed.split(separator).count { it.isNotEmpty() && !it.startsWith("http://") && !it.startsWith("https://") && !marker.matches(it) }
+    }
+    assertEquals(expected, com.reader.app.core.ReaderCore.wordCount(text))
+  }
+
   @Test fun boundedFindPreservesAllHitsAcrossPartsAndStopsOnFirstHit() = runBlocking {
     val counts = listOf(0, 70, 135, 11)
     val projected = counts.map { RenderedProjection("Wort ".repeat(it), emptyList(), emptyList(), emptyMap()) }
