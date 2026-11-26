@@ -21,6 +21,10 @@ class RelayReceiveTest {
     val events = (1L..33L).map { NostrCodec.signEvent(pubkey, it, 1059, emptyList(), "synthetic-$it", key) }
     repeat(2) {
       server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+        override fun onClosing(socket: WebSocket, code: Int, reason: String) {
+          socket.close(code, null)
+        }
+
         override fun onMessage(socket: WebSocket, text: String) {
           val frame = StrictJson.parse(text).jsonArray
           if (frame[0].jsonPrimitive.content == "REQ") {
