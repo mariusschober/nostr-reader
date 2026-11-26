@@ -260,8 +260,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // to that same viewport, never a surrounding ScrollView or touch interceptor.
     // Some TextView versions collapse a held word while processing UP. Preserve
     // the range the reader actually held, while preferring any final handle adjustment.
-    val releaseRange = if (event.actionMasked == MotionEvent.ACTION_UP && pen && gestureActive && !gestureAbandoned &&
-      validSelection(body.selectionStart, body.selectionEnd)) body.selectionStart until body.selectionEnd else null
+    val releasingPen = event.actionMasked == MotionEvent.ACTION_UP && pen && gestureActive && !gestureAbandoned
+    val releaseRange = if (releasingPen && validSelection(body.selectionStart, body.selectionEnd)) {
+      body.selectionStart until body.selectionEnd
+    } else null
     val handled = super.dispatchTouchEvent(event)
     if (event.actionMasked == MotionEvent.ACTION_UP) {
       gestureActive = false
@@ -737,8 +739,11 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    */
   private fun settlePenGesture(releaseRange: IntRange?) {
     if (!pen || gestureAbandoned) return
-    val settled = if (validSelection(body.selectionStart, body.selectionEnd)) body.selectionStart until body.selectionEnd
-      else releaseRange ?: return
+    val settled = if (validSelection(body.selectionStart, body.selectionEnd)) {
+      body.selectionStart until body.selectionEnd
+    } else {
+      releaseRange ?: return
+    }
     val start = settled.first
     val end = settled.last + 1
     val value = projection ?: return
