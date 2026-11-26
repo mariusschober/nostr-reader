@@ -95,6 +95,18 @@ if (action === "status") {
 } else if (action === "outbox-smoke") {
   const { default: assert } = await import("node:assert/strict");
   const send = value => evaluate(page, "chrome.runtime.sendMessage(" + JSON.stringify(value) + ")");
+  let ready;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      ready = await evaluate(page, `({
+        url:location.href, state:document.readyState, hasOptions:!!document.querySelector("#checkDelivery"),
+        hasRuntime:typeof chrome?.runtime?.sendMessage === "function"
+      })`);
+    } catch { /* Chrome is switching execution contexts during navigation. */ }
+    if (ready?.hasOptions && ready.hasRuntime) break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.ok(ready?.hasOptions && ready.hasRuntime, "Reader settings did not initialize: " + JSON.stringify(ready));
   const initial = await send({kind:"reader-status"});
   assert.equal(initial.paired, false);
   assert.equal(initial.delivery.queued, 0);
