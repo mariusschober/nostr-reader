@@ -156,13 +156,22 @@ class HighlightSessionInstrumentedTest {
       assertEquals("The saved quote equals the final selected range",
         projection.text.substring(range.first, range.last + 1), rows.single().quote)
       // A fresh long-press works immediately after acknowledgement, without an extra clear/tap.
-      val secondWord = text.indexOf("boundary")
+      // Extending the first selection can scroll the first paragraph off screen.
+      var secondWord = 0
+      runner.runOnMainSync {
+        val layout = view.layout
+        val mid = layout.getLineForVertical(view.scrollY + (view.height - view.totalPaddingTop - view.totalPaddingBottom) / 2)
+        val lineStart = layout.getLineStart(mid)
+        val visibleLine = view.text.subSequence(lineStart, layout.getLineEnd(mid)).toString()
+        val word = requireNotNull(Regex("[a-zA-Z]{3,}").find(visibleLine)) { "Expected a visible word on line $mid" }
+        secondWord = lineStart + word.range.first + 1
+      }
       val down2 = SystemClock.uptimeMillis()
-      event(MotionEvent.ACTION_DOWN, point(secondWord + 3), down2)
+      event(MotionEvent.ACTION_DOWN, point(secondWord), down2)
       SystemClock.sleep(700)
       waitFor("second gesture selects") { selection().last > selection().first }
       val secondRange = selection()
-      event(MotionEvent.ACTION_UP, point(secondWord + 3), down2)
+      event(MotionEvent.ACTION_UP, point(secondWord), down2)
       waitFor("second settle") { settled.size == 2 }
       runBlocking { reading.flush() }
       waitFor("second acknowledgement removes selection") { selection().first < 0 || selection().last < selection().first }
