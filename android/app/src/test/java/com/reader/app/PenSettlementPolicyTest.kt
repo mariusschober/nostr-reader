@@ -31,11 +31,23 @@ class PenSettlementPolicyTest {
     assertFalse(policy.acknowledge(completion, true, 10, 40, false))
   }
 
+  @Test fun delayedPlatformRestorationOnlyClearsTheSavedRangeUntilTheNextGesture() {
+    val policy = PenSettlementPolicy()
+    policy.beginGesture()
+    val completion = policy.settle("saved", 10, 30)!!
+    assertFalse(policy.acknowledge(completion, true, -1, -1, false))
+    assertFalse(policy.ownsSavedRange(10, 29))
+    assertTrue(policy.ownsSavedRange(10, 30))
+    policy.beginGesture()
+    assertFalse(policy.ownsSavedRange(10, 30))
+  }
+
   @Test fun failureKeepsSelectionAndAllowsRetryWithTheSameIdentity() {
     val policy = PenSettlementPolicy()
     policy.beginGesture()
     val first = policy.settle("stable-id", 10, 30)!!
     assertFalse(policy.acknowledge(first, false, 10, 30, false))
+    assertFalse(policy.ownsSavedRange(10, 30))
     val retry = policy.settle("stable-id", 10, 30)!!
     assertEquals(first.session, retry.session)
     assertFalse("Old failed callback cannot settle retry", policy.acknowledge(first, true, 10, 30, false))

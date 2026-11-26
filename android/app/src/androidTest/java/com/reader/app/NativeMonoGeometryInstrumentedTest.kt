@@ -12,8 +12,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.reader.app.ui.MainActivity
+import com.reader.app.ui.screens.NativeMark
 import com.reader.app.ui.screens.nativeMonoUnderlineOffsets
+import com.reader.app.ui.screens.nativeMonoViewportRuns
 import com.reader.app.ui.screens.nativeMonoVisualRuns
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -77,6 +80,15 @@ class NativeMonoGeometryInstrumentedTest {
       // unselected. The resulting visual gap catches any bounding-box bridge.
       val bidiEnd = articleText.indexOf("אבג", bidiStart) + 1
       val bidi = nativeMonoVisualRuns(view.text, bidiStart, bidiEnd, layout, "dotted")
+      val marks = listOf(
+        NativeMark("wrapped", start, end, 0, 0, 0, "double"),
+        NativeMark("bidi", bidiStart, bidiEnd, 1, 0, 0, "dotted"),
+      )
+      for (line in 0 until layout.lineCount) {
+        val visible = line..minOf(line + 1, layout.lineCount - 1)
+        assertEquals("Windowed drawing preserves every visible piece in paint order",
+          (wrapped + bidi).filter { it.line in visible }, nativeMonoViewportRuns(view.text, marks, layout, visible))
+      }
       assertFalse("mixed-direction selection must retain visible runs", bidi.isEmpty())
       assertTrue("bidi runs remain bounded to their visual lines", bidi.all { it.right > it.left && it.line in 0 until layout.lineCount })
       assertTrue(

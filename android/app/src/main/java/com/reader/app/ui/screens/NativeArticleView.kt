@@ -49,6 +49,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private val body = SelectionText(context)
   private val swipeLabel = TextView(context)
   private var projection: RenderedProjection? = null
+  private var lastReadableOffset = 0
   private var documentId = ""
   private var actionMode: ActionMode? = null
   private var selectionSession: String? = null
@@ -69,7 +70,13 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   private var pen = false
   private var heldWord: IntRange? = null
   private var restoring = false
+  private var monoMarks: List<NativeMark> = emptyList()
   private var markRanges: List<NativeMark> = emptyList()
+    set(value) {
+      field = value
+      monoMarks = value.filter { it.edge != "none" }
+      monoRunLayout = null
+    }
   var onSelection: (String, Long, IntRange) -> Unit = { _, _, _ -> }
   /**
    * Final-commit bridge for a completed pen gesture. The UI persists the
@@ -114,7 +121,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     set(value) {
       if (field != value) {
         field = value
-        if (markRanges.any { it.edge != "none" }) invalidate()
+        if (monoMarks.isNotEmpty()) invalidate()
       }
     }
   private var swipeX = 0f
@@ -145,8 +152,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     if (body.height <= 0) return false
     // TextView can stop before trailing blank lines and extra line spacing.
     // Completion follows the last visible text line, not that empty padding.
-    val last = body.text.indexOfLast { !it.isWhitespace() }.coerceAtLeast(0)
-    val line = layout.getLineForOffset(last)
+    val line = layout.getLineForOffset(lastReadableOffset)
     val textBottom = layout.getLineBaseline(line) + layout.getLineDescent(line) + body.totalPaddingTop
     return body.scrollY + body.height - body.totalPaddingBottom >= textBottom - dp(2)
   }
@@ -260,8 +266,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // Android's selectable TextView owns touch scrolling and native handles;
     // its movement method has no kinetic scroll. Add only post-release motion
     // to that same viewport, never a surrounding ScrollView or touch interceptor.
-    // Some TextView versions collapse a held word while processing UP. Preserve
-    // the range the reader actually held, while preferring any final handle adjustment.
+    // UP can collapse or replace a held selection. Capture the last user-adjusted
+    // range before handing the release to TextView.
     val releasingPen = event.actionMasked == MotionEvent.ACTION_UP && pen && gestureActive && !gestureAbandoned
     val releaseRange = if (releasingPen && validSelection(body.selectionStart, body.selectionEnd)) {
       body.selectionStart until body.selectionEnd
@@ -326,7 +332,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
         // Edge rules are drawn by this parent over the scrolling TextView;
         // invalidate it whenever the child viewport moves so cached runs are
         // translated with the glyphs on hardware and software canvases.
-        if (markRanges.any { it.edge != "none" }) invalidate()
+        if (monoMarks.isNotEmpty()) invalidate()
         onViewport(y, h)
         if (!restoring && h > 0) onAtEnd(isAtEnd())
       }
@@ -490,7 +496,6 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     body.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
       if (right - left != oldRight - oldLeft) {
         monoRunLayout = null
-        monoRunMarks = null
         updateTableStyles()
       }
       val oldHeight = oldBottom - oldTop
@@ -534,7 +539,6 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     val changed = projection !== value || documentId != id
     if (changed) { flushSelection(); clearSelection() }
     monoRunLayout = null
-    monoRunMarks = null
     val saved = if (!changed) currentCursor() else initial
     documentId = id
     projection = value
@@ -583,6 +587,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     }
     if (changed) {
       restoring = true
+      lastReadableOffset = value.text.indexOfLast { !it.isWhitespace() }.coerceAtLeast(0)
       markRanges = emptyList()
       // Use the same native layout for drawing and handle hit testing. On the TCL,
       // precomputed mixed heading/body spans reported incorrect horizontal positions.
@@ -650,8 +655,6 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   fun setMarks(marks: List<NativeMark>) {
     if (marks == markRanges) return
     markRanges = marks
-    monoRunLayout = null
-    monoRunMarks = null
     val text = body.text as? Spannable ?: return
     text.getSpans(0, text.length, SavedBackground::class.java).forEach { text.removeSpan(it) }
     text.getSpans(0, text.length, SavedForeground::class.java).forEach { text.removeSpan(it) }
@@ -686,9 +689,9 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     return true
   }
 
-  private fun resetSelectionOwner() {
+  private fun resetSelectionOwner(keepAcknowledgedRange: Boolean = false) {
     heldWord = null
-    penSettlement.invalidate()
+    if (!keepAcknowledgedRange) penSettlement.invalidate()
     pendingSelection?.let { removeCallbacks(it) }
     pendingSelection = null
     pendingActionModeContinuation = false
@@ -699,7 +702,9 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     selectionCommitted = false
   }
 
-  fun clearSelection(): Boolean {
+  fun clearSelection(): Boolean = clearSelection(keepAcknowledgedRange = false)
+
+  private fun clearSelection(keepAcknowledgedRange: Boolean): Boolean {
     // Preserve a committed ordinary handle adjustment before ending its mode.
     flushSelection()
     val active = actionMode != null || body.selectionStart != body.selectionEnd
@@ -708,7 +713,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     actionMode = null
     finishedMode?.finish()
     (body.text as? Spannable)?.let { android.text.Selection.removeSelection(it) }
-    resetSelectionOwner()
+    resetSelectionOwner(keepAcknowledgedRange)
     // Cancelling from outside the gesture (Back, dock, navigation, Undo) must
     // also abandon an in-flight pen selection: the pointer is still down, so
     // the platform can re-establish the native selection and the release would
@@ -742,6 +747,12 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // grabbed) does not end the session. The next ActionMode creation decides
     // whether a valid range is a handle continuation or a new gesture.
     if (!validSelection(start, end)) return
+    // ActionMode may restore the saved selection after its asynchronous teardown.
+    // Leave the TextView callback before clearing any spans and check ownership again.
+    if (pen && !gestureActive && penSettlement.ownsSavedRange(start, end)) {
+      pendingSelection = Runnable { clearSavedPenSelection() }.also { post(it) }
+      return
+    }
     // Before ActionMode is created, ordinary Android selection is intentionally
     // unsaved. Do not let a new long-press mutate a committed session while the
     // old mode is being dismissed.
@@ -779,10 +790,9 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    */
   private fun settlePenGesture(releaseRange: IntRange?) {
     if (!pen || gestureAbandoned) return
-    val settled = if (validSelection(body.selectionStart, body.selectionEnd)) {
+    val settled = releaseRange ?: run {
+      if (!validSelection(body.selectionStart, body.selectionEnd)) return
       body.selectionStart until body.selectionEnd
-    } else {
-      releaseRange ?: return
     }
     val start = settled.first
     val end = settled.last + 1
@@ -795,13 +805,16 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     onSettle(session, range) { ok ->
       post {
         if (penSettlement.acknowledge(settlement, ok, body.selectionStart, body.selectionEnd, gestureActive)) {
-          // Focus loss also ends TextView's private selection controller if Android
-          // replaced its ActionMode. A new long-press must start a fresh selection.
-          body.clearFocus()
-          clearSelection()
+          clearSavedPenSelection()
         }
       }
     }
+  }
+
+  private fun clearSavedPenSelection() {
+    if (gestureActive || !penSettlement.ownsSavedRange(body.selectionStart, body.selectionEnd)) return
+    body.clearFocus()
+    clearSelection(keepAcknowledgedRange = true)
   }
 
   private var lastSelection: Pair<String, IntRange>? = null
@@ -844,7 +857,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   }
   private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
   private var monoRunLayout: Layout? = null
-  private var monoRunMarks: List<NativeMark>? = null
+  private var monoWindow: IntRange = IntRange.EMPTY
   private var monoRuns: List<NativeMonoVisualRun> = emptyList()
   private var monoEffectsDensity = 0f
   private var monoDashEffect: android.graphics.DashPathEffect? = null
@@ -865,15 +878,18 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    * projection offsets and quote anchors remain untouched.
    */
   private fun drawMonoEdges(canvas: android.graphics.Canvas) {
+    if (monoMarks.isEmpty()) return
     val layout = body.layout ?: return
-    if (body.text.isEmpty()) return
-    if (monoRunLayout !== layout || monoRunMarks != markRanges) {
+    if (body.text.isEmpty() || body.height <= 0 || layout.lineCount == 0) return
+    val viewportTop = body.scrollY - body.paddingTop
+    val first = layout.getLineForVertical(viewportTop.coerceAtLeast(0))
+    val last = layout.getLineForVertical((viewportTop + body.height).coerceAtLeast(0))
+    if (monoRunLayout !== layout || first !in monoWindow || last !in monoWindow) {
+      // Cache one screen above and below so ordinary scrolling reuses the same paths.
+      val margin = last - first + 1
+      monoWindow = (first - margin).coerceAtLeast(0)..(last + margin).coerceAtMost(layout.lineCount - 1)
       monoRunLayout = layout
-      monoRunMarks = markRanges
-      monoRuns = markRanges.asSequence()
-        .filter { it.edge != "none" && it.start >= 0 && it.end > it.start && it.end <= body.length() }
-        .flatMap { nativeMonoVisualRuns(body.text, it.start, it.end, layout, it.edge).asSequence() }
-        .toList()
+      monoRuns = nativeMonoViewportRuns(body.text, monoMarks, layout, monoWindow)
     }
     if (monoRuns.isEmpty()) return
     val density = resources.displayMetrics.density
@@ -1036,6 +1052,22 @@ internal fun selectionRangesOverlap(owned: IntRange, candidateStart: Int, candid
 
 internal data class NativeMonoVisualRun(val line: Int, val left: Float, val right: Float, val edge: String)
 
+internal fun nativeMonoViewportRuns(
+  text: CharSequence, marks: List<NativeMark>, layout: Layout, lines: IntRange,
+): List<NativeMonoVisualRun> {
+  val windowStart = layout.getLineStart(lines.first)
+  val windowEnd = layout.getLineEnd(lines.last)
+  return buildList {
+    for (mark in marks) {
+      val start = maxOf(mark.start, windowStart)
+      val end = minOf(mark.end, windowEnd)
+      if (start < end && mark.start >= 0 && mark.end <= text.length) {
+        addAll(nativeMonoVisualRuns(text, start, end, layout, mark.edge))
+      }
+    }
+  }
+}
+
 /**
  * Extract disjoint horizontal pieces of one saved mark on each visual line.
  * The selection path is generated by the same Layout used for glyphs and then
@@ -1149,10 +1181,14 @@ internal class PenSettlementPolicy {
   class Completion internal constructor(val session: String, val start: Int, val end: Int, internal val generation: Long)
   private var generation = 0L
   private var pending: Completion? = null
+  private var saved: Completion? = null
   private var settledGeneration: Long? = null
 
-  fun beginGesture() { generation++ }
-  fun invalidate() { generation++; pending = null; settledGeneration = null }
+  fun beginGesture() { generation++; saved = null }
+  fun invalidate() { beginGesture(); pending = null; settledGeneration = null }
+
+  fun ownsSavedRange(start: Int, end: Int): Boolean =
+    saved?.let { it.start == start && it.end == end } == true
 
   fun settle(session: String, start: Int, end: Int): Completion? {
     if (settledGeneration == generation) return null
@@ -1161,9 +1197,10 @@ internal class PenSettlementPolicy {
   }
 
   fun acknowledge(completion: Completion, success: Boolean, start: Int, end: Int, gestureActive: Boolean): Boolean {
-    if (pending !== completion) return false
+    if (pending !== completion || completion.generation != generation) return false
     pending = null
     if (!success) { settledGeneration = null; return false }
-    return completion.generation == generation && !gestureActive && start == completion.start && end == completion.end
+    saved = completion
+    return !gestureActive && ownsSavedRange(start, end)
   }
 }

@@ -70,6 +70,7 @@ class HighlightSessionInstrumentedTest {
     val doc = DocumentEntity(docId, "Session gate", "test", null, null, null, null, run, "en", text,
       text.split(' ').size, 1, "reading", "inbox", null, 0, 0f, run, run, run)
     val settled = ConcurrentLinkedQueue<Pair<String, IntRange>>()
+    val acknowledged = ConcurrentLinkedQueue<IntRange>()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val journal = File(app.cacheDir, docId)
     val reading = ReadingSession(scope, journal) { repo.saveSelection(it) }
@@ -86,7 +87,7 @@ class HighlightSessionInstrumentedTest {
             onSettle = { session, range, ack ->
               settled.add(session to range)
               val draft = HighlightAnchors.create(session, doc, projection, range.first, range.last + 1, System.currentTimeMillis())
-              reading.submitSelection(draft) { ack(true) }
+              reading.submitSelection(draft) { acknowledged.add(range); ack(true) }
             }
             setPenMode(true)
             native.set(this)
@@ -101,7 +102,8 @@ class HighlightSessionInstrumentedTest {
           val textView = body.get()
           detail = "selection=" + textView?.selectionStart + ".." + textView?.selectionEnd +
             ", scroll=" + textView?.scrollY + ", focused=" + textView?.hasWindowFocus() +
-            ", touching=" + native.get()?.gestureActive + ", settlements=" + settled.size
+            ", touching=" + native.get()?.gestureActive + ", settled=" + settled.map { it.second } +
+            ", acknowledged=" + acknowledged.toList() + ", recovery=" + reading.error.value
         }
         error("Timed out: $label ($detail)")
       }
@@ -163,6 +165,7 @@ class HighlightSessionInstrumentedTest {
       // clearing the native selection. Callback emission alone is insufficient.
       assertEquals("One gesture must produce exactly one settled emission", 1, settled.size)
       val (session, range) = settled.single()
+      assertEquals("Release preserves the range held after the drag", before.first..targetEnd, range)
       runBlocking { reading.flush() }
       waitFor("successful acknowledgement removes selection") { selection().first < 0 || selection().last < selection().first }
       val rows = runBlocking { db.highlights().observeForDocument(docId).first() }

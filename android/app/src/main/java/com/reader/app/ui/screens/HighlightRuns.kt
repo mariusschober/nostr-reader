@@ -13,11 +13,10 @@ internal fun forEachVisibleMark(
   while (index < sorted.size || active.isNotEmpty()) {
     if (active.isEmpty()) pos = sorted[index].start
     while (index < sorted.size && sorted[index].start <= pos) active.add(sorted[index++])
-    while (active.isNotEmpty() && active.peek().end <= pos) active.remove()
+    while (active.peek()?.let { it.end <= pos } == true) active.remove()
     val top = active.peek() ?: continue
     val end = minOf(top.end, sorted.getOrNull(index)?.start ?: length)
     emit(pos, end, top)
     pos = end
-    while (active.isNotEmpty() && active.peek().end <= pos) active.remove()
   }
 }
