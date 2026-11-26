@@ -88,6 +88,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
   var onCursor: (SemanticCursor, Float) -> Unit = { _, _ -> }
   var onMark: (List<String>) -> Unit = {}
   var onLink: (String) -> Unit = {}
+  internal fun activateLink(target: String) { if (!pen) onLink(target) }
   var onTap: () -> Unit = {}
   var gestureActive = false
     private set
@@ -191,7 +192,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemGestures())
         val edge = maxOf(dp(24), insets?.left ?: 0, insets?.right ?: 0)
         val at = body.getOffsetForPosition(event.x - paddingLeft, event.y)
-        val link = projection?.styles?.any { it.style in setOf(TextStyle.LINK, TextStyle.FOOTNOTE_REF) && at >= it.start && at < it.end } == true
+        val link = projection?.styles?.any { (it.style == TextStyle.LINK || it.style == TextStyle.FOOTNOTE_REF) && at >= it.start && at < it.end } == true
         // A horizontal drag over code or a table is a content gesture, even
         // when this particular block fits the viewport without horizontal scroll.
         val horizontalContent = projection?.blocks?.any {
@@ -257,6 +258,10 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
     // Android's selectable TextView owns touch scrolling and native handles;
     // its movement method has no kinetic scroll. Add only post-release motion
     // to that same viewport, never a surrounding ScrollView or touch interceptor.
+    // Some TextView versions collapse a held word while processing UP. Preserve
+    // the range the reader actually held, while preferring any final handle adjustment.
+    val releaseRange = if (event.actionMasked == MotionEvent.ACTION_UP && pen && gestureActive && !gestureAbandoned &&
+      validSelection(body.selectionStart, body.selectionEnd)) body.selectionStart until body.selectionEnd else null
     val handled = super.dispatchTouchEvent(event)
     if (event.actionMasked == MotionEvent.ACTION_UP) {
       gestureActive = false
@@ -276,7 +281,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
       // A completed continuous-highlighting gesture commits once, on release.
       // A gesture abandoned from outside (Back, navigation) commits nothing and
       // must not leave its range painted.
-      if (pen) { if (gestureAbandoned) abandonPenGesture() else settlePenGesture() }
+      if (pen) { if (gestureAbandoned) abandonPenGesture() else settlePenGesture(releaseRange) }
     } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
       gestureActive = false; stopFling(); recycleVelocity(); onViewport(body.scrollY, body.height)
       // Cancellation saves nothing from the cancelled gesture, and leaves no
@@ -436,8 +441,8 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           kotlin.math.abs(event.x - downX) < dp(8) && kotlin.math.abs(event.y - downY) < dp(8)) {
           val at = body.getOffsetForPosition(event.x, event.y)
           val hits = markRanges.filter { it.id != "search-hit" && at >= it.start && at < it.end }.sortedByDescending { it.createdAt }
-          val linkStyle = projection?.styles?.lastOrNull { it.style in setOf(TextStyle.LINK, TextStyle.FOOTNOTE_REF) && at >= it.start && at < it.end }
-          val link = linkStyle?.let { if (it.style == TextStyle.FOOTNOTE_REF) "#^" + projection!!.text.substring(it.start, it.end).removeSurrounding("[", "]") else it.value }
+          val linkStyle = projection?.styles?.lastOrNull { (it.style == TextStyle.LINK || it.style == TextStyle.FOOTNOTE_REF) && at >= it.start && at < it.end }
+          val link = linkStyle?.value
           val table = projection?.tables?.indexOfFirst { rows ->
             rows.rows.firstOrNull()?.firstOrNull()?.start?.let { first ->
               at >= first && at < (rows.rows.lastOrNull()?.lastOrNull()?.end ?: first)
@@ -445,7 +450,7 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
           } ?: -1
           when {
             hits.isNotEmpty() -> onMark(hits.map { it.id })
-            !pen && link != null -> onLink(link)
+            link != null -> activateLink(link)
             !pen && table >= 0 -> onTable(table)
             // A stationary background tap toggles focus in either mode. A tap
             // on a link or table while highlighting stays inert instead of
@@ -730,11 +735,12 @@ class NativeArticleView(context: Context) : FrameLayout(context) {
    * is a no-op. Acknowledgement owns the completed gesture and exact range,
    * independently of Android recreating its ActionMode session owner.
    */
-  private fun settlePenGesture() {
+  private fun settlePenGesture(releaseRange: IntRange?) {
     if (!pen || gestureAbandoned) return
-    val start = body.selectionStart
-    val end = body.selectionEnd
-    if (!validSelection(start, end)) return
+    val settled = if (validSelection(body.selectionStart, body.selectionEnd)) body.selectionStart until body.selectionEnd
+      else releaseRange ?: return
+    val start = settled.first
+    val end = settled.last + 1
     val value = projection ?: return
     val range = value.range(start, end) ?: return
     val session = selectionSession ?: UUID.randomUUID().toString().also { selectionSession = it }
@@ -1046,8 +1052,15 @@ data class NativeMark(val id: String, val start: Int, val end: Int, val createdA
 private class SavedBackground(color: Int) : BackgroundColorSpan(color)
 private class SavedForeground(color: Int) : ForegroundColorSpan(color)
 
-private class ArticleLinkInk : CharacterStyle(), UpdateAppearance {
-  override fun updateDrawState(paint: android.text.TextPaint) { paint.color = paint.linkColor }
+/** Android exposes ClickableSpan to accessibility services. All activations use the reader's link policy. */
+private class ArticleLink(private val target: String, private val underline: Boolean) : ClickableSpan() {
+  override fun onClick(widget: android.view.View) {
+    (widget.parent as? NativeArticleView)?.activateLink(target)
+  }
+  override fun updateDrawState(paint: android.text.TextPaint) {
+    paint.color = paint.linkColor
+    if (underline) paint.isUnderlineText = true
+  }
 }
 
 /** Build on Dispatchers.Default before assigning to the native surface. */
@@ -1062,8 +1075,11 @@ fun nativeArticleText(value: RenderedProjection): SpannableString {
       TextStyle.ITALIC -> span(StyleSpan(Typeface.ITALIC), it.start, it.end)
       TextStyle.STRIKE -> span(StrikethroughSpan(), it.start, it.end)
       TextStyle.CODE -> span(TypefaceSpan("monospace"), it.start, it.end)
-      TextStyle.LINK -> { span(ArticleLinkInk(), it.start, it.end); span(UnderlineSpan(), it.start, it.end) }
-      TextStyle.FOOTNOTE_REF -> span(RelativeSizeSpan(0.75f), it.start, it.end)
+      TextStyle.LINK -> it.value?.let { target -> span(ArticleLink(target, underline = true), it.start, it.end) }
+      TextStyle.FOOTNOTE_REF -> {
+        it.value?.let { target -> span(ArticleLink(target, underline = false), it.start, it.end) }
+        span(RelativeSizeSpan(0.75f), it.start, it.end)
+      }
     }
   }
   value.blocks.forEach {

@@ -50,7 +50,7 @@ jobs:
           target: default
           profile: pixel_2
           working-directory: android
-          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest -PreaderQa=true -Pandroid.testInstrumentationRunnerArguments.class=com.reader.app.CaptureFlowInstrumentedTest,com.reader.app.ReaderDbMigrationInstrumentedTest,com.reader.app.CaptureMigrationInstrumentedTest,com.reader.app.TransferManagerInstrumentedTest,com.reader.app.SearchInstrumentedTest,com.reader.app.HighlightSessionInstrumentedTest,com.reader.app.TtsNavigationInstrumentedTest
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest -PreaderQa=true -Pandroid.testInstrumentationRunnerArguments.class=com.reader.app.CaptureFlowInstrumentedTest,com.reader.app.ReaderDbMigrationInstrumentedTest,com.reader.app.CaptureMigrationInstrumentedTest,com.reader.app.TransferManagerInstrumentedTest,com.reader.app.SearchInstrumentedTest,com.reader.app.ReaderAccessibilityInstrumentedTest,com.reader.app.HighlightSessionInstrumentedTest,com.reader.app.TtsNavigationInstrumentedTest
   references:
     runs-on: macos-latest
     steps:

@@ -96,10 +96,27 @@ class HighlightSessionInstrumentedTest {
       } }
       fun waitFor(label: String, check: () -> Boolean) {
         repeat(200) { if (check()) return; SystemClock.sleep(100) }
-        error("Timed out: $label")
+        var detail = ""
+        runner.runOnMainSync {
+          val textView = body.get()
+          detail = "selection=" + textView?.selectionStart + ".." + textView?.selectionEnd +
+            ", scroll=" + textView?.scrollY + ", focused=" + textView?.hasWindowFocus() +
+            ", touching=" + native.get()?.gestureActive + ", settlements=" + settled.size
+        }
+        error("Timed out: $label ($detail)")
       }
-      waitFor("layout") { body.get()?.layout != null && (body.get()?.height ?: 0) > 0 }
+      waitFor("focused article layout") {
+        var ready = false
+        runner.runOnMainSync { ready = body.get()?.let { it.hasWindowFocus() && it.isShown && it.layout != null && it.height > 0 } == true }
+        ready
+      }
       val view = body.get()
+      val drawn = java.util.concurrent.CountDownLatch(1)
+      val drawListener = android.view.ViewTreeObserver.OnDrawListener { drawn.countDown() }
+      runner.runOnMainSync { view.viewTreeObserver.addOnDrawListener(drawListener); view.invalidate() }
+      assertTrue("The article must draw before injecting touch", drawn.await(20, java.util.concurrent.TimeUnit.SECONDS))
+      runner.runOnMainSync { view.viewTreeObserver.removeOnDrawListener(drawListener) }
+      runner.waitForIdleSync()
       fun point(offset: Int, handle: Boolean = false): Pair<Float, Float> {
         var out = 0f to 0f
         runner.runOnMainSync {
@@ -161,10 +178,10 @@ class HighlightSessionInstrumentedTest {
       runner.runOnMainSync {
         val layout = view.layout
         val mid = layout.getLineForVertical(view.scrollY + (view.height - view.totalPaddingTop - view.totalPaddingBottom) / 2)
-        val lineStart = layout.getLineStart(mid)
-        val visibleLine = view.text.subSequence(lineStart, layout.getLineEnd(mid)).toString()
-        val word = requireNotNull(Regex("[a-zA-Z]{3,}").find(visibleLine)) { "Expected a visible word on line $mid" }
-        secondWord = lineStart + word.range.first + 1
+        val last = layout.getLineForVertical(view.scrollY + view.height - view.totalPaddingTop - view.totalPaddingBottom - 1)
+        val visibleText = view.text.subSequence(layout.getLineStart(mid), layout.getLineEnd(last)).toString()
+        val word = requireNotNull(Regex("[a-zA-Z]{3,}").find(visibleText)) { "Expected a word in the visible paragraph" }
+        secondWord = layout.getLineStart(mid) + word.range.first + 1
       }
       val down2 = SystemClock.uptimeMillis()
       event(MotionEvent.ACTION_DOWN, point(secondWord), down2)

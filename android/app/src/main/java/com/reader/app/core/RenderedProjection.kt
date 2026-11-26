@@ -75,7 +75,7 @@ object RenderedText {
           is Inline.Link -> { inlines(item.inlines); styles += ProjectedStyle(start, text.length, TextStyle.LINK, item.url) }
           is Inline.FootnoteRef -> {
             text.append("[${item.label}]")
-            styles += ProjectedStyle(start, text.length, TextStyle.FOOTNOTE_REF)
+            styles += ProjectedStyle(start, text.length, TextStyle.FOOTNOTE_REF, "#^" + item.label)
           }
         }
       }
